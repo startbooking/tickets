@@ -1,4 +1,4 @@
-import apiClient from "./axiosClient";
+import apiClient from "./apiClient";
 
 // Interfaces de Tipos para TypeScript
 export interface LoginCredentials {
@@ -32,6 +32,7 @@ export const authService = {
    */
   login: async (credentials: LoginCredentials): Promise<UserResponse> => {
     const response = await apiClient.post<UserResponse>('/auth/login', credentials);
+    // console.log(response);
     return response.data;
   },
 

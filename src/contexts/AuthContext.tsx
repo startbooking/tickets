@@ -1,51 +1,61 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Usuario } from '@/types';
-import { mockUsuarios, mockTablets } from '@/data/mockData';
 
 interface AuthContextType {
   user: Usuario | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string, municipioId: number) => Promise<boolean>;
+  loginStateUpdate: (sessionData: any) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Usuario | null>(null);
-
-  const login = async (email: string, password: string, municipioId: number): Promise<boolean> => {
-    // Simulación de login - en producción esto sería una llamada al backend
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Validar que el dispositivo esté asignado al municipio (simula tablet TAB-BOG-001 asignada a Bogotá)
-    const currentTablet = mockTablets.find(t => t.codigoDispositivo === 'TAB-BOG-001');
-    if (currentTablet && currentTablet.municipioAsignado.id !== municipioId) {
-      throw new Error(`Este dispositivo (${currentTablet.codigoDispositivo}) está asignado a ${currentTablet.municipioAsignado.nombre}, no al municipio seleccionado`);
-    }
-
-    // Buscar usuario por email
-    const foundUser = mockUsuarios.find(u => u.email === email && u.activo);
-    if (!foundUser) {
-      // Si no existe, crear uno basado en el primero del municipio
-      const userByMunicipio = mockUsuarios.find(u => u.municipio.id === municipioId && u.activo);
-      if (userByMunicipio) {
-        setUser({ ...userByMunicipio, email });
-        return true;
+  // 🧠 Inicialización inteligente: Lee el localStorage al arrancar la app para evitar deslogueos al recargar (F5)
+  const [user, setUser] = useState<Usuario | null>(() => {
+    try {
+      const storedUser = localStorage.getItem('userSession') || localStorage.getItem('user');
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        // Retornamos directamente el subobjeto user que inyecta el backend de SACTel
+        return parsed.user || parsed.data?.user || parsed;
       }
+    } catch (error) {
+      console.error("Error al parsear la sesión inicial:", error);
     }
+    return null;
+  });
 
-    // Login exitoso con usuario encontrado o el primero disponible
-    setUser(foundUser || mockUsuarios[0]);
-    return true;
+  /**
+   * Actualiza el estado global de la aplicación una vez que el LoginModal 
+   * valida con éxito las credenciales contra el backend.
+   */
+  const loginStateUpdate = (sessionData: any) => {
+    if (!sessionData) return;
+    
+    // Extraemos el usuario bajo los formatos estándar de tu API
+    const userData = sessionData.user || sessionData.data?.user || sessionData;
+    setUser(userData);
   };
 
+  /**
+   * Limpia los tokens corporativos y regresa el estado de autenticación a nulo.
+   */
   const logout = () => {
+    localStorage.removeItem('user');
+    localStorage.removeItem('userSession');
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        isAuthenticated: !!user, 
+        loginStateUpdate, 
+        logout 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -54,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth debe ser utilizado obligatoriamente dentro de un AuthProvider');
   }
   return context;
 }

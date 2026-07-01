@@ -2,6 +2,13 @@
 // FRONTEND TYPES
 // ============================================
 
+export interface ApiHeaders {
+  'x-user-id': string | number;
+  'x-user-role': string;
+  token?: string;
+}
+
+
 export interface Municipio {
   id: number;
   nombre: string;
@@ -38,6 +45,17 @@ export interface Conductor {
 
 export type EstadoBus = 'DISPONIBLE' | 'DESPACHADO' | 'EN_RUTA' | 'ARRIBADO' | 'MANTENIMIENTO' | 'INACTIVO';
 
+export interface ViajeDespacho {
+  id_viaje: number;
+  destino: string;
+  fecha: string;
+  hora: string;
+  placa_bus: string;
+  capacidad: number;
+  estado: 'Programado' | 'En Ruta' | 'Finalizado' | 'Cancelado';
+  pasajeros: Pasajero[];
+}
+
 export interface Bus {
   id: number;
   placa: string;
@@ -54,10 +72,12 @@ export interface Bus {
 
 export interface Pasajero {
   id: number;
-  numeroDocumento: string;
-  tipoDocumento: 'CC' | 'CE' | 'TI' | 'PA' | 'RC';
-  nombreCompleto: string;
+  tipo_documento: 'CC' | 'CE' | 'TI' | 'PA' | 'RC';
+  documetno: string;
+  nombres: string;
+  apellidos: string;
   telefono?: string;
+  email?:string;
 }
 
 export type EstadoPlanilla = 'PROGRAMADO' | 'DESPACHADO' | 'EN_RUTA' | 'FINALIZADO' | 'CANCELADO';
@@ -113,14 +133,14 @@ export interface CreateDespachoDTO {
 
 export interface Usuario {
   id: number;
-  numeroDocumento: string;
-  nombreCompleto: string;
+  id_agencia: number;
+  nombre: string;
   email: string;
-  telefono?: string;
-  tipoVinculacion: 'EMPLEADO' | 'CONCESION';
-  municipio: Municipio;
-  empresa?: Empresa;
-  activo: boolean;
+  password_hash:string; 
+  token_actual: string;
+  ultimo_ingreso: string;
+  rol: string;
+  activo: number;
 }
 
 export interface Tablet {
@@ -134,6 +154,9 @@ export interface Tablet {
   activo: boolean;
   ultimaConexion?: string;
 }
+
+
+
 
 // ============================================
 // ENVÍO DE DINERO TYPES

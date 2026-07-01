@@ -42,7 +42,7 @@ apiClient.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       // Redireccionar al login si el token ya no es válido
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/';
     }
     return Promise.reject(error);
   }

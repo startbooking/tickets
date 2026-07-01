@@ -142,7 +142,7 @@ function BusCard({ bus, onDespachar, onMarcarLlegada, showDespacharButton = fals
 
 export function BusList() {
   const { user } = useAuth();
-  const municipioActualId = user?.municipio.id || 1; // Default a Bogotá si no hay usuario
+  const municipioActualId = user?.id_agencia || 1; // Default a Bogotá si no hay usuario
 
   const [buses, setBuses] = useState<Bus[]>(mockBuses);
   const [planillas] = useState<PlanillaDespacho[]>(mockPlanillas);

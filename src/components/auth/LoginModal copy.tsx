@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { authService } from '@/services/authService';
-import { useAuth } from '@/contexts/AuthContext'; // Descoméntalo si usas el contexto para actualizar el estado global
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -20,80 +27,64 @@ interface LoginModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Mock de municipios disponibles
+const municipios = [
+  { id: 1, nombre: 'Bogotá' },
+  { id: 2, nombre: 'Medellín' },
+  { id: 3, nombre: 'Cali' },
+  { id: 4, nombre: 'Barranquilla' },
+];
+
 export function LoginModal({ open, onOpenChange }: LoginModalProps) {
   const navigate = useNavigate();
-  // const { loginStateUpdate } = useAuth(); // Úsalo si manejas estado global en React
+  // const { login } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [municipio, setMunicipio] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    const emailTrimmed = email.trim();
-    
-    // 1. Validaciones previas al envío (Ahorra pegarle a la API innecesariamente)
-    if (!emailTrimmed || !password) {
-      setError('Todos los campos son obligatorios.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
-
     setLoading(true);
 
+    if (!email || !password ) {
+      setError('Todos los campos son obligatorios');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await authService.login({ 
-        email: emailTrimmed, 
-        password 
+      // await login(email, password, parseInt(municipio));
+      
+      const userData = await authService.login({ 
+        email, 
+        password // Se envía al endpoint de validación
       });
 
-      // 2. Manejo de respuesta negativa del Backend
-      if (!response || response.success === false) {
-        setError(response?.message || 'Credenciales incorrectas.');
-        setLoading(false);
-        return;
+      console.log(userData);
+
+      // const { data, data:{user} } = userData
+
+      if(!userData.success ){
+        setError(userData.message)
+        return 
       }
 
-      // 3. Extraemos el objeto de usuario de forma segura
-      // Se asume formato estándar: { success: true, data: { user: { rol: '...', ... }, token: '...' } }
-      const sessionData = response.data || response; 
-      const user = sessionData.user;
+      localStorage.setItem('user', JSON.stringify(userData));
 
-      if (!user || !user.rol) {
-        setError('El perfil de usuario no contiene un rol válido asignado.');
-        setLoading(false);
-        return;
-      }
+      // Tu lógica de redirección por roles que hicimos antes
+      if (user.rol === 'CAJERO') navigate('/vender');
+      if (user.rol === 'DESPACHADOR') navigate('/despacho');
+      if (user.rol === 'ADMIN_AGENCIA') navigate('/agencia');
+      if (user.rol === 'SUPERADMIN') navigate('/dashboard');
 
-      // 4. Guardado en LocalStorage (Acoplado con apiClient.ts)
-      // localStorage.setItem('user', JSON.stringify(sessionData));
-      localStorage.setItem('userSession', JSON.stringify(sessionData));
-
-      // Si usas Contexto Auth, actualiza tu estado de React aquí:
-      // loginStateUpdate(sessionData);
-
-      // 5. Enrutamiento exacto por privilegios operativos de SACTel
       onOpenChange(false);
-      
-      const rutasPorRol: Record<string, string> = {
-        'CAJERO': '/vender',
-        'DESPACHADOR': '/despacho',
-        'ADMIN_AGENCIA': '/agencia',
-        'SUPERADMIN': '/dashboard'
-      };
-
-      const rutaDestino = rutasPorRol[user.rol.toUpperCase()] || '/';
-      navigate(rutaDestino);
-
+      // navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error de conexión con el Core de SACTel.');
+      setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
     } finally {
       setLoading(false);
     }
@@ -111,9 +102,9 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           {error && (
-            <Alert variant="destructive" className="animate-in fade-in-50 duration-200">
+            <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
@@ -128,8 +119,6 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
-              autoComplete="email"
-              required
             />
           </div>
 
@@ -138,23 +127,40 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
             <Input
               id="password"
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              autoComplete="current-password"
-              required
             />
           </div>
 
-          <Button type="submit" className="w-full mt-2" disabled={loading}>
+          {/* <div className="space-y-2">
+            <Label htmlFor="municipio">Municipio</Label>
+            <Select value={municipio} onValueChange={setMunicipio} disabled={loading}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona el municipio" />
+              </SelectTrigger>
+              <SelectContent>
+                {municipios.map((mun) => (
+                  <SelectItem key={mun.id} value={mun.id.toString()}>
+                    {mun.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              El municipio debe coincidir con el asignado a este dispositivo
+            </p>
+          </div> */}
+
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Validando credenciales...
+                Validando...
               </>
             ) : (
-              'Ingresar al Sistema'
+              'Ingresar'
             )}
           </Button>
         </form>

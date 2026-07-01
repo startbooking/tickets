@@ -13,15 +13,9 @@ import { useTickets } from '@/hooks/useTickets';
 import { useEnvioDinero } from '@/hooks/useEnvioDinero';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bus, Ticket, LayoutDashboard, LogOut, PlusCircle, Printer,User,ChevronDown,Wifi,WifiOff,Send
+import {  Bus, Ticket, LayoutDashboard, LogOut, PlusCircle, Printer, User, ChevronDown, Wifi, WifiOff, Send
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem as DropdownMenuItemShad, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
 export default function Dashboard() {
@@ -46,15 +40,22 @@ export default function Dashboard() {
     navigate('/');
   };
 
-  return (
+  // 🔒 Estructuración de cabeceras de SACTel listas para inyectar a llamadas API de componentes hijos
+  const authHeaders = {
+    'x-user-id': user?.id || user?.id || 0,
+    'x-user-role': user?.rol || 'CAJERO',
+  };
 
+  // ID de la agencia física asignada al usuario
+  const idAgencia = user?.id_agencia || 0;
+
+  return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
       {/* Header del Dashboard - Fijo */}
       <header className="h-16 flex-shrink-0 border-b border-border bg-card flex items-center justify-between px-6 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center">
-            <img src="logo.png" alt="" />
-            {/* <Bus className="w-6 h-6 text-primary-foreground" /> */}
+            <img src="logo.png" alt="TransTicket Logo" className="object-contain" />
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold text-foreground leading-tight">TransTicket</span>
@@ -63,7 +64,6 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Botones de acción */}
           <Button 
             onClick={() => {
               setActiveTab('tickets');
@@ -75,7 +75,6 @@ export default function Dashboard() {
             Crear Ticket
           </Button>
 
-          {/* Printer connection status */}
           <Button 
             variant={printer.isConnected ? "default" : "outline"}
             onClick={printer.isConnected ? printer.disconnectPrinter : printer.connectPrinter}
@@ -102,37 +101,39 @@ export default function Dashboard() {
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                   <User className="w-4 h-4 text-primary" />
                 </div>
-                <span className="hidden md:inline">{user?.nombre}</span>
+                <span className="hidden md:inline">{user?.nombreCompleto || user?.username}</span>
                 <ChevronDown className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div>
-                  <p className="font-medium">{user?.nombre}</p>
+                  <p className="font-medium">{user?.nombreCompleto || user?.username}</p>
                   <p className="text-xs text-muted-foreground">{user?.email}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-muted-foreground">
-                Municipio: {user?.municipio?.nombre}
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-muted-foreground">
-                Tipo: {user?.tipoVinculacion}
-              </DropdownMenuItem>
+              <DropdownMenuTrigger className="w-full text-left p-2 text-sm text-muted-foreground cursor-default hover:bg-transparent">
+                Municipio: {user?.municipio?.nombre || 'No asignado'}
+              </DropdownMenuTrigger>
+              <DropdownMenuTrigger className="w-full text-left p-2 text-sm text-muted-foreground cursor-default hover:bg-transparent">
+                Tipo: {user?.tipoVinculacion || 'Regular'}
+              </DropdownMenuTrigger>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-destructive">
-                <LogOut className="w-4 h-4 mr-2" />
+              <DropdownMenuTrigger 
+                onClick={handleLogout} 
+                className="w-full text-left p-2 text-sm text-destructive cursor-pointer flex items-center gap-2 hover:bg-destructive/10 rounded-sm"
+              >
+                <LogOut className="w-4 h-4" />
                 Cerrar Sesión
-              </DropdownMenuItem>
+              </DropdownMenuTrigger>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </header>
 
-{/* Tabs Container - Estructura con tabs fijos y contenido scrollable */}
+      {/* Tabs Container */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-        {/* TabsList - Fijo debajo del header */}
         <div className="flex-shrink-0 bg-card border-b border-border px-4 md:px-6 py-2">
           <TabsList className="h-12">
             <TabsTrigger value="dashboard" className="gap-2">
@@ -153,27 +154,30 @@ export default function Dashboard() {
             </TabsTrigger>
           </TabsList>
         </div>
-        {/* Contenido principal - Scrollable */}
+
         <main className="flex-1 overflow-y-auto">
           <div className="container mx-auto px-4 py-6">
+            
             {/* Dashboard Tab */}
             <TabsContent value="dashboard" className="space-y-6 mt-0">
-              <DashboardStats />
+              <DashboardStats authHeaders={authHeaders} idAgencia={idAgencia} />
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
                   <h2 className="text-lg font-semibold mb-4">Últimos Tickets</h2>
                   <TicketList 
                     tickets={tickets.slice(0, 5)} 
-                    onCancel={cancelTicket} 
+                    onCancel={cancelTicket}
+                    currentUser={user}
                   />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold mb-4">Flota de Buses</h2>
-                  <BusList />
+                  <BusList authHeaders={authHeaders} idAgencia={idAgencia} />
                 </div>
               </div>
             </TabsContent>
+
             {/* Tickets Tab */}
             <TabsContent value="tickets" className="space-y-6 mt-0">
               {showTicketForm ? (
@@ -184,7 +188,14 @@ export default function Dashboard() {
                       Ver Lista de Tickets
                     </Button>
                   </div>
-                  <TicketForm onSubmit={createTicket} loading={loading} />
+                  {/* 🎫 Pasamos datos del usuario, headers y su id de agencia para buscar las cédulas */}
+                  <TicketForm 
+                    onSubmit={createTicket} 
+                    loading={loading} 
+                    authHeaders={authHeaders}
+                    idAgencia={idAgencia}
+                    currentUser={user}
+                  />
                 </>
               ) : (
                 <>
@@ -195,13 +206,11 @@ export default function Dashboard() {
                       Nuevo Ticket
                     </Button>
                   </div>
-                  <TicketList 
-                    tickets={tickets} 
-                    onCancel={cancelTicket} 
-                    />
+                  <TicketList tickets={tickets} onCancel={cancelTicket} currentUser={user} />
                 </>
               )}
             </TabsContent>
+
             {/* Envios Tab */}
             <TabsContent value="envios" className="space-y-6 mt-0">
               {showEnvioForm ? (
@@ -213,10 +222,13 @@ export default function Dashboard() {
                     </Button>
                   </div>
                   {user?.municipio && (
+                    /* 💸 Pasamos las propiedades geográficas y las de seguridad del cajero */
                     <EnvioDineroForm 
                       onSubmit={createEnvio} 
                       loading={enviosLoading} 
                       municipioOrigen={user.municipio}
+                      authHeaders={authHeaders}
+                      idAgencia={idAgencia}
                     />
                   )}
                 </>
@@ -233,23 +245,28 @@ export default function Dashboard() {
                     envios={envios} 
                     onCancel={cancelEnvio}
                     onMarkDelivered={markAsDelivered}
+                    currentUser={user}
                   />
                 </>
               )}
             </TabsContent>
+
             {/* Buses Tab */}
             <TabsContent value="buses" className="mt-0">
               <h2 className="text-xl font-bold mb-6">Gestión de Flota</h2>
-              <BusList />
+              {/* 🚌 El listado de buses puede requerir filtrar por los buses de la propia Terminal/Agencia */}
+              <BusList authHeaders={authHeaders} idAgencia={idAgencia} />
             </TabsContent>
+
           </div>
         </main>
       </Tabs>
-      {/* Modal de Consolidado */}
+
       <ConsolidatedReport 
         open={showConsolidated} 
         onOpenChange={setShowConsolidated}
         tickets={tickets}
+        currentUser={user}
       />
     </div>
   );
