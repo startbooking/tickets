@@ -12,6 +12,19 @@ import {
 } from '@/lib/thermalPrinter';
 import { toast } from '@/hooks/use-toast';
 
+export interface DianPrintData {
+  factura: string;
+  pasajero: string;
+  documento: string;
+  origen: string;
+  destino: string;
+  silla: number;
+  valor: number;
+  formaPago: string;
+  cufe: string;
+  qr?: string;
+}
+
 export function usePrinter() {
   const [isConnected, setIsConnected] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -161,6 +174,41 @@ export function usePrinter() {
     return buildInvoiceData(ticket);
   }, []);
 
+  // Print a DIAN receipt using the browser print window
+  const printTicket = useCallback((data: DianPrintData) => {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tiquete DIAN</title>
+      <style>
+        body{font-family:monospace;width:80mm;margin:0 auto;color:#000;font-size:12px}
+        h2{text-align:center;margin:4px 0}
+        hr{border:none;border-top:1px dashed #000;margin:6px 0}
+        p{margin:2px 0}
+        .t{text-align:right;font-weight:bold}
+      </style></head><body>
+      <h2>TIQUETE DE TRANSPORTE</h2>
+      <p class="t">NIT: 800.123.456-1</p>
+      <hr>
+      <p>Factura N: ${data.factura}</p>
+      <p>Fecha: ${new Date().toLocaleString()}</p>
+      <hr>
+      <p>Ruta: ${data.origen} - ${data.destino}</p>
+      <p>Asiento: ${data.silla} | Pago: ${data.formaPago}</p>
+      <hr>
+      <p>Pasajero: ${data.pasajero}</p>
+      <p>Documento: ${data.documento}</p>
+      <hr>
+      <p class="t">TOTAL: $${data.valor.toLocaleString('es-CO')}</p>
+      <hr>
+      <p style="font-size:9px;word-break:break-all">CUFE: ${data.cufe}</p>
+      <p style="text-align:center;margin-top:10px">¡Buen viaje!</p>
+      </body></html>`;
+    const printWindow = window.open('', '_blank', 'width=300,height=600');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.onload = () => printWindow.print();
+    }
+  }, []);
+
   // Get raw bytes for debugging
   const getInvoiceBytes = useCallback((ticket: Ticket) => {
     const data = buildInvoiceData(ticket);
@@ -175,6 +223,7 @@ export function usePrinter() {
     disconnectPrinter,
     printTicketThermal,
     printTicketWindow,
+    printTicket,
     autoPrint,
     getInvoiceData,
     getInvoiceBytes,

@@ -37,6 +37,62 @@ export function useEnvioDinero() {
   const [lastCreatedEnvio, setLastCreatedEnvio] = useState<EnvioDinero | null>(null);
   const printer = usePrinter();
 
+  const printEnvioWindow = useCallback((envio: EnvioDinero, tipo: ReciboTipo) => {
+    const html = generateEnvioReciboHTML(envio, tipo);
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+        setTimeout(() => printWindow.close(), 1000);
+      };
+    }
+  }, []);
+
+  const printEnvioReceipts = useCallback(async (envio: EnvioDinero) => {
+    try {
+      // Print remitente receipt
+      if (printer.isConnected) {
+        const remitenteBytes = buildEnvioReciboBytes(envio, 'remitente');
+        await thermalPrinter.printBytes(remitenteBytes);
+        
+        // Small delay between prints
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Print conductor receipt
+        const conductorBytes = buildEnvioReciboBytes(envio, 'conductor');
+        await thermalPrinter.printBytes(conductorBytes);
+      } else {
+        // Fallback to browser print
+        printEnvioWindow(envio, 'remitente');
+        setTimeout(() => {
+          printEnvioWindow(envio, 'conductor');
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Error printing envio receipts:', error);
+      toast({
+        title: 'Advertencia',
+        description: 'Envío registrado pero hubo un error al imprimir los recibos',
+        variant: 'destructive',
+      });
+    }
+  }, [printer.isConnected, printEnvioWindow]);
+
+  const printReciboReceptor = useCallback(async (envio: EnvioDinero) => {
+    try {
+      if (printer.isConnected) {
+        const receptorBytes = buildEnvioReciboBytes(envio, 'receptor');
+        await thermalPrinter.printBytes(receptorBytes);
+      } else {
+        printEnvioWindow(envio, 'receptor');
+      }
+    } catch (error) {
+      console.error('Error printing receptor receipt:', error);
+    }
+  }, [printer.isConnected, printEnvioWindow]);
+
   const createEnvio = useCallback(async (
     dto: CreateEnvioDineroDTO,
     municipioOrigen: Municipio
@@ -152,50 +208,7 @@ export function useEnvioDinero() {
     } finally {
       setLoading(false);
     }
-  }, [envios]);
-
-  const printEnvioReceipts = async (envio: EnvioDinero) => {
-    try {
-      // Print remitente receipt
-      if (printer.isConnected) {
-        const remitenteBytes = buildEnvioReciboBytes(envio, 'remitente');
-        await thermalPrinter.printBytes(remitenteBytes);
-        
-        // Small delay between prints
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Print conductor receipt
-        const conductorBytes = buildEnvioReciboBytes(envio, 'conductor');
-        await thermalPrinter.printBytes(conductorBytes);
-      } else {
-        // Fallback to browser print
-        printEnvioWindow(envio, 'remitente');
-        setTimeout(() => {
-          printEnvioWindow(envio, 'conductor');
-        }, 2000);
-      }
-    } catch (error) {
-      console.error('Error printing envio receipts:', error);
-      toast({
-        title: 'Advertencia',
-        description: 'Envío registrado pero hubo un error al imprimir los recibos',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const printEnvioWindow = (envio: EnvioDinero, tipo: ReciboTipo) => {
-    const html = generateEnvioReciboHTML(envio, tipo);
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.onload = () => {
-        printWindow.print();
-        setTimeout(() => printWindow.close(), 1000);
-      };
-    }
-  };
+  }, [envios, printEnvioReceipts]);
 
   const cancelEnvio = useCallback(async (envioId: number): Promise<boolean> => {
     setLoading(true);
@@ -269,20 +282,7 @@ export function useEnvioDinero() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const printReciboReceptor = async (envio: EnvioDinero) => {
-    try {
-      if (printer.isConnected) {
-        const receptorBytes = buildEnvioReciboBytes(envio, 'receptor');
-        await thermalPrinter.printBytes(receptorBytes);
-      } else {
-        printEnvioWindow(envio, 'receptor');
-      }
-    } catch (error) {
-      console.error('Error printing receptor receipt:', error);
-    }
-  };
+  }, [printReciboReceptor]);
 
   return {
     envios,

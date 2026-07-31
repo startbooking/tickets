@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { PlanillaDespacho, FormaPago } from '@/types';
+import { PlanillaDespacho, FormaPago, TiqueteTransporteDTO } from '@/types';
 import { mockPlanillas, getAsientosOcupados } from '@/data/mockData';
 import {
   Bus, User, MapPin, AlertTriangle,
@@ -22,7 +22,7 @@ import { pasajerosService } from '@/services/pasajeroService';
 import { toast } from 'sonner';
 
 interface TicketFormProps {
-  onSubmit: (planilla: PlanillaDespacho, payloadDian: any) => Promise<unknown>;
+  onSubmit: (planilla: PlanillaDespacho, payloadDian: TiqueteTransporteDTO) => Promise<unknown>;
   loading: boolean;
   authHeaders: {
     'x-user-id': string | number;
@@ -57,7 +57,7 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
   const asientoSelectRef = useRef<HTMLButtonElement>(null);
   const asientosOcupados = selectedPlanilla ? getAsientosOcupados(selectedPlanilla.id) : [];
 
-  const handleInputChange = (key: keyof typeof INITIAL_FORM_STATE, value: any) => {
+  const handleInputChange = <K extends keyof typeof INITIAL_FORM_STATE>(key: K, value: (typeof INITIAL_FORM_STATE)[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
@@ -91,8 +91,8 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
       } else {
         toast.info('Pasajero nuevo. Complete los datos para su registro automático.');
       }
-    } catch (err: any) {
-      setErrorSeguridad(err.message || 'Error al validar el documento de identidad.');
+    } catch (err) {
+      setErrorSeguridad(err instanceof Error ? err.message : 'Error al validar el documento de identidad.');
     } finally {
       setBuscandoPasajero(false);
     }
@@ -160,7 +160,7 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
       hora_emision: new Date().toLocaleTimeString('en-US', { hour12: false }),
 
       datos_emisor: {
-        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN || "sk_live_777777777_a47704d40beaae58eb8f88eeab7439ebd164e2f3b3273e31",
+        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN || '',
         id_agencia: idAgencia
       },
 

@@ -1,14 +1,32 @@
 import { useState } from 'react';
 import { DianResponse, dianService } from '@/services/dianService';
+import { useAuth } from '@/contexts/AuthContext';
+import type { TiqueteTransporteDTO } from '@/types';
+
+interface DatosViaje {
+  id_viaje: string | number;
+  origen_nombre: string;
+  destino_nombre: string;
+  placa_bus: string;
+  precio_tiquete: string | number;
+}
+
+interface DatosPasajero {
+  tipo_documento: string;
+  documento: string;
+  nombres: string;
+  apellidos: string;
+  email?: string;
+}
 
 interface GenerarTicketProps {
-  datosViaje: any;       // Información de la ruta y bus seleccionados
-  datosPasajero: any;   // Información del cliente en taquilla
+  datosViaje: DatosViaje;
+  datosPasajero: DatosPasajero;
   asientoSeleccionado: number;
 }
 
 export default function GenerarTicket({ datosViaje, datosPasajero, asientoSeleccionado }: GenerarTicketProps) {
-  console.log(datosPasajero)
+  const { user } = useAuth();
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [resultadoDian, setResultadoDian] = useState<DianResponse | null>(null);
@@ -18,7 +36,7 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
     setError(null);
 
     // 1. Estructuración del JSON bajo el formato requerido para el envío a la DIAN
-    const tiqueteJsonPayload = {
+    const tiqueteJsonPayload: TiqueteTransporteDTO = {
       operacion: "Emision_Tiquete_Transporte",
       fecha_emision: new Date().toISOString().split('T')[0],
       hora_emision: new Date().toLocaleTimeString('en-US', { hour12: false }),
@@ -31,7 +49,7 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
         destino: datosViaje.destino_nombre,
         placa_vehiculo: datosViaje.placa_bus,
         numero_asiento: asientoSeleccionado,
-        valor_tiquete: parseFloat(datosViaje.precio_tiquete)
+        valor_tiquete: parseFloat(String(datosViaje.precio_tiquete))
       },
       datos_pasajero: {
         tipo_documento: datosPasajero.tipo_documento,
@@ -44,18 +62,21 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
         {
           codigo: "01", // Código DIAN para IVA
           porcentaje: 0.00, // El transporte intermunicipal de pasajeros está excluido de IVA en Colombia
-          base_imponible: parseFloat(datosViaje.precio_tiquete),
+          base_imponible: parseFloat(String(datosViaje.precio_tiquete)),
           valor_impuesto: 0.00
         }
       ]
     };
 
+    const authHeaders = {
+      'x-user-id': user?.id || 0,
+      'x-user-role': user?.rol || 'CAJERO',
+    };
+
     try {
-      console.log("🚀 Enviando payload estructurado a Sactel DIAN... XXXXX ", tiqueteJsonPayload);
-      
       // 2. Enviamos el JSON al backend receptor y esperamos la respuesta síncrona
       // const respuesta = await ticketsService.emitirTiqueteTransporte(tiqueteJsonPayload,authHeaders );
-      const respuesta = await dianService.emitirTiqueteTransporte(tiqueteJsonPayload,authHeaders );
+      const respuesta = await dianService.emitirTiqueteTransporte(tiqueteJsonPayload, authHeaders );
       
       setResultadoDian(respuesta);
       
@@ -66,9 +87,12 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
         }, 500);
       }
 
-    } catch (err: any) {
+    } catch (err) {
+      const httpError = (typeof err === 'object' && err !== null ? err : {}) as {
+        response?: { data?: { message?: string } };
+      };
       console.error("🚨 Fallo en la emisión del documento ante la DIAN:", err);
-      setError(err.response?.data?.message || "Error de comunicación con el servidor de la DIAN.");
+      setError(httpError.response?.data?.message || "Error de comunicación con el servidor de la DIAN.");
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { handleAxiosError, validateResponse } from './apiClient';
+import type { TiqueteTransporteDTO } from '@/types';
 
 // Instancia aislada y configurada para el operador de la DIAN (Sactel)
 const sactelClient = axios.create({
@@ -12,15 +13,21 @@ const sactelClient = axios.create({
   }
 });
 
-console.log(import.meta.env.VITE_BACKEND_DIAN_URL);
-
 export interface DianResponse {
   success: boolean;
-  message: string;
-  cufe: string;
-  qr_code_url?: string; // Opcional por si el backend envía qr_dian directo
+  message?: string;
+  cufe?: string;
+  qr_code_url?: string;
   qr_dian?: string;
-  numero_factura: string;
+  numero_factura?: string;
+  data?: {
+    cufe?: string;
+    qr_dian?: string;
+    qr_code_url?: string;
+    numero_factura?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
 }
 
 export const dianService = {
@@ -29,7 +36,7 @@ export const dianService = {
    * @param payload Estructura JSON con datos del viaje, impuestos y adquirente
    * @param authHeaders Cabeceras operativas de auditoría de SACTel
    */
-  emitirTiqueteTransporte: async (payload: any, authHeaders: Record<string, string | number>) => {
+  emitirTiqueteTransporte: async (payload: TiqueteTransporteDTO, authHeaders: Record<string, string | number>): Promise<DianResponse> => {
     try {
       // Configuramos las cabeceras dinámicas mezclando la autenticación por Token de la empresa con la auditoría del usuario
       const config: AxiosRequestConfig = {
@@ -40,11 +47,10 @@ export const dianService = {
 
       // 💡 CORRECCIÓN: Se remueve "${baseURL}" ya que sactelClient usa automáticamente su baseURL configurada arriba.
       // Se apunta al endpoint exacto que reportó tu traza de error.
-      const response = await sactelClient.post('/tiquete-transporte/emitir', payload, config);
-      console.log(response);
+      const response = await sactelClient.post<DianResponse>('/tiquete-transporte/emitir', payload, config);
       // Valida la estructura de éxito de la respuesta
-      return validateResponse(response, 'El Core de SACTel no pudo procesar la emisión del tiquete.');
-    } catch (error: any) {
+      return validateResponse<DianResponse>(response, 'El Core de SACTel no pudo procesar la emisión del tiquete.');
+    } catch (error: unknown) {
       // Retorna el error estructurado. Al lanzar handleAxiosError, tu Dashboard 
       // podrá leer el error.response.data.errors que generó el fallo 422.
       return handleAxiosError(error, 'Fallo crítico durante la emisión fiscal del tiquete.');

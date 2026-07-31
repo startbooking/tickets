@@ -1,59 +1,81 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { Usuario } from '@/types';
 
+export interface AuthSessionData {
+  user?: Record<string, unknown>;
+  data?: { user?: Record<string, unknown> };
+  token?: string;
+  [key: string]: unknown;
+}
+
 interface AuthContextType {
   user: Usuario | null;
   isAuthenticated: boolean;
-  isLoading: boolean; // 👈 Expuesto para que App.tsx no rompa
-  loginStateUpdate: (sessionData: any) => void;
+  isLoading: boolean;
+  loginStateUpdate: (sessionData: AuthSessionData) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SESSION_KEY = 'userSession';
+
+// Extrae el objeto de usuario de cualquier envoltura (user, data.user o plano)
+// y homologa el rol bajo "role" para evitar el bug de typo (rol vs role).
+const extractUser = (parsed: Record<string, unknown>): Usuario | null => {
+  const nestedData =
+    typeof parsed.data === 'object' && parsed.data !== null
+      ? (parsed.data as Record<string, unknown>)
+      : undefined;
+  const nestedUser =
+    typeof nestedData?.user === 'object' && nestedData.user !== null
+      ? (nestedData.user as Record<string, unknown>)
+      : undefined;
+  const flatUser =
+    typeof parsed.user === 'object' && parsed.user !== null
+      ? (parsed.user as Record<string, unknown>)
+      : undefined;
+
+  const raw = flatUser || nestedUser || parsed;
+  if (!raw || typeof raw !== 'object') return null;
+
+  const rol =
+    typeof raw.rol === 'string' ? raw.rol.toUpperCase() :
+    typeof raw.role === 'string' ? raw.role.toUpperCase() :
+    'CAJERO';
+
+  return {
+    ...(raw as unknown as Usuario),
+    id: Number(raw.id ?? raw.id_usuario ?? 0),
+    rol,
+    role: rol,
+  };
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isLoading, setIsLoading] = useState(true); // Inicializa en true
+  const [isLoading] = useState(false); // La sesión se restaura de forma síncrona desde localStorage
   const [user, setUser] = useState<Usuario | null>(() => {
     try {
-      const storedUser = localStorage.getItem('userSession') || localStorage.getItem('user');
+      const storedUser = localStorage.getItem(SESSION_KEY) || localStorage.getItem('user');
       if (storedUser) {
-        const parsed = JSON.parse(storedUser);
-        const normalUser = parsed.user || parsed.data?.user || parsed;
-        
-        // Estandarizamos el campo de rol para evitar el bug de typo (rol vs role)
-        if (normalUser && normalUser.rol) {
-          normalUser.role = normalUser.rol.toUpperCase();
-        }
-        return normalUser;
+        return extractUser(JSON.parse(storedUser) as Record<string, unknown>);
       }
     } catch (error) {
       console.error("Error al parsear la sesión inicial:", error);
-    } finally {
-      // Una vez validado el localStorage en el constructor de estado, apagamos la carga
     }
     return null;
   });
 
-  // Apagar el loading justo después de evaluar el estado inicial
-  useState(() => {
-    setIsLoading(false);
-  });
-
-  const loginStateUpdate = (sessionData: any) => {
+  const loginStateUpdate = (sessionData: AuthSessionData) => {
     if (!sessionData) return;
-    const userData = sessionData.user || sessionData.data?.user || sessionData;
-    
-    // Homologamos estructuralmente para blindar la app
-    if (userData && userData.rol) {
-      userData.role = userData.rol.toUpperCase();
-    }
-    
-    setUser(userData);
+    const normalized = extractUser(sessionData as Record<string, unknown>);
+    setUser(normalized);
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
   };
 
   const logout = () => {
+    localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem('user');
-    localStorage.removeItem('userSession');
     setUser(null);
   };
 
@@ -62,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{ 
         user, 
         isAuthenticated: !!user, 
-        isLoading, // 👈 Pasado exitosamente a la directiva del Router
+        isLoading,
         loginStateUpdate, 
         logout 
       }}

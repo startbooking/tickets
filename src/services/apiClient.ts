@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import Swal from 'sweetalert2'; // Asumiendo que SactelAlert usa SweetAlert2 por debajo
 
 const API_BASE_URL = import.meta.env.VITE_TICKETS_BACKEND_URL || '';
@@ -25,10 +25,14 @@ apiClient.interceptors.request.use(
   (config) => {
     const userString = localStorage.getItem('userSession') || localStorage.getItem('user');
     if (userString && config.headers) {
-      const user = JSON.parse(userString);
-      const token = user.token || user.state?.user?.token; // Soporta estructuras anidadas comunes
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      try {
+        const user = JSON.parse(userString);
+        const token = user.token || user.user?.token || user.state?.user?.token; // Soporta estructuras anidadas comunes
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch {
+        // Sesión corrupta en localStorage; el login la regenerará
       }
     }
     return config;
@@ -56,7 +60,7 @@ apiClient.interceptors.response.use(
         confirmButtonText: 'Volver a Ingresar',
         allowOutsideClick: false
       }).then(() => {
-        window.location.href = '/auth/sesion-duplicada';
+        window.location.href = '/';
       });
     }
     return Promise.reject(error);
@@ -91,11 +95,24 @@ export const buildConfig = (headers: ApiHeaders, extraConfig?: AxiosRequestConfi
 /**
  * Captura y unifica los formatos de error de diferentes backends (Python, Express, Next)
  */
-export const handleAxiosError = (error: any, defaultMessage: string): never => {
+interface HttpErrorShape {
+  response?: {
+    data?: {
+      detail?: string;
+      error?: string;
+      message?: string;
+    };
+  };
+  message?: string;
+}
+
+export const handleAxiosError = (error: unknown, defaultMessage: string): never => {
+  const httpError = (typeof error === 'object' && error !== null ? error : {}) as HttpErrorShape;
   const errorMessage =
-    error.response?.data?.detail ||  // FastAPI / Python
-    error.response?.data?.error ||   // Express / Node.js
-    error.message ||
+    httpError.response?.data?.detail ||  // FastAPI / Python
+    httpError.response?.data?.error ||   // Express / Node.js
+    httpError.response?.data?.message ||
+    httpError.message ||
     defaultMessage;
 
   throw new Error(errorMessage);
@@ -104,12 +121,13 @@ export const handleAxiosError = (error: any, defaultMessage: string): never => {
 /**
  * Valida si la respuesta contiene banderas internas de error
  */
-export const validateResponse = (response: any, defaultError: string) => {
-  console.log(response)
-  if (!response.data || response.data.success === false) {
-    throw new Error(response.data?.error || defaultError);
+export const validateResponse = <T extends Record<string, unknown>>(response: AxiosResponse<T>, defaultError: string): T => {
+  const data = response.data;
+  if (!data || data.success === false) {
+    const message = typeof data?.error === 'string' ? data.error : defaultError;
+    throw new Error(message);
   }
-  return response.data;
+  return data;
 };
 
 export default apiClient;

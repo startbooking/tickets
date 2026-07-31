@@ -14,6 +14,7 @@ export interface Municipio {
   nombre: string;
   departamento: string;
   activo: boolean;
+  codigoDivipola?: string;
 }
 
 export interface Empresa {
@@ -71,13 +72,18 @@ export interface Bus {
 }
 
 export interface Pasajero {
-  id: number;
-  tipo_documento: 'CC' | 'CE' | 'TI' | 'PA' | 'RC';
-  documetno: string;
-  nombres: string;
-  apellidos: string;
+  id?: number;
+  tipo_documento?: 'CC' | 'CE' | 'TI' | 'PA' | 'RC';
+  documento?: string;
+  nombres?: string;
+  apellidos?: string;
   telefono?: string;
-  email?:string;
+  email?: string;
+  numeroDocumento?: string;
+  tipoDocumento?: string;
+  nombreCompleto?: string;
+  asiento?: number;
+  asistio?: boolean;
 }
 
 export type EstadoPlanilla = 'PROGRAMADO' | 'DESPACHADO' | 'EN_RUTA' | 'FINALIZADO' | 'CANCELADO';
@@ -133,14 +139,24 @@ export interface CreateDespachoDTO {
 
 export interface Usuario {
   id: number;
-  id_agencia: number;
-  nombre: string;
-  email: string;
-  password_hash:string; 
-  token_actual: string;
-  ultimo_ingreso: string;
-  rol: string;
-  activo: number;
+  id_agencia?: number;
+  agenciaId?: number;
+  nombre?: string;
+  name?: string;
+  nombreCompleto?: string;
+  numeroDocumento?: string;
+  email?: string;
+  password_hash?: string;
+  token_actual?: string;
+  ultimo_ingreso?: string;
+  rol?: string;
+  role?: string;
+  activo?: boolean;
+  telefono?: string;
+  tipoVinculacion?: string;
+  municipio?: Municipio;
+  empresa?: Empresa;
+  [key: string]: unknown;
 }
 
 export interface Tablet {
@@ -219,4 +235,81 @@ export interface ReciboEnvioDineroDTO {
   receptorDocumento: string;
   receptorNombre: string;
   receptorTelefono?: string;
+}
+
+// ============================================
+// DIAN TICKET TYPES
+// ============================================
+
+export interface TiqueteItemDTO {
+  codigo: string;
+  descripcion: string;
+  cantidad: number;
+  unidad: string;
+  precio_unitario: number;
+  subtotal: number;
+  porcentaje_iva: string;
+  iva: number;
+  base_gravable: number;
+  exencion: string;
+}
+
+export interface TiqueteImpuestoDTO {
+  codigo: string;
+  porcentaje: number;
+  base_imponible: number;
+  valor_impuesto: number;
+}
+
+export interface TiqueteTransporteDTO {
+  operacion: string;
+  fecha_emision: string;
+  hora_emision: string;
+  datos_emisor?: {
+    token_empresa?: string;
+    id_agencia?: number;
+  };
+  tipo_documento_pasajero?: string;
+  numero_documento_pasajero?: string;
+  nombre_pasajero?: string;
+  ciudad_origen?: string;
+  ciudad_destino?: string;
+  terminal_origen?: string;
+  terminal_destino?: string;
+  municipio_origen?: string;
+  municipio_destino?: string;
+  departamento_origen?: string;
+  departamento_destino?: string;
+  fecha_viaje?: string;
+  hora_salida?: string;
+  numero_asiento?: string;
+  placa_vehiculo?: string;
+  tipo_servicio?: string;
+  ruta_codigo?: string;
+  numero_manifiesto?: string;
+  items?: TiqueteItemDTO[];
+  total_bruto?: number;
+  descuentos?: number;
+  base_gravable?: number;
+  iva?: number;
+  total?: number;
+  notas?: string;
+  forma_pago?: string;
+  datos_viaje?: {
+    id_interno_viaje?: string | number;
+    origen?: string;
+    destino?: string;
+    placa_vehiculo?: string;
+    numero_asiento?: number;
+    valor_tiquete?: number;
+  };
+  datos_pasajero?: {
+    tipo_documento?: string;
+    numero_documento?: string;
+    nombres?: string;
+    apellidos?: string;
+    email_notificacion?: string;
+  };
+  impuestos?: TiqueteImpuestoDTO[];
+  [key: string]: unknown;
 }

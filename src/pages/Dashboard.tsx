@@ -27,7 +27,7 @@ import {
 import { toast } from 'sonner';
 import Swal from 'sweetalert2';
 // import { ticketsService } from '@/services/tiqueteService';
-import { PlanillaDespacho } from '@/types';
+import { PlanillaDespacho, TiqueteTransporteDTO } from '@/types';
 import { dianService } from '@/services/dianService';
 
 export default function Dashboard() {
@@ -60,7 +60,7 @@ export default function Dashboard() {
     navigate('/');
   };
 
-  const handleCreateTicket = async (planilla: PlanillaDespacho, payloadDian: any, authHeaders) => {
+  const handleCreateTicket = async (planilla: PlanillaDespacho, payloadDian: TiqueteTransporteDTO) => {
   setTicketEmitiendo(true);
   
   try {
@@ -68,7 +68,6 @@ export default function Dashboard() {
     
     // 1. Un solo viaje de red: Persiste Pasajero + Tiquete + Comunicación DIAN (CUFE)
     const resultado = await dianService.emitirTiqueteTransporte(payloadDian, authHeaders);
-    console.log(resultado)
     
     if (resultado && resultado.success && resultado.data?.cufe) {
       const { cufe, qr_dian, numero_factura } = resultado.data;
@@ -80,14 +79,14 @@ export default function Dashboard() {
         toast.info('Enviando comandos ESC/POS a la TM-U220D...');
         
         await printer.printTicket({
-          factura: numero_factura,
-          pasajero: `${payloadDian.datos_pasajero.nombres} ${payloadDian.datos_pasajero.apellidos}`,
-          documento: payloadDian.datos_pasajero.numero_documento,
-          origen: payloadDian.datos_viaje.origen,
-          destino: payloadDian.datos_viaje.destino,
-          silla: payloadDian.datos_viaje.numero_asiento,
-          valor: payloadDian.datos_viaje.valor_tiquete,
-          formaPago: payloadDian.forma_pago,
+          factura: numero_factura || '',
+          pasajero: `${payloadDian.datos_pasajero?.nombres ?? ''} ${payloadDian.datos_pasajero?.apellidos ?? ''}`.trim(),
+          documento: payloadDian.datos_pasajero?.numero_documento ?? '',
+          origen: payloadDian.datos_viaje?.origen ?? payloadDian.ciudad_origen ?? '',
+          destino: payloadDian.datos_viaje?.destino ?? payloadDian.ciudad_destino ?? '',
+          silla: Number(payloadDian.datos_viaje?.numero_asiento ?? payloadDian.numero_asiento) || 0,
+          valor: payloadDian.datos_viaje?.valor_tiquete ?? payloadDian.total ?? 0,
+          formaPago: payloadDian.forma_pago ?? 'EFECTIVO',
           cufe: cufe,        
           qr: qr_dian        
         });
@@ -96,33 +95,34 @@ export default function Dashboard() {
         toast.warning('Tiquete legalizado ante DIAN, pero la impresora TMU física está desconectada.');
       }
 
-      if (typeof fetchTickets === 'function') fetchTickets();
       setShowTicketForm(false);
     } else {
       throw new Error(resultado?.message || 'La DIAN rechazó el documento o el formato de respuesta es inválido.');
     }
-  } catch (error: any) {
-    console.log(JSON.parse(error));
-
+  } catch (error) {
   let mensajeErrores = 'El Web Service de la DIAN no respondió o los datos son erróneos.';
 
   // Verificamos si el backend envió el arreglo de campos faltantes/inválidos ("detail")
-  const detallesError = error.detail;
+  const httpError = (typeof error === 'object' && error !== null ? error : {}) as {
+    detail?: unknown;
+    response?: { data?: { message?: string } };
+  };
+  const detallesError = httpError.detail;
     if (Array.isArray(detallesError)) {
     mensajeErrores = detallesError
-      .map((err: any) => {
+      .map((err: { loc?: unknown; msg?: unknown; type?: unknown }) => {
         // Obtenemos la ruta del campo (ej: "datos_pasajero -> nombre_pasajero" o "items")
         const campo = Array.isArray(err.loc) ? err.loc.slice(1).join(' ➔ ') : 'campo';
         
         // Traducimos mensajes comunes de Pydantic/FastAPI para el cajero
-        let motivo = err.msg;
+        let motivo = String(err.msg ?? '');
         if (err.type === 'missing') motivo = 'Es obligatorio y no se envió';
         
         return `• <b>${campo}</b>: ${motivo}`;
       })
       .join('<br/>'); // Separador de línea HTML para SweetAlert2
-  } else if (error.response?.data?.message) {
-    mensajeErrores = error.response.data.message;
+  } else if (httpError.response?.data?.message) {
+    mensajeErrores = httpError.response.data.message;
   }
     Swal.fire({
     title: 'Campos Requeridos por la DIAN',

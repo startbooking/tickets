@@ -9,7 +9,12 @@ import {
 } from 'lucide-react';
 import { mockTickets, mockPlanillas, mockRutas, mockBuses } from '@/data/mockData';
 
-export function DashboardStats() {
+interface DashboardStatsProps {
+  authHeaders?: { 'x-user-id': string | number; 'x-user-role': string };
+  idAgencia?: number;
+}
+
+export function DashboardStats(_props: DashboardStatsProps) {
   const ticketsHoy = mockTickets.filter(
     t => t.estado === 'ACTIVO' || t.estado === 'USADO'
   ).length;

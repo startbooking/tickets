@@ -137,7 +137,12 @@ function BusCard({
   );
 }
 
-export function BusList() {
+interface BusListProps {
+  authHeaders?: { 'x-user-id': string | number; 'x-user-role': string };
+  idAgencia?: number;
+}
+
+export function BusList(_props: BusListProps) {
   const { user } = useAuth();
   
   // 📍 Consistencia de datos geográficos basados en tu sesión centralizada

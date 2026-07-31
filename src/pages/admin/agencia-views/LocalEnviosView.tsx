@@ -59,7 +59,7 @@ export function LocalEnviosView({ idAgencia }: { idAgencia: number }) {
                     <select 
                       className="w-full px-3 py-2 border bg-white rounded-md text-sm"
                       value={tipoEnvio}
-                      onChange={(e) => { setTipoEnvio(e.target.value as any); setValorMonto(''); setFlete(0); }}
+                      onChange={(e) => { setTipoEnvio(e.target.value as 'DINERO' | 'MERCANCIA'); setValorMonto(''); setFlete(0); }}
                     >
                       <option value="MERCANCIA">Mercancías / Encomiendas</option>
                       <option value="DINERO">Giro de Dinero (Postal)</option>

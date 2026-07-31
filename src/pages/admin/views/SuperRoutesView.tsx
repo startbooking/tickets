@@ -138,7 +138,7 @@ export function SuperRoutesView() {
                 <select 
                   className="w-full h-9 px-3 border rounded-md text-xs bg-white text-slate-800"
                   value={nuevoTipo}
-                  onChange={(e) => setNuevoTipo(e.target.value as any)}
+                  onChange={(e) => setNuevoTipo(e.target.value as 'PROPIA' | 'CONCESION')}
                 >
                   <option value="PROPIA">Sede Propia (Inversión Directa)</option>
                   <option value="CONCESION">Concesión / Taquilla Aliada</option>

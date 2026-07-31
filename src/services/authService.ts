@@ -6,14 +6,36 @@ export interface LoginCredentials {
   password: string; // Tu base de datos usa password_hash
 }
 
+export interface AuthUser {
+  id?: number;
+  id_usuario?: number;
+  id_agencia?: number;
+  agenciaId?: number;
+  username?: string;
+  nombre?: string;
+  name?: string;
+  nombres?: string;
+  apellidos?: string;
+  email?: string;
+  rol?: string;
+  role?: string;
+  token?: string; // Token JWT devuelto por el backend para las siguientes consultas
+  [key: string]: unknown;
+}
+
+export interface AuthSessionData {
+  user?: AuthUser;
+  token?: string;
+  [key: string]: unknown;
+}
+
 export interface UserResponse {
-  id_usuario: number;
-  id_agency: number;
-  username: string;
-  nombres: string;
-  apellidos: string;
-  rol: 'SUPERADMIN','ADMIN_AGENCIA','CAJERO','DESPACHADOR';
-  token: string; // Token JWT devuelto por el backend para las siguientes consultas
+  success: boolean;
+  message?: string;
+  data?: AuthSessionData;
+  user?: AuthUser;
+  token?: string;
+  [key: string]: unknown;
 }
 
 export interface SessionInfoResponse {

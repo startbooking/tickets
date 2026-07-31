@@ -63,7 +63,7 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
 
       // 3. Extraemos el objeto de usuario de forma segura
       // Se asume formato estándar: { success: true, data: { user: { rol: '...', ... }, token: '...' } }
-      const sessionData = response.data || response; 
+      const sessionData = response.data || response;
       const user = sessionData.user;
 
       if (!user || !user.rol) {
@@ -72,12 +72,8 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
         return;
       }
 
-      // 4. Guardado en LocalStorage (Acoplado con apiClient.ts)
-      // localStorage.setItem('user', JSON.stringify(sessionData));
-      localStorage.setItem('userSession', JSON.stringify(sessionData));
-
-      // Si usas Contexto Auth, actualiza tu estado de React aquí:
-      // loginStateUpdate(sessionData);
+      // 4. Guardado y actualización del contexto de sesión (persiste en localStorage)
+      loginStateUpdate(sessionData);
 
       // 5. Enrutamiento exacto por privilegios operativos de SACTel
       onOpenChange(false);

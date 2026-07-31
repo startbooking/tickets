@@ -21,7 +21,13 @@ export function TaquillaVentaView() {
   // ─── ESTADOS DE BÚSQUEDA DE VIAJE ───
   const [destino, setDestino] = useState('');
   const [fecha, setFecha] = useState('');
-  const [viajeSeleccionado, setViajeSeleccionado] = useState<any>(null);
+  const [viajeSeleccionado, setViajeSeleccionado] = useState<{
+    id: string;
+    hora: string;
+    destino: string;
+    vehiculo: string;
+    ruta: string;
+  } | null>(null);
 
   // ─── ESTADOS DEL PASAJERO ───
   const [documento, setDocumento] = useState('');
@@ -33,7 +39,12 @@ export function TaquillaVentaView() {
 
   // ─── ESTADOS DE RECAUDO Y CAJA ───
   const [metodoPago, setMetodoPago] = useState<'EFECTIVO' | 'TARJETA'>('EFECTIVO');
-  const [facturaEmitida, setFacturaEmitida] = useState<any>(null);
+  const [facturaEmitida, setFacturaEmitida] = useState<{
+    tiqueteId: string;
+    cufe: string;
+    facturaNumero: string;
+    fechaEmision: string;
+  } | null>(null);
   const [procesandoVenta, setProcesandoVenta] = useState(false);
   const [totalCajaTurno, setTotalCajaTurno] = useState(145000); // Acumulado de la caja del turno
 

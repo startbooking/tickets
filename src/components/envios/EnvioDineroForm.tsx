@@ -43,9 +43,11 @@ const envioDineroSchema = z.object({
 });
 
 interface EnvioDineroFormProps {
-  onSubmit: (dto: CreateEnvioDineroDTO, municipioOrigen: Municipio) => Promise<any>;
+  onSubmit: (dto: CreateEnvioDineroDTO, municipioOrigen: Municipio) => Promise<unknown>;
   loading: boolean;
   municipioOrigen: Municipio;
+  authHeaders?: { 'x-user-id': string | number; 'x-user-role': string };
+  idAgencia?: number;
 }
 
 const COMISION_PORCENTAJE = 0.05;
@@ -180,7 +182,7 @@ export function EnvioDineroForm({ onSubmit, loading, municipioOrigen }: EnvioDin
                 <Label>Tipo Doc.</Label>
                 <Select
                   defaultValue="CC"
-                  onValueChange={(value) => setValue('remitenteTipoDocumento', value as any)}
+                  onValueChange={(value) => setValue('remitenteTipoDocumento', value as 'CC' | 'CE' | 'TI' | 'PA')}
                 >
                   <SelectTrigger>
                     <SelectValue />

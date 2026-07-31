@@ -201,11 +201,11 @@ function SubViewInicio({ total, setSeccion }: { total: number; setSeccion: (s: C
 // ─────────────────────────────────────────────────────────────────────────────
 function SubViewVentas({ precioTiquete, setTotalCaja }: { precioTiquete: number; setTotalCaja: React.Dispatch<React.SetStateAction<number>> }) {
   const [destino, setDestino] = useState('');
-  const [viaje, setViaje] = useState<any>(null);
+  const [viaje, setViaje] = useState<{ id: string; hora: string; ruta: string } | null>(null);
   const [doc, setDoc] = useState('');
-  const [pasajero, setPasajero] = useState<any>(null);
+  const [pasajero, setPasajero] = useState<{ nom: string; cc: string } | null>(null);
   const [silla, setSilla] = useState<number | null>(null);
-  const [factura, setFactura] = useState<any>(null);
+  const [factura, setFactura] = useState<{ num: string; cufe: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleVender = () => {

@@ -126,7 +126,7 @@ export default function DespachadorDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🚌 1. SUBVISTA: PROGRAMACIÓN / VEHÍCULOS EN ANDÉN
 // ─────────────────────────────────────────────────────────────────────────────
-function SubViewProgramacion({ setSeccion }: { setSeccion: (s: any) => void }) {
+function SubViewProgramacion({ setSeccion }: { setSeccion: React.Dispatch<React.SetStateAction<DespachadorSection>> }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <div>

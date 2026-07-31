@@ -1,4 +1,4 @@
-import { AxiosRequestConfig } from 'axios';
+import { AxiosRequestConfig, isAxiosError } from 'axios';
 import { apiClient, buildConfig, handleAxiosError, validateResponse, ApiHeaders } from './apiClient';
 
 export interface PasajeroDTO {
@@ -13,6 +13,7 @@ export interface PasajeroDTO {
 export interface PasajeroResponse extends PasajeroDTO {
   id_pasajero: number;
   fecha_registro?: string;
+  success?: boolean;
 }
 
 /**
@@ -28,9 +29,9 @@ export const pasajerosService = {
       const config: AxiosRequestConfig = buildConfig(headers);
       const response = await apiClient.get(`/pasajeros/${documento}`, config);
       return response.data; 
-    } catch (error: any) {
+    } catch (error) {
       // 404 significa que el usuario es nuevo en taquilla; retornamos null de manera controlada
-      if (error.response && error.response.status === 404) {
+      if (isAxiosError(error) && error.response?.status === 404) {
         return null;
       }
       return handleAxiosError(error, 'Error al obtener la información del pasajero.');
