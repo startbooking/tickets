@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 import { Usuario } from '@/types';
 
 interface AuthContextType {
   user: Usuario | null;
   isAuthenticated: boolean;
+  isLoading: boolean; // 👈 Expuesto para que App.tsx no rompa
   loginStateUpdate: (sessionData: any) => void;
   logout: () => void;
 }
@@ -11,36 +12,45 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // 🧠 Inicialización inteligente: Lee el localStorage al arrancar la app para evitar deslogueos al recargar (F5)
+  const [isLoading, setIsLoading] = useState(true); // Inicializa en true
   const [user, setUser] = useState<Usuario | null>(() => {
     try {
       const storedUser = localStorage.getItem('userSession') || localStorage.getItem('user');
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
-        // Retornamos directamente el subobjeto user que inyecta el backend de SACTel
-        return parsed.user || parsed.data?.user || parsed;
+        const normalUser = parsed.user || parsed.data?.user || parsed;
+        
+        // Estandarizamos el campo de rol para evitar el bug de typo (rol vs role)
+        if (normalUser && normalUser.rol) {
+          normalUser.role = normalUser.rol.toUpperCase();
+        }
+        return normalUser;
       }
     } catch (error) {
       console.error("Error al parsear la sesión inicial:", error);
+    } finally {
+      // Una vez validado el localStorage en el constructor de estado, apagamos la carga
     }
     return null;
   });
 
-  /**
-   * Actualiza el estado global de la aplicación una vez que el LoginModal 
-   * valida con éxito las credenciales contra el backend.
-   */
+  // Apagar el loading justo después de evaluar el estado inicial
+  useState(() => {
+    setIsLoading(false);
+  });
+
   const loginStateUpdate = (sessionData: any) => {
     if (!sessionData) return;
-    
-    // Extraemos el usuario bajo los formatos estándar de tu API
     const userData = sessionData.user || sessionData.data?.user || sessionData;
+    
+    // Homologamos estructuralmente para blindar la app
+    if (userData && userData.rol) {
+      userData.role = userData.rol.toUpperCase();
+    }
+    
     setUser(userData);
   };
 
-  /**
-   * Limpia los tokens corporativos y regresa el estado de autenticación a nulo.
-   */
   const logout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('userSession');
@@ -52,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{ 
         user, 
         isAuthenticated: !!user, 
+        isLoading, // 👈 Pasado exitosamente a la directiva del Router
         loginStateUpdate, 
         logout 
       }}

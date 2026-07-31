@@ -105,6 +105,7 @@ export const handleAxiosError = (error: any, defaultMessage: string): never => {
  * Valida si la respuesta contiene banderas internas de error
  */
 export const validateResponse = (response: any, defaultError: string) => {
+  console.log(response)
   if (!response.data || response.data.success === false) {
     throw new Error(response.data?.error || defaultError);
   }

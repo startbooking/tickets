@@ -33,28 +33,20 @@ interface BusCardProps {
   showLlegadaButton?: boolean;
 }
 
-// 🚌 Subcomponente optimizado para evitar re-renders innecesarios
-function BusCard({ 
-  bus, 
-  onDespachar, 
-  onMarcarLlegada, 
-  showDespacharButton = false, 
-  showLlegadaButton = false 
-}: BusCardProps) {
-  
-  const puedeDespacharse = showDespacharButton && (bus.estado === 'DISPONIBLE' || bus.estado === 'ARRIBADO');
-  const puedeMarcarLlegada = showLlegadaButton && (bus.estado === 'DESPACHADO' || bus.estado === 'EN_RUTA');
-
+function BusCard({ bus, onDespachar, onMarcarLlegada, showDespacharButton = false, showLlegadaButton = false }: BusCardProps) {
   return (
-    <div className="p-4 rounded-lg border bg-card hover:shadow-md transition-all duration-200">
+    <div className="p-4 rounded-lg border bg-card hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <h3 className="text-lg font-bold tracking-tight">{bus.placa}</h3>
+          <h3 className="text-lg font-bold">{bus.placa}</h3>
           <p className="text-sm text-muted-foreground">
             {bus.marca} {bus.modelo}
           </p>
         </div>
-        <Badge variant="outline" className={cn("font-semibold", estadoColors[bus.estado])}>
+        <Badge 
+          variant="outline" 
+          className={cn(estadoColors[bus.estado])}
+        >
           {bus.estado}
         </Badge>
       </div>
@@ -69,15 +61,15 @@ function BusCard({
           <span className="text-muted-foreground">Conductor</span>
           {bus.conductorAsignado ? (
             <div className="flex items-center gap-1 text-success">
-              <CheckCircle2 className="w-3. h-3" />
-              <span className="font-medium truncate max-w-[140px]">
+              <CheckCircle2 className="w-3 h-3" />
+              <span className="font-medium truncate max-w-[120px]">
                 {bus.conductorAsignado.nombreCompleto.split(' ')[0]}
               </span>
             </div>
           ) : (
             <div className="flex items-center gap-1 text-warning">
               <AlertTriangle className="w-3 h-3" />
-              <span className="font-medium">Sin asignar</span>
+              <span>Sin asignar</span>
             </div>
           )}
         </div>
@@ -92,11 +84,11 @@ function BusCard({
           </div>
         )}
 
-        {bus.planilla?.ruta?.municipioDestino && (
+        {bus.planilla && (
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Destino</span>
             <span className="font-medium text-primary">
-              {bus.planilla.ruta.municipioDestino.nombre}
+              {bus.planilla.ruta.municipioDestino?.nombre || 'Directo'}
             </span>
           </div>
         )}
@@ -111,26 +103,37 @@ function BusCard({
         )}
       </div>
 
-      {puedeDespacharse && onDespachar && (
+      {showDespacharButton && bus.estado === 'DISPONIBLE' && onDespachar && (
         <Button
           size="sm"
           className="w-full mt-3 gap-2"
           onClick={() => onDespachar(bus)}
         >
           <MapPin className="w-4 h-4" />
-          Despachar Vehículo
+          Despachar
         </Button>
       )}
 
-      {puedeMarcarLlegada && onMarcarLlegada && (
+      {showDespacharButton && bus.estado === 'ARRIBADO' && onDespachar && (
+        <Button
+          size="sm"
+          className="w-full mt-3 gap-2"
+          onClick={() => onDespachar(bus)}
+        >
+          <MapPin className="w-4 h-4" />
+          Despachar
+        </Button>
+      )}
+
+      {showLlegadaButton && (bus.estado === 'DESPACHADO' || bus.estado === 'EN_RUTA') && onMarcarLlegada && (
         <Button
           size="sm"
           variant="outline"
-          className="w-full mt-3 gap-2 border-success text-success hover:bg-success/10 transition-colors"
+          className="w-full mt-3 gap-2 border-success text-success hover:bg-success/10"
           onClick={() => onMarcarLlegada(bus)}
         >
           <CircleCheck className="w-4 h-4" />
-          Registrar Arribo
+          Marcar Llegada
         </Button>
       )}
     </div>
@@ -139,39 +142,46 @@ function BusCard({
 
 export function BusList() {
   const { user } = useAuth();
-  
-  // 📍 Consistencia de datos geográficos basados en tu sesión centralizada
-  const municipioActualId = user?.municipio?.id || user?.id_agencia || 1;
-  const municipioNombre = user?.municipio?.nombre || 'Bogotá';
+  const municipioActualId = user?.id_agencia || 1; // Default a Bogotá si no hay usuario
 
   const [buses, setBuses] = useState<Bus[]>(mockBuses);
   const [planillas] = useState<PlanillaDespacho[]>(mockPlanillas);
   const [selectedBus, setSelectedBus] = useState<Bus | null>(null);
   const [showDespachoModal, setShowDespachoModal] = useState(false);
 
-  // 1. Filtrado Eficiente: Buses en terminal listos para salir
+  // Buses disponibles en el municipio actual (para despachar)
   const busesDisponibles = buses.filter(bus => bus.estado === 'DISPONIBLE');
 
-  // 2. Filtrado Eficiente: Buses en ruta hacia esta terminal específica
+  // Buses despachados HACIA el municipio actual (que vienen en camino)
   const busesDespachados: BusConDespacho[] = buses
     .filter(bus => bus.estado === 'DESPACHADO' || bus.estado === 'EN_RUTA')
-    .map(bus => ({
-      ...bus,
-      planilla: planillas.find(p => p.bus.id === bus.id),
-    }))
-    .filter(bus => bus.planilla?.ruta?.municipioDestinoId === municipioActualId);
+    .map(bus => {
+      const planilla = planillas.find(p => p.bus.id === bus.id);
+      return {
+        ...bus,
+        planilla,
+      };
+    })
+    .filter(bus => {
+      // Mostrar solo buses cuyo destino es el municipio actual
+      if (!bus.planilla) return false;
+      return bus.planilla.ruta.municipioDestinoId === municipioActualId;
+    });
 
-  // 3. Filtrado Eficiente: Buses que ya completaron el viaje en esta terminal
+  // Buses arribados al municipio (listos para nuevo despacho)
   const busesArribados: BusConDespacho[] = buses
     .filter(bus => bus.estado === 'ARRIBADO')
-    .map(bus => ({
-      ...bus,
-      destinoMunicipio: mockMunicipios.find(m => m.id === municipioActualId),
-    }));
+    .map(bus => {
+      // El bus arribado guarda referencia al municipio de origen (de donde vino)
+      return {
+        ...bus,
+        destinoMunicipio: mockMunicipios.find(m => m.id === municipioActualId),
+      };
+    });
 
   const handleOpenDespacho = (bus: Bus) => {
     if (bus.estado !== 'DISPONIBLE' && bus.estado !== 'ARRIBADO') {
-      toast.error('Operación inválida: El vehículo debe estar disponible o arribado.');
+      toast.error('Solo se pueden despachar buses disponibles o arribados');
       return;
     }
     setSelectedBus(bus);
@@ -186,8 +196,7 @@ export function BusList() {
           : bus
       )
     );
-    toast.success(`Planilla generada. Bus ${selectedBus?.placa} en tránsito.`);
-    setShowDespachoModal(false);
+    toast.success('Bus despachado exitosamente');
   };
 
   const handleMarcarLlegada = (bus: Bus) => {
@@ -198,39 +207,41 @@ export function BusList() {
           : b
       )
     );
-    toast.success(`Arribo confirmado: El bus con placas ${bus.placa} ingresó a los patios.`);
+    toast.success(`Bus ${bus.placa} ha llegado a destino`);
   };
+
+  const municipioNombre = user?.municipio.nombre || 'Bogotá';
 
   return (
     <>
-      <Card className="w-full shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
             <BusIcon className="w-5 h-5 text-primary" />
-            Flota Operativa — Terminal {municipioNombre}
+            Flota de Buses - {municipioNombre}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="disponibles" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-5">
-              <TabsTrigger value="disponibles" className="gap-2 py-2.5">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
+              <TabsTrigger value="disponibles" className="gap-2">
                 <Clock className="w-4 h-4" />
                 Por Despachar ({busesDisponibles.length})
               </TabsTrigger>
-              <TabsTrigger value="despachados" className="gap-2 py-2.5">
+              <TabsTrigger value="despachados" className="gap-2">
                 <MapPin className="w-4 h-4" />
                 En Camino ({busesDespachados.length})
               </TabsTrigger>
-              <TabsTrigger value="arribados" className="gap-2 py-2.5">
+              <TabsTrigger value="arribados" className="gap-2">
                 <CircleCheck className="w-4 h-4" />
                 Arribados ({busesArribados.length})
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="disponibles" className="focus-visible:outline-none">
+            <TabsContent value="disponibles">
               {busesDisponibles.length === 0 ? (
-                <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground bg-muted/20">
-                  No se registran unidades listas para despacho en este patio.
+                <div className="text-center py-8 text-muted-foreground">
+                  No hay buses disponibles para despachar
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -246,10 +257,10 @@ export function BusList() {
               )}
             </TabsContent>
 
-            <TabsContent value="despachados" className="focus-visible:outline-none">
+            <TabsContent value="despachados">
               {busesDespachados.length === 0 ? (
-                <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground bg-muted/20">
-                  No hay transportes en tránsito con destino a {municipioNombre}.
+                <div className="text-center py-8 text-muted-foreground">
+                  No hay buses en camino hacia {municipioNombre}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -265,10 +276,10 @@ export function BusList() {
               )}
             </TabsContent>
 
-            <TabsContent value="arribados" className="focus-visible:outline-none">
+            <TabsContent value="arribados">
               {busesArribados.length === 0 ? (
-                <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground bg-muted/20">
-                  No se encuentran unidades estacionadas en la zona de desembarque.
+                <div className="text-center py-8 text-muted-foreground">
+                  No hay buses arribados listos para despachar
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

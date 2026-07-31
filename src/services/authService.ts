@@ -2,8 +2,8 @@ import apiClient from "./apiClient";
 
 // Interfaces de Tipos para TypeScript
 export interface LoginCredentials {
-  username: string;
-  password_hash: string; // Tu base de datos usa password_hash
+  email: string;
+  password: string; // Tu base de datos usa password_hash
 }
 
 export interface UserResponse {
@@ -32,7 +32,6 @@ export const authService = {
    */
   login: async (credentials: LoginCredentials): Promise<UserResponse> => {
     const response = await apiClient.post<UserResponse>('/auth/login', credentials);
-    // console.log(response);
     return response.data;
   },
 

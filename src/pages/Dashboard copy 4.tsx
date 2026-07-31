@@ -26,9 +26,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import Swal from 'sweetalert2';
-// import { ticketsService } from '@/services/tiqueteService';
+import { ticketsService } from '@/services/tiqueteService';
 import { PlanillaDespacho } from '@/types';
-import { dianService } from '@/services/dianService';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -50,96 +49,68 @@ export default function Dashboard() {
 
   // 🔒 Cabeceras Operativas y de Seguridad SACTel
   const authHeaders = {
-    'x-user-id': user?.id || 0,
+    'x-user-id': user?.id || user?.id_usuario || 0,
     'x-user-role': user?.rol || 'CAJERO',
   };
-  const idAgencia = user?.id_agencia || 1;
+  const idAgencia = user?.id_agencia || user?.agenciaId || 1;
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const handleCreateTicket = async (planilla: PlanillaDespacho, payloadDian: any, authHeaders) => {
-  setTicketEmitiendo(true);
-  
-  try {
-    console.log("🚀 Despachando JSON Payload Estructurado hacia Core DIAN:", payloadDian);
+  const handleCreateTicket = async (planilla: PlanillaDespacho, dto: any) => {
+    setTicketEmitiendo(true);
     
-    // 1. Un solo viaje de red: Persiste Pasajero + Tiquete + Comunicación DIAN (CUFE)
-    const resultado = await dianService.emitirTiqueteTransporte(payloadDian, authHeaders);
-    console.log(resultado)
-    
-    if (resultado && resultado.success && resultado.data?.cufe) {
-      const { cufe, qr_dian, numero_factura } = resultado.data;
+    try {
+      // 1. Envío al backend unificado (Pasajero, validación fiscal y firma digital DIAN)
+      const resultado = await ticketsService.emitirTiquetePos(dto, authHeaders);
 
-      toast.success(`Tiquete electrónico ${numero_factura} autorizado legítimamente por la DIAN.`);
+      if (resultado.success && resultado.data?.cufe) {
+        const { cufe, qr_dian, numero_factura } = resultado.data;
 
-      // 2. Disparo de impresión física inmediata en hardware POS conectado
-      if (printer && printer.isConnected) {
-        toast.info('Enviando comandos ESC/POS a la TM-U220D...');
-        
-        await printer.printTicket({
-          factura: numero_factura,
-          pasajero: `${payloadDian.datos_pasajero.nombres} ${payloadDian.datos_pasajero.apellidos}`,
-          documento: payloadDian.datos_pasajero.numero_documento,
-          origen: payloadDian.datos_viaje.origen,
-          destino: payloadDian.datos_viaje.destino,
-          silla: payloadDian.datos_viaje.numero_asiento,
-          valor: payloadDian.datos_viaje.valor_tiquete,
-          formaPago: payloadDian.forma_pago,
-          cufe: cufe,        
-          qr: qr_dian        
-        });
+        toast.success(`Tiquete electrónico ${numero_factura} autorizado por la DIAN.`);
+
+        // 2. Ejecutar Impresión Física Directa en la TMU
+        if (printer.isConnected) {
+          toast.info('Enviando comando de impresión a la TM-U220D...');
+          
+          await printer.printTicket({
+            factura: numero_factura,
+            pasajero: `${dto.pasajeroNombres} ${dto.pasajeroApellidos}`,
+            documento: dto.pasajeroDocumento,
+            origen: planilla.ruta.municipioOrigen?.nombre,
+            destino: planilla.ruta.municipioDestino?.nombre,
+            silla: dto.numeroAsiento,
+            valor: planilla.ruta.valorTarifa,
+            formaPago: dto.formaPago,
+            cufe: cufe,        
+            qr: qr_dian        
+          });
+        } else {
+          console.warn("La impresora TMU está desconectada.");
+          toast.warning('Tiquete emitido fiscalmente, pero la impresora TMU está fuera de línea.');
+        }
+
+        if (typeof fetchTickets === 'function') fetchTickets();
+        setShowTicketForm(false);
       } else {
-        console.warn("Impresora TMU fuera de línea.");
-        toast.warning('Tiquete legalizado ante DIAN, pero la impresora TMU física está desconectada.');
+        throw new Error(resultado.message || 'La DIAN rechazó el documento o el formato de respuesta es inválido.');
       }
-
-      if (typeof fetchTickets === 'function') fetchTickets();
-      setShowTicketForm(false);
-    } else {
-      throw new Error(resultado?.message || 'La DIAN rechazó el documento o el formato de respuesta es inválido.');
+    } catch (error: any) {
+      console.error("Error en flujo de tiquete electrónico:", error);
+      Swal.fire({
+        title: 'Fallo de Emisión DIAN',
+        text: error.message || 'El servidor de la DIAN tardó demasiado en responder o los datos del adquirente contienen errores.',
+        icon: 'error',
+        confirmButtonText: 'Revisar Datos',
+        confirmButtonColor: '#f43f5e'
+      });
+    } finally {
+      setTicketEmitiendo(false);
     }
-  } catch (error: any) {
-    console.log(JSON.parse(error));
+  };
 
-  let mensajeErrores = 'El Web Service de la DIAN no respondió o los datos son erróneos.';
-
-  // Verificamos si el backend envió el arreglo de campos faltantes/inválidos ("detail")
-  const detallesError = error.detail;
-    if (Array.isArray(detallesError)) {
-    mensajeErrores = detallesError
-      .map((err: any) => {
-        // Obtenemos la ruta del campo (ej: "datos_pasajero -> nombre_pasajero" o "items")
-        const campo = Array.isArray(err.loc) ? err.loc.slice(1).join(' ➔ ') : 'campo';
-        
-        // Traducimos mensajes comunes de Pydantic/FastAPI para el cajero
-        let motivo = err.msg;
-        if (err.type === 'missing') motivo = 'Es obligatorio y no se envió';
-        
-        return `• <b>${campo}</b>: ${motivo}`;
-      })
-      .join('<br/>'); // Separador de línea HTML para SweetAlert2
-  } else if (error.response?.data?.message) {
-    mensajeErrores = error.response.data.message;
-  }
-    Swal.fire({
-    title: 'Campos Requeridos por la DIAN',
-    html: `<div style="text-align: left; font-size: 0.95rem; margin-top: 10px;">
-             <p style="margin-bottom: 12px; font-weight: bold; color: #ef4444;">
-               El JSON enviado no coincide con el esquema fiscal. Por favor añade:
-             </p>
-             ${mensajeErrores}
-           </div>`,
-    icon: 'error',
-    confirmButtonText: 'Corregir Estructura',
-    confirmButtonColor: '#f43f5e'
-  });
-  } finally {
-    setTicketEmitiendo(false);
-  }
-};
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
       {/* Header del Dashboard */}

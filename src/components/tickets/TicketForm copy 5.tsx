@@ -19,10 +19,13 @@ import {
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { pasajerosService } from '@/services/pasajeroService';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
+import GenerarTicket from './GenerarTicket';
+
+// import { pasajerosService } from '@/services/pasajerosService'; // Ajustado a pasajerosService unificado
 
 interface TicketFormProps {
-  onSubmit: (planilla: PlanillaDespacho, payloadDian: any) => Promise<unknown>;
+  onSubmit: (planilla: PlanillaDespacho, dto: any) => Promise<unknown>;
   loading: boolean;
   authHeaders: {
     'x-user-id': string | number;
@@ -40,10 +43,10 @@ const formasPago: { value: FormaPago; label: string; icon: React.ReactNode }[] =
 
 const INITIAL_FORM_STATE = {
   documento: '',
-  correo: '',
-  apellidos: '',
   nombres: '',
+  apellidos: '',
   telefono: '',
+  correo: '',
   asiento: undefined as number | undefined,
   formaPago: 'EFECTIVO' as FormaPago
 };
@@ -55,12 +58,14 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
   const [errorSeguridad, setErrorSeguridad] = useState<string | null>(null);
 
   const asientoSelectRef = useRef<HTMLButtonElement>(null);
-  const asientosOcupados = selectedPlanilla ? getAsientosOcupados(selectedPlanilla.id) : [];
 
   const handleInputChange = (key: keyof typeof INITIAL_FORM_STATE, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
+  const asientosOcupados = selectedPlanilla ? getAsientosOcupados(selectedPlanilla.id) : [];
+
+  // 🧠 FUNCIÓN OPTIMIZADA Y CONECTADA AL CORE DE AUDITORÍA
   const consultarPasajero = async () => {
     const documento = form.documento.trim();
     if (documento.length < 4) return;
@@ -69,172 +74,73 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
     setErrorSeguridad(null);
 
     try {
-      const result = await pasajerosService.buscarPorDocumento(documento, authHeaders);
+      // Consumimos el servicio pasando las cabeceras unificadas del Dashboard y el ID de agencia operativo
+      const pasajero = await pasajerosService.buscarPorDocumento(
+        documento,
+        authHeaders
+      );
 
-      if (result && result.success) {
+      if (pasajero.success) {
         setForm(prev => ({
           ...prev,
-          nombres: result.nombres || '',
-          apellidos: result.apellidos || '',
-          telefono: result.telefono || '',
-          correo: result.email || ''
+          nombres: pasajero.nombres,
+          apellidos: pasajero.apellidos,
+          telefono: pasajero.telefono || '',
+          correo: pasajero.email || ''
         }));
 
-        toast.success('Pasajero encontrado en base de datos.');
-
-        setTimeout(() => {
+        // Foco inmediato a la selección de asientos
+          setTimeout(() => {
           if (asientoSelectRef.current) {
             asientoSelectRef.current.focus();
             asientoSelectRef.current.click();
           }
         }, 100);
       } else {
-        toast.info('Pasajero nuevo. Complete los datos para su registro automático.');
+        toast({ title: 'Atención', description: 'El pasajero no existe en la plataforma.',variant: 'destructive', });
+        setForm(prev => ({ ...prev, nombres: '', apellidos: '', correo: '', telefono: '' }));
       }
     } catch (err: any) {
       setErrorSeguridad(err.message || 'Error al validar el documento de identidad.');
+      setForm(prev => ({ ...prev, nombres: '', apellidos: '', correo: '', telefono: '' }));
     } finally {
       setBuscandoPasajero(false);
     }
   };
 
-  // const handleSubmit = async (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   if (!selectedPlanilla || !form.asiento) return;
-
-  //   // 🎯 Construcción y Verificación del Estricto JSON Payload exigido por la DIAN
-  //   const tiqueteJsonPayload = {
-  //     operacion: "Emision_Tiquete_Transporte",
-  //     fecha_emision: new Date().toISOString().split('T')[0],
-  //     hora_emision: new Date().toLocaleTimeString('en-US', { hour12: false }),
-  //     datos_emisor: {
-  //       token_empresa: import.meta.env.VITE_EMPRESA_TOKEN || "DEFAULT_TOKEN_SACTEL",
-  //       id_agencia: idAgencia
-  //     },
-  //     datos_viaje: {
-  //       planilla_id: selectedPlanilla.id,
-  //       numero_planilla: selectedPlanilla.numeroPlanilla,
-  //       ciudad_origen: selectedPlanilla.ruta.municipioOrigen?.nombre,
-  //       ciudad_destino: selectedPlanilla.ruta.municipioDestino?.nombre,
-  //       valor_tiquete: parseFloat(selectedPlanilla.ruta.valorTarifa.toString()),
-  //       numero_asiento: form.asiento
-  //     },
-  //     datos_pasajero: {
-  //       numero_documento: form.documento.trim(),
-  //       email_notificacion: form.correo.trim() || "notificaciones@empresa.com",
-  //       nombre_pasajero: form.nombres.trim(),
-  //       telefono: form.telefono.trim() || undefined
-  //     },
-  //     forma_pago: form.formaPago,
-  //     impuestos: [
-  //       {
-  //         codigo: "01", 
-  //         porcentaje: 0.00, 
-  //         base_imponible: parseFloat(selectedPlanilla.ruta.valorTarifa.toString()),
-  //         valor_impuesto: 0.00
-  //       }
-  //     ]
-  //   };
-
-  //   try {
-  //     await onSubmit(selectedPlanilla, tiqueteJsonPayload);
-  //     setForm(INITIAL_FORM_STATE);
-  //     setSelectedPlanilla(null);
-  //   } catch (err) {
-  //     console.log(err)
-  //     console.error("Fallo al emitir el tiquete transaccional:", err);
-  //   }
-  // };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPlanilla || !form.asiento) return;
 
-    // Al estar excluido de IVA, la tarifa es 100% base gravable pura
-    const valorTarifa = parseFloat(selectedPlanilla.ruta.valorTarifa.toString());
-
-    // 🎯 Payload sin IVA (Excluido de impuesto según Estatuto Tributario)
-    const tiqueteJsonPayload = {
-      operacion: "Emision_Tiquete_Transporte",
-      fecha_emision: new Date().toISOString().split('T')[0],
-      hora_emision: new Date().toLocaleTimeString('en-US', { hour12: false }),
-
-      datos_emisor: {
-        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN || "sk_live_777777777_a47704d40beaae58eb8f88eeab7439ebd164e2f3b3273e31",
-        id_agencia: idAgencia
-      },
-
-      // Identificación y datos del Pasajero
-      tipo_documento_pasajero: "13", // 13 = Cédula de Ciudadanía
-      numero_documento_pasajero: form.documento.trim(),
-      nombre_pasajero: `${form.nombres.trim()} ${form.apellidos.trim()}`.toUpperCase(),
-
-      // Ruta y Geografía (Códigos Divipola y Nombres)
-      ciudad_origen: (selectedPlanilla.ruta.municipioOrigen?.nombre || "BOGOTA").toUpperCase(),
-      ciudad_destino: (selectedPlanilla.ruta.municipioDestino?.nombre || "MEDELLIN").toUpperCase(),
-      terminal_origen: "TERMINAL SALITRE",
-      terminal_destino: "TERMINAL NORTE",
-
-      municipio_origen: selectedPlanilla.ruta.municipioOrigen?.codigoDivipola || "11001",
-      municipio_destino: selectedPlanilla.ruta.municipioDestino?.codigoDivipola || "05001",
-      departamento_origen: (selectedPlanilla.ruta.municipioOrigen?.departamento || "CUNDINAMARCA").toUpperCase(),
-      departamento_destino: (selectedPlanilla.ruta.municipioDestino?.departamento || "ANTIOQUIA").toUpperCase(),
-
-      // Logística del Viaje
-      fecha_viaje: new Date().toISOString().split('T')[0],
-      hora_salida: "08:00",
-      numero_asiento: form.asiento.toString(),
-      placa_vehiculo: selectedPlanilla.bus.placa || "ABC123",
-      tipo_servicio: "1",
-      ruta_codigo: `RTA-${selectedPlanilla.id}`,
-      numero_manifiesto: selectedPlanilla.numeroPlanilla || "MF-2026-001",
-
-      // Detalle del servicio - IVA 0%
-      items: [
-        {
-          codigo: "SERV001",
-          descripcion: `Tiquete de transporte terrestre intermunicipal - Silla ${form.asiento}`,
-          cantidad: 1,
-          unidad: "94", // Unidad de servicio
-          precio_unitario: valorTarifa,
-          subtotal: valorTarifa,
-          porcentaje_iva: "0.00", // 👈 Sin IVA
-          iva: 0.00,             // 👈 Sin IVA
-          base_gravable: valorTarifa,
-          exencion: "1"          // 👈 Indica al backend que está Excluido/Exento
-        }
-      ],
-
-      // Totales Limpios
-      total_bruto: valorTarifa,
-      descuentos: 0,
-      base_gravable: valorTarifa,
-      iva: 0.00,
-      total: valorTarifa,
-      notas: "Servicio de transporte público terrestre de pasajeros excluido de IVA."
+    const dto = {
+      planillaDespachoId: selectedPlanilla.id,
+      pasajeroDocumento: form.documento.trim(),
+      pasajeroNombres: form.nombres.trim(),
+      pasajeroApellidos: form.apellidos.trim(),
+      pasajeroTelefono: form.telefono || undefined,
+      pasajeroEmail: form.correo || undefined,
+      numeroAsiento: form.asiento,
+      formaPago: form.formaPago,
     };
 
     try {
-      await onSubmit(selectedPlanilla, tiqueteJsonPayload);
+      await onSubmit(selectedPlanilla, dto);
       setForm(INITIAL_FORM_STATE);
-      setSelectedPlanilla(null);
     } catch (err) {
-      console.log(err)
-      console.error("Fallo al emitir el tiquete transaccional:", err);
+      console.error("Fallo al emitir el tiquete:", err);
     }
   };
 
-  const canSellTicket = (planilla: PlanillaDespacho): boolean => {
-    return !!(
-      planilla.bus.conductorAsignado &&
-      (planilla.estado === 'DESPACHADO' || planilla.estado === 'EN_RUTA') &&
-      planilla.asientosOcupados < planilla.bus.capacidad
-    );
+  const canSellTicket = (planilla: PlanillaDespacho): { can: boolean; reason?: string } => {
+    if (!planilla.bus.conductorAsignado) return { can: false, reason: 'Sin conductor asignado' };
+    if (planilla.estado !== 'DESPACHADO' && planilla.estado !== 'EN_RUTA') return { can: false, reason: 'Bus no está en ruta' };
+    if (planilla.asientosOcupados >= planilla.bus.capacidad) return { can: false, reason: 'Bus lleno' };
+    return { can: true };
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Selector de Viajes */}
+      {/* Selección de Planilla */}
       <Card className="lg:col-span-1 shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -242,29 +148,29 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
             Seleccionar Viaje
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
+        <CardContent className="space-y-3 max-h-[65vh] overflow-y-auto pr-2 custom-scrollbar">
           {mockPlanillas.map(planilla => {
-            const activo = canSellTicket(planilla);
+            const status = canSellTicket(planilla);
             const isSelected = selectedPlanilla?.id === planilla.id;
 
             return (
               <button
                 key={planilla.id}
                 type="button"
-                onClick={() => activo && setSelectedPlanilla(planilla)}
-                disabled={!activo}
+                onClick={() => status.can && setSelectedPlanilla(planilla)}
+                disabled={!status.can}
                 className={cn(
                   'w-full p-4 rounded-lg border-2 text-left transition-all duration-200',
                   isSelected
                     ? 'border-primary bg-primary/5 shadow-sm'
-                    : activo
+                    : status.can
                       ? 'border-border hover:border-primary/50 hover:bg-muted/50'
                       : 'border-border bg-muted/30 opacity-60 cursor-not-allowed'
                 )}
               >
                 <div className="flex justify-between items-start mb-2">
                   <span className="font-mono text-sm font-semibold text-muted-foreground">{planilla.numeroPlanilla}</span>
-                  <Badge variant={planilla.estado === 'DESPACHADO' ? 'default' : 'secondary'}>
+                  <Badge variant={planilla.estado === 'DESPACHADO' ? 'default' : 'secondary'} className="font-semibold">
                     {planilla.estado}
                   </Badge>
                 </div>
@@ -288,7 +194,7 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
         </CardContent>
       </Card>
 
-      {/* Inputs Ordenados del Pasajero */}
+      {/* Formulario de Pasajero */}
       <Card className="lg:col-span-2 shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -299,21 +205,23 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
         <CardContent>
           {selectedPlanilla ? (
             <form onSubmit={handleSubmit} className="space-y-6">
+
               {errorSeguridad && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-sm flex items-center gap-2">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-sm flex items-center gap-2 animate-in fade-in duration-200">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                   <p className="font-medium">{errorSeguridad}</p>
                 </div>
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
                 {/* 1. Identificación */}
                 <div className="space-y-1.5">
                   <Label htmlFor="documento">Documento de Identidad *</Label>
                   <div className="relative">
                     <Input
                       id="documento"
-                      placeholder="Número de cédula"
+                      placeholder="Número de cédula o pasaporte"
                       value={form.documento}
                       onChange={e => handleInputChange('documento', e.target.value)}
                       onBlur={consultarPasajero}
@@ -321,19 +229,24 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
                       required
                       disabled={loading || buscandoPasajero}
                     />
-                    {buscandoPasajero && <Loader2 className="w-4 h-4 animate-spin absolute right-3 top-3 text-muted-foreground" />}
+                    {buscandoPasajero && (
+                      <span className="absolute right-3 top-2.5">
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 {/* 2. Correo Electrónico */}
                 <div className="space-y-1.5">
                   <Label htmlFor="correo" className="flex items-center gap-1">
-                    <Mail className="w-3 h-3 text-muted-foreground" /> Correo Electrónico
+                    <Mail className="w-3 h-3 text-muted-foreground" />
+                    Correo Electrónico
                   </Label>
                   <Input
                     id="correo"
                     type="email"
-                    placeholder="correo@servidor.com"
+                    placeholder="usuario@servidor.com"
                     value={form.correo}
                     onChange={e => handleInputChange('correo', e.target.value)}
                     disabled={loading || buscandoPasajero}
@@ -378,7 +291,7 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
                   />
                 </div>
 
-                {/* 6. Silla */}
+                {/* 6. Silla (Número de Asiento al final de los inputs de texto) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="asiento">Número de Asiento *</Label>
                   <Select
@@ -401,6 +314,7 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
                     </SelectContent>
                   </Select>
                 </div>
+
               </div>
 
               {/* Métodos de Pago */}
@@ -414,9 +328,9 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
                       disabled={loading || buscandoPasajero}
                       onClick={() => handleInputChange('formaPago', fp.value)}
                       className={cn(
-                        'p-3 rounded-lg border-2 flex flex-col items-center gap-2 transition-all',
+                        'p-3 rounded-lg border-2 flex flex-col items-center gap-2 transition-all duration-150',
                         form.formaPago === fp.value
-                          ? 'border-secondary bg-secondary text-secondary-foreground font-semibold'
+                          ? 'border-secondary bg-secondary text-secondary-foreground font-semibold shadow-sm'
                           : 'border-border hover:border-secondary text-muted-foreground bg-card'
                       )}
                     >
@@ -430,16 +344,16 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
               <Button
                 type="submit"
                 size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                className="w-full bg-secondary hover:bg-secondary/90 text-white font-bold transition-all"
                 disabled={loading || buscandoPasajero || !form.documento || !form.nombres || !form.apellidos || !form.asiento}
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    Firmando y Emitiendo ante la DIAN...
+                    Emitiendo tiquete legal...
                   </>
                 ) : (
-                  '🎟️ Generar Ticket y Emitir Factura'
+                  'Generar Ticket e Imprimir'
                 )}
               </Button>
             </form>
@@ -451,6 +365,6 @@ export function TicketForm({ onSubmit, loading, authHeaders, idAgencia }: Ticket
           )}
         </CardContent>
       </Card>
-    </div>
+    </div >
   );
 }

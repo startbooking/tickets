@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DianResponse, dianService } from '@/services/dianService';
+import { dianService, DianResponse } from '@/services/dianService';
 
 interface GenerarTicketProps {
   datosViaje: any;       // Información de la ruta y bus seleccionados
@@ -8,7 +8,6 @@ interface GenerarTicketProps {
 }
 
 export default function GenerarTicket({ datosViaje, datosPasajero, asientoSeleccionado }: GenerarTicketProps) {
-  console.log(datosPasajero)
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [resultadoDian, setResultadoDian] = useState<DianResponse | null>(null);
@@ -51,11 +50,10 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
     };
 
     try {
-      console.log("🚀 Enviando payload estructurado a Sactel DIAN... XXXXX ", tiqueteJsonPayload);
+      console.log("🚀 Enviando payload estructurado a Sactel DIAN...", tiqueteJsonPayload);
       
       // 2. Enviamos el JSON al backend receptor y esperamos la respuesta síncrona
-      // const respuesta = await ticketsService.emitirTiqueteTransporte(tiqueteJsonPayload,authHeaders );
-      const respuesta = await dianService.emitirTiqueteTransporte(tiqueteJsonPayload,authHeaders );
+      const respuesta = await dianService.emitirTiquete(tiqueteJsonPayload);
       
       setResultadoDian(respuesta);
       

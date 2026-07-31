@@ -1,13 +1,12 @@
 {
   "compilerOptions": {
-    "types": ["vitest/globals"],
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
+    "useDefineForClassFields": true,
     "skipLibCheck": true,
 
-    /* Bundler mode */
+    /* Modulo y empaquetador */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
@@ -15,17 +14,21 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    /* Alias de importación (sin baseUrl) */
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
+    /* Tipos globales (Vitest) */
+    "types": ["vitest/globals"],
+
+    /* Linting y verificación de tipos recomendada */
     "strict": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitAny": false,
     "noFallthroughCasesInSwitch": false,
-
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "noUncheckedIndexedAccess": false
   },
   "include": ["src"]
 }

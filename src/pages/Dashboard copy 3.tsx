@@ -13,8 +13,7 @@ import { useTickets } from '@/hooks/useTickets';
 import { useEnvioDinero } from '@/hooks/useEnvioDinero';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Bus, Ticket, LayoutDashboard, LogOut, PlusCircle, Printer, User, ChevronDown, Wifi, WifiOff, Send
+import { Bus, Ticket, LayoutDashboard, LogOut, PlusCircle, Printer,User,ChevronDown,Wifi,WifiOff,Send
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -24,16 +23,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+// import { ticketsService } from '@/services/ticketsService';
 import { toast } from 'sonner';
 import Swal from 'sweetalert2';
-// import { ticketsService } from '@/services/tiqueteService';
-import { PlanillaDespacho } from '@/types';
-import { dianService } from '@/services/dianService';
+import { ticketsService } from '@/services/tiqueteService';
+
+
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { tickets, cancelTicket, printer } = useTickets();
+  const { tickets, loading, createTicket, cancelTicket, printer } = useTickets();
   const { 
     envios, 
     loading: enviosLoading, 
@@ -46,107 +46,78 @@ export default function Dashboard() {
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [showEnvioForm, setShowEnvioForm] = useState(false);
   const [showConsolidated, setShowConsolidated] = useState(false);
-  const [ticketEmitiendo, setTicketEmitiendo] = useState(false);
-
-  // 🔒 Cabeceras Operativas y de Seguridad SACTel
-  const authHeaders = {
-    'x-user-id': user?.id || 0,
-    'x-user-role': user?.rol || 'CAJERO',
-  };
-  const idAgencia = user?.id_agencia || 1;
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const handleCreateTicket = async (planilla: PlanillaDespacho, payloadDian: any, authHeaders) => {
-  setTicketEmitiendo(true);
+  const createTicket = async (planilla: PlanillaDespacho, dto: any) => {
+  setLoading(true); // Cambia el estado visual del botón a "Emitiendo tiquete legal..."
   
   try {
-    console.log("🚀 Despachando JSON Payload Estructurado hacia Core DIAN:", payloadDian);
-    
-    // 1. Un solo viaje de red: Persiste Pasajero + Tiquete + Comunicación DIAN (CUFE)
-    const resultado = await dianService.emitirTiqueteTransporte(payloadDian, authHeaders);
-    console.log(resultado)
-    
-    if (resultado && resultado.success && resultado.data?.cufe) {
-      const { cufe, qr_dian, numero_factura } = resultado.data;
+    // 1. Envío al backend unificado (Crea pasajero si no existe + Validación DIAN + Generación de CUFE)
+    const resultado = await ticketsService.emitirTiquetePos(dto, authHeaders);
 
-      toast.success(`Tiquete electrónico ${numero_factura} autorizado legítimamente por la DIAN.`);
+    // Verificamos si la DIAN aprobó el documento electrónico
+    if (resultado.success && resultado.data?.cufe) {
+      const { cufe, qr_dian, numero_factura, tiquete } = resultado.data;
 
-      // 2. Disparo de impresión física inmediata en hardware POS conectado
-      if (printer && printer.isConnected) {
-        toast.info('Enviando comandos ESC/POS a la TM-U220D...');
+      toast.success(`Tiquete electrónico ${numero_factura} autorizado por la DIAN.`);
+
+      // 2. Ejecutar Impresión Física Directa en la TMU configurada
+      if (printer.isConnected) {
+        toast.info('Enviando comando de impresión a la TM-U220D...');
         
         await printer.printTicket({
           factura: numero_factura,
-          pasajero: `${payloadDian.datos_pasajero.nombres} ${payloadDian.datos_pasajero.apellidos}`,
-          documento: payloadDian.datos_pasajero.numero_documento,
-          origen: payloadDian.datos_viaje.origen,
-          destino: payloadDian.datos_viaje.destino,
-          silla: payloadDian.datos_viaje.numero_asiento,
-          valor: payloadDian.datos_viaje.valor_tiquete,
-          formaPago: payloadDian.forma_pago,
-          cufe: cufe,        
-          qr: qr_dian        
+          pasajero: `${dto.pasajeroNombres} ${dto.pasajeroApellidos}`,
+          documento: dto.pasajeroDocumento,
+          origen: planilla.ruta.municipioOrigen?.nombre,
+          destino: planilla.ruta.municipioDestino?.nombre,
+          silla: dto.numeroAsiento,
+          valor: planilla.ruta.valorTarifa,
+          formaPago: dto.formaPago,
+          cufe: cufe,        // Imprime la cadena del CUFE exigida por ley
+          qr: qr_dian        // En formato de texto bidi para impresoras térmicas/matriz
         });
       } else {
-        console.warn("Impresora TMU fuera de línea.");
-        toast.warning('Tiquete legalizado ante DIAN, pero la impresora TMU física está desconectada.');
+        console.warn("La impresora TMU está desconectada. El ticket no se imprimió.");
+        toast.warning('Tiquete emitido en base de datos, pero la impresora TMU está desconectada.');
       }
 
-      if (typeof fetchTickets === 'function') fetchTickets();
+      // 3. Opcional: Cerrar el formulario y refrescar listados
       setShowTicketForm(false);
+      
     } else {
-      throw new Error(resultado?.message || 'La DIAN rechazó el documento o el formato de respuesta es inválido.');
+      throw new Error(resultado.message || 'La DIAN rechazó el documento o el formato de respuesta es inválido.');
     }
+
   } catch (error: any) {
-    console.log(JSON.parse(error));
-
-  let mensajeErrores = 'El Web Service de la DIAN no respondió o los datos son erróneos.';
-
-  // Verificamos si el backend envió el arreglo de campos faltantes/inválidos ("detail")
-  const detallesError = error.detail;
-    if (Array.isArray(detallesError)) {
-    mensajeErrores = detallesError
-      .map((err: any) => {
-        // Obtenemos la ruta del campo (ej: "datos_pasajero -> nombre_pasajero" o "items")
-        const campo = Array.isArray(err.loc) ? err.loc.slice(1).join(' ➔ ') : 'campo';
-        
-        // Traducimos mensajes comunes de Pydantic/FastAPI para el cajero
-        let motivo = err.msg;
-        if (err.type === 'missing') motivo = 'Es obligatorio y no se envió';
-        
-        return `• <b>${campo}</b>: ${motivo}`;
-      })
-      .join('<br/>'); // Separador de línea HTML para SweetAlert2
-  } else if (error.response?.data?.message) {
-    mensajeErrores = error.response.data.message;
-  }
+    console.error("Error en flujo de tiquete electrónico:", error);
+    
+    // Alerta corporativa interactiva para fallos fiscales
     Swal.fire({
-    title: 'Campos Requeridos por la DIAN',
-    html: `<div style="text-align: left; font-size: 0.95rem; margin-top: 10px;">
-             <p style="margin-bottom: 12px; font-weight: bold; color: #ef4444;">
-               El JSON enviado no coincide con el esquema fiscal. Por favor añade:
-             </p>
-             ${mensajeErrores}
-           </div>`,
-    icon: 'error',
-    confirmButtonText: 'Corregir Estructura',
-    confirmButtonColor: '#f43f5e'
-  });
+      title: 'Fallo de Emisión DIAN',
+      text: error.message || 'El servidor de la DIAN tardó demasiado en responder o el pasajero contiene datos inválidos.',
+      icon: 'error',
+      confirmButtonText: 'Revisar Datos',
+      confirmButtonColor: '#f43f5e'
+    });
   } finally {
-    setTicketEmitiendo(false);
+    setLoading(false);
   }
 };
+
   return (
+
     <div className="h-screen flex flex-col overflow-hidden bg-background">
-      {/* Header del Dashboard */}
+      {/* Header del Dashboard - Fijo */}
       <header className="h-16 flex-shrink-0 border-b border-border bg-card flex items-center justify-between px-6 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center">
-            <img src="logo.png" alt="TransTicket" />
+            <img src="logo.png" alt="" />
+            {/* <Bus className="w-6 h-6 text-primary-foreground" /> */}
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold text-foreground leading-tight">TransTicket</span>
@@ -155,6 +126,7 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Botones de acción */}
           <Button 
             onClick={() => {
               setActiveTab('tickets');
@@ -166,6 +138,7 @@ export default function Dashboard() {
             Crear Ticket
           </Button>
 
+          {/* Printer connection status */}
           <Button 
             variant={printer.isConnected ? "default" : "outline"}
             onClick={printer.isConnected ? printer.disconnectPrinter : printer.connectPrinter}
@@ -176,7 +149,11 @@ export default function Dashboard() {
             <span className="hidden md:inline">TMU</span>
           </Button>
 
-          <Button variant="outline" onClick={() => setShowConsolidated(true)} className="gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowConsolidated(true)}
+            className="gap-2"
+          >
             <Printer className="w-4 h-4" />
             Consolidado
           </Button>
@@ -201,10 +178,10 @@ export default function Dashboard() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-muted-foreground">
-                Municipio: {user?.municipio?.nombre || 'No asignado'}
+                Municipio: {user?.municipio?.nombre}
               </DropdownMenuItem>
               <DropdownMenuItem className="text-muted-foreground">
-                Tipo: {user?.tipoVinculacion || 'Regular'}
+                Tipo: {user?.tipoVinculacion}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">
@@ -216,8 +193,9 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Tabs Container */}
+{/* Tabs Container - Estructura con tabs fijos y contenido scrollable */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        {/* TabsList - Fijo debajo del header */}
         <div className="flex-shrink-0 bg-card border-b border-border px-4 md:px-6 py-2">
           <TabsList className="h-12">
             <TabsTrigger value="dashboard" className="gap-2">
@@ -238,23 +216,28 @@ export default function Dashboard() {
             </TabsTrigger>
           </TabsList>
         </div>
-
+        {/* Contenido principal - Scrollable */}
         <main className="flex-1 overflow-y-auto">
           <div className="container mx-auto px-4 py-6">
+            {/* Dashboard Tab */}
             <TabsContent value="dashboard" className="space-y-6 mt-0">
-              <DashboardStats authHeaders={authHeaders} idAgencia={idAgencia} />
+              <DashboardStats />
+              
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
                   <h2 className="text-lg font-semibold mb-4">Últimos Tickets</h2>
-                  <TicketList tickets={tickets.slice(0, 5)} onCancel={cancelTicket} />
+                  <TicketList 
+                    tickets={tickets.slice(0, 5)} 
+                    onCancel={cancelTicket} 
+                  />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold mb-4">Flota de Buses</h2>
-                  <BusList authHeaders={authHeaders} idAgencia={idAgencia} />
+                  <BusList />
                 </div>
               </div>
             </TabsContent>
-
+            {/* Tickets Tab */}
             <TabsContent value="tickets" className="space-y-6 mt-0">
               {showTicketForm ? (
                 <>
@@ -264,12 +247,7 @@ export default function Dashboard() {
                       Ver Lista de Tickets
                     </Button>
                   </div>
-                  <TicketForm 
-                    onSubmit={handleCreateTicket} 
-                    loading={ticketEmitiendo} 
-                    authHeaders={authHeaders}
-                    idAgencia={idAgencia}
-                  />
+                  <TicketForm onSubmit={createTicket} loading={loading} />
                 </>
               ) : (
                 <>
@@ -280,11 +258,14 @@ export default function Dashboard() {
                       Nuevo Ticket
                     </Button>
                   </div>
-                  <TicketList tickets={tickets} onCancel={cancelTicket} />
+                  <TicketList 
+                    tickets={tickets} 
+                    onCancel={cancelTicket} 
+                    />
                 </>
               )}
             </TabsContent>
-
+            {/* Envios Tab */}
             <TabsContent value="envios" className="space-y-6 mt-0">
               {showEnvioForm ? (
                 <>
@@ -299,8 +280,6 @@ export default function Dashboard() {
                       onSubmit={createEnvio} 
                       loading={enviosLoading} 
                       municipioOrigen={user.municipio}
-                      authHeaders={authHeaders}
-                      idAgencia={idAgencia}
                     />
                   )}
                 </>
@@ -321,15 +300,15 @@ export default function Dashboard() {
                 </>
               )}
             </TabsContent>
-
+            {/* Buses Tab */}
             <TabsContent value="buses" className="mt-0">
               <h2 className="text-xl font-bold mb-6">Gestión de Flota</h2>
-              <BusList authHeaders={authHeaders} idAgencia={idAgencia} />
+              <BusList />
             </TabsContent>
           </div>
         </main>
       </Tabs>
-
+      {/* Modal de Consolidado */}
       <ConsolidatedReport 
         open={showConsolidated} 
         onOpenChange={setShowConsolidated}

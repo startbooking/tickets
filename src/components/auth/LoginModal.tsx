@@ -22,7 +22,7 @@ interface LoginModalProps {
 
 export function LoginModal({ open, onOpenChange }: LoginModalProps) {
   const navigate = useNavigate();
-  // const { loginStateUpdate } = useAuth(); // Úsalo si manejas estado global en React
+  const { loginStateUpdate } = useAuth(); 
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,15 +82,16 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
       // 5. Enrutamiento exacto por privilegios operativos de SACTel
       onOpenChange(false);
       
+      const userRolNormalized = (user.rol || user.role || 'CAJERO').toUpperCase();
       const rutasPorRol: Record<string, string> = {
-        'CAJERO': '/vender',
-        'DESPACHADOR': '/despacho',
+        'CAJERO': '/cajero/dashboard',
+        'DESPACHADOR': '/despachador',
         'ADMIN_AGENCIA': '/agencia',
-        'SUPERADMIN': '/dashboard'
+        'SUPERADMIN': '/superadmin/dashboard'
       };
 
-      const rutaDestino = rutasPorRol[user.rol.toUpperCase()] || '/';
-      navigate(rutaDestino);
+      const rutaDestino = rutasPorRol[userRolNormalized] || '/';
+      navigate(rutaDestino, { replace: true });
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de conexión con el Core de SACTel.');
