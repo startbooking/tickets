@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { Usuario } from '@/types';
+import { normalizeRol } from '@/services/travelsoftService';
 
 export interface AuthSessionData {
   user?: Record<string, unknown>;
@@ -21,7 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_KEY = 'userSession';
 
 // Extrae el objeto de usuario de cualquier envoltura (user, data.user o plano)
-// y homologa el rol bajo "role" para evitar el bug de typo (rol vs role).
+// y homologa el rol (nivel_usuario de TravelSoft -> rol del frontend).
 const extractUser = (parsed: Record<string, unknown>): Usuario | null => {
   const nestedData =
     typeof parsed.data === 'object' && parsed.data !== null
@@ -39,14 +40,21 @@ const extractUser = (parsed: Record<string, unknown>): Usuario | null => {
   const raw = flatUser || nestedUser || parsed;
   if (!raw || typeof raw !== 'object') return null;
 
-  const rol =
-    typeof raw.rol === 'string' ? raw.rol.toUpperCase() :
-    typeof raw.role === 'string' ? raw.role.toUpperCase() :
-    'CAJERO';
+  const rol = normalizeRol({
+    rol: typeof raw.rol === 'string' ? raw.rol : undefined,
+    nivel_usuario: typeof raw.nivel_usuario === 'number' ? raw.nivel_usuario : undefined,
+  });
+
+  const idNumerico = Number(raw.id ?? raw.id_usuario ?? 0);
+  const nombreCompleto = (raw.nombreCompleto as string) || (raw.nombre_usuario as string) || (raw.nombre as string) || (raw.name as string) || '';
 
   return {
     ...(raw as unknown as Usuario),
-    id: Number(raw.id ?? raw.id_usuario ?? 0),
+    id: Number.isFinite(idNumerico) && idNumerico > 0 ? idNumerico : 0,
+    numeroDocumento: (raw.cedula_usuario as string) || (raw.numeroDocumento as string) || '',
+    nombreCompleto,
+    nombre: nombreCompleto,
+    name: nombreCompleto,
     rol,
     role: rol,
   };

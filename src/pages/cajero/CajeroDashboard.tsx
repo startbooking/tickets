@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { travelsoftService, formatHora, splitNombreCompleto, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora } from '@/services/travelsoftService';
+import { dianService } from '@/services/dianService';
+import type { TiqueteTransporteDTO } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,14 +10,23 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { 
   Ticket, CalendarDays, BarChart3, LogOut, 
   Coins, ArrowUpRight, Building2, BookmarkCheck,
-  TrendingUp, Landmark
+  TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
+  Send, MapPin, Plus, Banknote, CreditCard, QrCode,
+  User, Phone, Mail, Armchair, CheckCircle2, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { generateTicketTXT, buildRawBtIntent, isAndroidDevice } from '@/utils/ticketFormatter';
 
-type CajeroSection = 'inicio' | 'ventas' | 'reservas' | 'informes' | 'cierre';
+type CajeroSection = 'inicio' | 'ventas' | 'reservas' | 'informes' | 'cierre' | 'despacho' | 'llegadas';
 
 export default function CajeroDashboard() {
   const { user, logout } = useAuth();
@@ -22,10 +34,34 @@ export default function CajeroDashboard() {
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
   const [totalCajaTurno, setTotalCajaTurno] = useState<number>(145000);
-  const precioTiquete = 85000;
-  
-  const nombreUsuario = user?.name || "Carlos Eduardo Mendoza";
+
+  // ─── ESTADO DE VEHÍCULOS DEL DÍA (via travelsoft.backend.lan) ───
+  const [dashboard, setDashboard] = useState<DashboardCajeroData | null>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+
+  // Vehículo seleccionado en Despacho para saltar a la Taquilla a vender ticket
+  const [ventaInicial, setVentaInicial] = useState<VehiculoEstado | null>(null);
+
+  const cargarDashboard = useCallback(async () => {
+    setLoadingDashboard(true);
+    try {
+      const data = await travelsoftService.getDashboardCajero();
+      setDashboard(data);
+    } catch (err) {
+      setDashboard(null);
+      console.error('Error al cargar estadísticas de vehículos:', err);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarDashboard();
+  }, [cargarDashboard]);
+
+  const nombreUsuario = user?.nombreCompleto || user?.name || "Carlos Eduardo Mendoza";
   const correoUsuario = user?.email || "cajero.salitre@tickets.com";
+  const nombreAgencia = String(user?.agencia ?? "") || dashboard?.agencia || "Agencia";
 
   const getIniciales = (name: string) => {
     return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -69,6 +105,12 @@ export default function CajeroDashboard() {
           <nav className="p-4 space-y-1">
             {[
               { id: 'inicio', label: 'Inicio / Resumen Diario', icon: <BarChart3 className="w-4 h-4" /> },
+              ...(dashboard?.tipo_agencia === 'principal'
+                ? [
+                    { id: 'despacho', label: 'Despacho de Vehículos', icon: <Send className="w-4 h-4" /> },
+                    { id: 'llegadas', label: 'Llegadas a la Agencia', icon: <MapPin className="w-4 h-4" /> },
+                  ]
+                : []),
               { id: 'ventas', label: 'Taquilla de Ventas', icon: <Ticket className="w-4 h-4" /> },
               { id: 'reservas', label: 'Control de Reservas', icon: <CalendarDays className="w-4 h-4" /> },
               { id: 'informes', label: 'Informes y Métricas', icon: <ArrowUpRight className="w-4 h-4" /> },
@@ -109,7 +151,7 @@ export default function CajeroDashboard() {
         {/* Cabecera Superior */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 shrink-0">
           <div className="text-xs text-slate-400 font-bold tracking-wider uppercase">
-            Terminal Salitre / <span className="text-emerald-600 font-black">{activeSection}</span>
+            Terminal {nombreAgencia} / <span className="text-emerald-600 font-black">{activeSection}</span>
           </div>
           <div className="flex items-center gap-2 border-l pl-4">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -124,9 +166,13 @@ export default function CajeroDashboard() {
           {(() => {
             switch (activeSection) {
               case 'inicio':
-                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} />;
+                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} />;
+              case 'despacho':
+                return <SubViewDespacho onVenderTicket={(v) => { setVentaInicial(v); setActiveSection('ventas'); }} />;
+              case 'llegadas':
+                return <SubViewLlegadas />;
               case 'ventas':
-                return <SubViewVentas precioTiquete={precioTiquete} setTotalCaja={setTotalCajaTurno} />;
+                return <SubViewVentas setTotalCaja={setTotalCajaTurno} ventaInicial={ventaInicial} onVentaInicialConsumida={() => setVentaInicial(null)} />;
               case 'reservas':
                 return <SubViewReservas />;
               case 'informes':
@@ -134,7 +180,7 @@ export default function CajeroDashboard() {
               case 'cierre':
                 return <SubViewCierre total={totalCajaTurno} />;
               default:
-                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} />;
+                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} />;
             }
           })()}
         </div>
@@ -147,43 +193,136 @@ export default function CajeroDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // 📊 1. SUBVISTA: INICIO / RESUMEN
 // ─────────────────────────────────────────────────────────────────────────────
-function SubViewInicio({ total, setSeccion }: { total: number; setSeccion: (s: CajeroSection) => void }) {
+function SubViewInicio({
+  total, setSeccion, dashboard, loading, onRetry,
+}: {
+  total: number;
+  setSeccion: (s: CajeroSection) => void;
+  dashboard: DashboardCajeroData | null;
+  loading: boolean;
+  onRetry: () => void;
+}) {
+  const resumen = dashboard?.resumen;
+  const vehiculos = dashboard?.vehiculos;
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <div>
         <h2 className="text-xl font-black text-slate-900 tracking-tight">Resumen General del Día</h2>
-        <p className="text-xs text-slate-500">Métricas acumuladas de tiquetería expedida durante el turno vigente.</p>
+        <p className="text-xs text-slate-500">
+          {dashboard
+            ? `Operación de vehículos al ${new Date(dashboard.fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`
+            : "Métricas acumuladas de tiquetería expedida durante el turno vigente."}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Carga */}
+      {loading && (
         <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="pt-4 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Efectivo Recaudado</span>
-              <h3 className="text-xl font-black text-slate-900">${(total * 0.6).toLocaleString('es-CO')}</h3>
-            </div>
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
+          <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+            <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+            <span className="text-xs font-bold tracking-wide">Consultando estado de vehículos...</span>
           </CardContent>
         </Card>
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="pt-4 flex items-center justify-between">
+      )}
+
+      {/* Error de conexión */}
+      {!loading && !dashboard && (
+        <Card className="bg-white border-rose-200 shadow-sm">
+          <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+            <AlertTriangle className="w-8 h-8 text-rose-500" />
             <div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tarjetas / Medios Digitales</span>
-              <h3 className="text-xl font-black text-slate-900">${(total * 0.4).toLocaleString('es-CO')}</h3>
+              <h3 className="text-sm font-black text-slate-900">No se pudo consultar el backend</h3>
+              <p className="text-xs text-slate-500 mt-1">Verifica que el servicio travelsoft esté disponible e inténtalo de nuevo.</p>
             </div>
-            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Landmark className="w-5 h-5" /></div>
+            <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={onRetry}>
+              <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
+            </Button>
           </CardContent>
         </Card>
-        <Card className="bg-slate-900 text-white border-none shadow-md">
-          <CardContent className="pt-4 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Flujo Total de Caja</span>
-              <h3 className="text-xl font-black text-emerald-400">${total.toLocaleString('es-CO')}</h3>
+      )}
+
+      {/* Agencia satélite: solo venta, no reporta vehículos */}
+      {!loading && dashboard?.tipo_agencia === 'satelite' && (
+        <Card className="bg-gradient-to-br from-slate-950 to-slate-900 text-white p-6 border-none rounded-2xl shadow-lg">
+          <CardContent className="p-0">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-slate-800 text-amber-400 rounded-xl shrink-0"><Building2 className="w-6 h-6" /></div>
+              <div>
+                <h3 className="font-bold text-sm mb-1">Agencia satélite — solo venta de tiquetes</h3>
+                <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
+                  Esta es una agencia intermedia dentro de las rutas de transporte. Genera tiquetes desde esta
+                  agencia (o la anterior) hasta el destino final, pero <strong className="text-slate-200">no reporta
+                  salida ni llegada de vehículos</strong>. La operación de despacho se registra en la agencia principal.
+                </p>
+                <Button onClick={() => setSeccion('ventas')} size="sm" className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs">
+                  Ir a Taquilla de Ventas
+                </Button>
+              </div>
             </div>
-            <div className="p-3 bg-slate-800 text-emerald-400 rounded-xl"><Coins className="w-5 h-5" /></div>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Agencia principal: estadísticas reales de vehículos */}
+      {!loading && dashboard?.tipo_agencia === 'principal' && resumen && vehiculos && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="bg-white border-slate-200 shadow-sm">
+              <CardContent className="pt-4 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">En Plataforma</span>
+                  <h3 className="text-xl font-black text-slate-900">{resumen.en_plataforma}</h3>
+                </div>
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Bus className="w-5 h-5" /></div>
+              </CardContent>
+            </Card>
+            <Card className="bg-white border-slate-200 shadow-sm">
+              <CardContent className="pt-4 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Próximos a Salir</span>
+                  <h3 className="text-xl font-black text-slate-900">{resumen.proximos}</h3>
+                </div>
+                <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
+              </CardContent>
+            </Card>
+            <Card className="bg-slate-900 text-white border-none shadow-md">
+              <CardContent className="pt-4 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Despachados (Salió)</span>
+                  <h3 className="text-xl font-black text-emerald-400">{resumen.despachados}</h3>
+                </div>
+                <div className="p-3 bg-slate-800 text-emerald-400 rounded-xl"><ArrowUpRight className="w-5 h-5" /></div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <ListaVehiculos
+              titulo="En Plataforma"
+              descripcion="Vendiendo tiquetes (habilitadas)"
+              items={vehiculos.en_plataforma}
+              vacio="Sin vehículos en plataforma."
+              badgeClass="bg-emerald-100 text-emerald-800 border-emerald-200"
+              mostrarTickets
+            />
+            <ListaVehiculos
+              titulo="Próximos a Salir"
+              descripcion="En agencia, sin enturnar/despachar"
+              items={vehiculos.proximos}
+              vacio="Sin vehículos programados."
+              badgeClass="bg-amber-100 text-amber-800 border-amber-200"
+            />
+            <ListaVehiculos
+              titulo="Despachados"
+              descripcion="Ya salieron de la agencia"
+              items={vehiculos.despachados}
+              vacio="Ningún vehículo ha salido."
+              badgeClass="bg-slate-100 text-slate-700 border-slate-200"
+            />
+          </div>
+        </>
+      )}
 
       <Card className="bg-gradient-to-br from-slate-950 to-slate-900 text-white p-6 border-none rounded-2xl shadow-lg">
         <h3 className="font-bold text-sm mb-1">¿Listo para atender un cliente?</h3>
@@ -196,107 +335,1323 @@ function SubViewInicio({ total, setSeccion }: { total: number; setSeccion: (s: C
   );
 }
 
+// Lista compacta de vehículos por grupo de estado
+function ListaVehiculos({
+  titulo, descripcion, items, vacio, badgeClass, mostrarTickets,
+}: {
+  titulo: string;
+  descripcion: string;
+  items: VehiculoEstado[];
+  vacio: string;
+  badgeClass: string;
+  mostrarTickets?: boolean;
+}) {
+  return (
+    <Card className="bg-white border-slate-200 shadow-sm">
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-xs font-bold uppercase flex items-center justify-between text-slate-900">
+          {titulo}
+          <Badge className={cn("text-[10px] font-bold border", badgeClass)}>{items.length}</Badge>
+        </CardTitle>
+        <CardDescription className="text-[11px]">{descripcion}</CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        {items.length === 0 ? (
+          <p className="text-xs text-slate-400 italic py-3">{vacio}</p>
+        ) : (
+          <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto pr-1">
+            {items.map((v) => (
+              <li key={v.cod_ruta} className="py-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-900 font-mono truncate">
+                    {v.placa_vehi || "SIN PLACA"}
+                  </p>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {v.destino || "—"}
+                    {v.conductor ? ` · ${v.conductor}` : ""}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[11px] font-bold text-slate-600 font-mono">
+                    {v.hora_despacho || formatHora(v.hora_ruta)}
+                  </span>
+                  {mostrarTickets && (
+                    <span className="flex items-center justify-end gap-1 text-[10px] font-bold text-emerald-700 mt-0.5">
+                      <Ticket className="w-3 h-3" /> {v.tickets_vendidos ?? 0} vendidos
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🚌 1b. SUBVISTA: DESPACHO DE VEHÍCULOS (solo agencia principal)
+// ─────────────────────────────────────────────────────────────────────────────
+function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstado) => void }) {
+  const [dashboard, setDashboard] = useState<DashboardCajeroData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [despachando, setDespachando] = useState<number | null>(null);
+  const [dialogoNuevaRuta, setDialogoNuevaRuta] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      setDashboard(await travelsoftService.getDashboardCajero());
+    } catch (err) {
+      setDashboard(null);
+      console.error('Error al cargar rutas para despacho:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargar();
+  }, [cargar]);
+
+  const despachables = useMemo(() => {
+    const v = dashboard?.vehiculos;
+    if (!v) return [];
+    return [...v.en_plataforma, ...v.proximos].sort(
+      (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
+    );
+  }, [dashboard]);
+
+  const placasConRutaHoy = useMemo(() => {
+    const v = dashboard?.vehiculos;
+    const placas = new Set<string>();
+    if (!v) return placas;
+    [...v.en_plataforma, ...v.proximos, ...v.despachados].forEach((x) => {
+      if (x.placa_vehi) placas.add(x.placa_vehi);
+    });
+    return placas;
+  }, [dashboard]);
+
+  const handleDespachar = async (v: VehiculoEstado) => {
+    setDespachando(v.cod_ruta);
+    try {
+      const res = await travelsoftService.despacharVehiculo(v.cod_ruta, v.fecha_ruta ?? undefined);
+      toast.success(`Vehículo ${v.placa_vehi || v.cod_ruta} despachado${res?.hora_despacho ? ` a las ${res.hora_despacho}` : ""}.`);
+      await cargar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al despachar el vehículo.");
+    } finally {
+      setDespachando(null);
+    }
+  };
+
+  const confirmarDespacho = (v: VehiculoEstado) => {
+    toast(`Despachar ${v.placa_vehi || "vehículo"} hacia ${v.destino || "destino"}?`, {
+      action: {
+        label: "Despachar",
+        onClick: () => void handleDespachar(v),
+      },
+    });
+  };
+
+  if (loading) {
+    return (
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+          <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+          <span className="text-xs font-bold tracking-wide">Cargando rutas del día...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!dashboard) {
+    return (
+      <Card className="bg-white border-rose-200 shadow-sm">
+        <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+          <AlertTriangle className="w-8 h-8 text-rose-500" />
+          <div>
+            <h3 className="text-sm font-black text-slate-900">No se pudieron cargar las rutas</h3>
+            <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
+          </div>
+          <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={() => void cargar()}>
+            <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Despacho de Vehículos</h2>
+          <p className="text-xs text-slate-500">
+            Seleccione el vehículo listo en andén para marcar su salida hacia el destino.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[11px] font-bold">
+            {despachables.length} por despachar
+          </Badge>
+          <Button size="sm" className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5" onClick={() => setDialogoNuevaRuta(true)}>
+            <Plus className="w-3.5 h-3.5" /> Adicionar Ruta
+          </Button>
+        </div>
+      </div>
+
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-xs font-bold uppercase text-emerald-600">Rutas del Día</CardTitle>
+          <CardDescription className="text-[11px]">Vehiculos habilitados y programados para salir hoy.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {despachables.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-6 text-center">No hay vehículos pendientes de despacho.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {despachables.map((v) => (
+                <div key={v.cod_ruta} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <div className={cn(
+                        "p-2.5 rounded-xl shrink-0",
+                        v.habilitada_ruta === "1" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"
+                      )}>
+                        <Bus className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {v.destino || "—"}
+                          {v.conductor ? ` · ${v.conductor}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className={cn(
+                      "text-[10px] font-bold border shrink-0",
+                      v.habilitada_ruta === "1"
+                        ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                        : "bg-amber-100 text-amber-800 border-amber-200"
+                    )}>
+                      {v.habilitada_ruta === "1" ? "En plataforma" : "Programada"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-700 font-mono">{formatHora(v.hora_ruta)}</span>
+                    <span className="flex items-center gap-3">
+                      {v.capacidad ? (
+                        <span className="text-slate-500 flex items-center gap-1">
+                          <Armchair className="w-3 h-3" /> {v.capacidad}
+                        </span>
+                      ) : null}
+                      <span className="flex items-center gap-1 font-bold text-emerald-700">
+                        <Ticket className="w-3 h-3" /> {v.tickets_vendidos ?? 0} vendidos
+                      </span>
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-auto">
+                    <Button
+                      size="sm"
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
+                      disabled={despachando === v.cod_ruta}
+                      onClick={() => confirmarDespacho(v)}
+                    >
+                      {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      Despachar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-[11px] gap-1.5"
+                      onClick={() => onVenderTicket(v)}
+                    >
+                      <Ticket className="w-3.5 h-3.5" /> Vender Ticket
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {dialogoNuevaRuta && (
+        <NuevaRutaDialog
+          open={dialogoNuevaRuta}
+          onOpenChange={setDialogoNuevaRuta}
+          idOrigen={dashboard.id_orides}
+          nombreOrigen={dashboard.agencia ?? 'Agencia'}
+          placasConRutaHoy={placasConRutaHoy}
+          onCreada={() => void cargar()}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ➕ DIÁLOGO: ADICIONAR RUTA (origen = agencia del usuario; estado "por despachar")
+// ─────────────────────────────────────────────────────────────────────────────
+function NuevaRutaDialog({
+  open, onOpenChange, idOrigen, nombreOrigen, placasConRutaHoy, onCreada,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  idOrigen: number;
+  nombreOrigen: string;
+  placasConRutaHoy: Set<string>;
+  onCreada: () => void;
+}) {
+  const [orides, setOrides] = useState<OridesOption[]>([]);
+  const [conductores, setConductores] = useState<ConductorOption[]>([]);
+  const [vehiculos, setVehiculos] = useState<VehiculoOption[]>([]);
+  const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+
+  const [destino, setDestino] = useState('');
+  const [horaSalida, setHoraSalida] = useState('');
+  const [placa, setPlaca] = useState('');
+  const [conductor, setConductor] = useState('');
+  const [conductorAux, setConductorAux] = useState('');
+  const [auxiliarViaje, setAuxiliarViaje] = useState('');
+  const [conduce, setConduce] = useState('');
+
+  const cargarCatalogos = useCallback(async () => {
+    setCargandoCatalogos(true);
+    try {
+      const [o, c, v] = await Promise.all([
+        travelsoftService.getOrides(),
+        travelsoftService.getConductores(),
+        travelsoftService.getVehiculos(),
+      ]);
+      setOrides(o);
+      setConductores(c.filter((x) => (x.estado_conduc ?? '1') === '1'));
+      setVehiculos(v.filter((x) => (x.estado_vehi ?? '1') === '1'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
+    } finally {
+      setCargandoCatalogos(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) void cargarCatalogos();
+  }, [open, cargarCatalogos]);
+
+  const destinoOptions = useMemo(
+    () => orides.filter((o) => o.id_orides !== idOrigen && (o.desc_orides || '').trim()),
+    [orides, idOrigen]
+  );
+
+  const vehiculosDisponibles = useMemo(
+    () => vehiculos.filter((v) => !placasConRutaHoy.has(v.placa_vehi)),
+    [vehiculos, placasConRutaHoy]
+  );
+
+  useEffect(() => {
+    if (placa && !vehiculosDisponibles.some((v) => v.placa_vehi === placa)) {
+      setPlaca('');
+    }
+  }, [vehiculosDisponibles, placa]);
+
+  const horaAMinutos = (value: string): number => {
+    const [h, m] = value.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+    return h * 60 + m;
+  };
+
+  const handleGuardar = async () => {
+    if (!destino) return toast.error('Seleccione el destino.');
+    if (!horaSalida) return toast.error('Ingrese la hora de salida.');
+    if (!placa) return toast.error('Seleccione el vehículo.');
+
+    setGuardando(true);
+    try {
+      const res = await travelsoftService.crearRuta({
+        destino_ruta: Number(destino),
+        hora_ruta: horaAMinutos(horaSalida),
+        hora_programada: horaSalida || undefined,
+        placa_vehi: placa,
+        cedula_conduc: conductor || undefined,
+        cedula_conduc2: conductorAux || undefined,
+        cedula_auxi: auxiliarViaje || undefined,
+        conduce_ruta: conduce.trim().toUpperCase() || undefined,
+      });
+      toast.success(`Ruta ${res.cod_ruta} creada en estado por despachar.`);
+      onOpenChange(false);
+      onCreada();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo crear la ruta.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900">
+            <Plus className="w-4 h-4 text-emerald-600" /> Adicionar Ruta
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            La ruta quedará en estado <strong>por despachar</strong> para la agencia {nombreOrigen}.
+          </DialogDescription>
+        </DialogHeader>
+
+        {cargandoCatalogos ? (
+          <div className="py-8 flex items-center justify-center gap-2 text-slate-400">
+            <Loader2 className="w-5 h-5 animate-spin text-emerald-600" /> Cargando catálogos...
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Origen (fijo)</Label>
+              <Input value={nombreOrigen} disabled readOnly />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Destino</Label>
+              <Select value={destino} onValueChange={setDestino}>
+                <SelectTrigger><SelectValue placeholder="Seleccione el destino" /></SelectTrigger>
+                <SelectContent>
+                  {destinoOptions.map((o) => (
+                    <SelectItem key={o.id_orides} value={String(o.id_orides)}>{o.desc_orides}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
+              <Input type="time" value={horaSalida} onChange={(e) => setHoraSalida(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Vehículo</Label>
+              <Select value={placa} onValueChange={setPlaca}>
+                <SelectTrigger><SelectValue placeholder="Seleccione el vehículo" /></SelectTrigger>
+                <SelectContent>
+                  {vehiculosDisponibles.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">Todos los vehículos ya tienen ruta hoy.</div>
+                  )}
+                  {vehiculosDisponibles.map((v) => (
+                    <SelectItem key={v.placa_vehi} value={v.placa_vehi}>
+                      {v.placa_vehi}{v.marca_vehi ? ` · ${v.marca_vehi}` : ''}{v.modelo_vehi ? ` ${v.modelo_vehi}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {placasConRutaHoy.size > 0 && (
+                <p className="text-[10px] text-slate-400">Se ocultan los vehículos que ya tienen ruta creada hoy.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Conductor</Label>
+              <Select value={conductor} onValueChange={setConductor}>
+                <SelectTrigger><SelectValue placeholder="Seleccione el conductor" /></SelectTrigger>
+                <SelectContent>
+                  {conductores.map((c) => (
+                    <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
+                      {c.nombre_conduc} ({c.cedula_conduc})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Conductor auxiliar <span className="text-slate-400 font-normal">(opcional)</span></Label>
+              <Select value={conductorAux} onValueChange={(v) => setConductorAux(v === '__none__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Ninguno</SelectItem>
+                  {conductores.map((c) => (
+                    <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
+                      {c.nombre_conduc} ({c.cedula_conduc})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Auxiliar de viaje <span className="text-slate-400 font-normal">(opcional)</span></Label>
+              <Select value={auxiliarViaje} onValueChange={(v) => setAuxiliarViaje(v === '__none__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Ninguno</SelectItem>
+                  {conductores.map((c) => (
+                    <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
+                      {c.nombre_conduc} ({c.cedula_conduc})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">N° Conduce <span className="text-slate-400 font-normal">(documento de tránsito exigido al conductor)</span></Label>
+              <Input value={conduce} onChange={(e) => setConduce(e.target.value)} placeholder="Ej: 120000345" />
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" className="text-xs font-bold" onClick={() => onOpenChange(false)} disabled={guardando}>
+            Cancelar
+          </Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5" onClick={() => void handleGuardar()} disabled={guardando || cargandoCatalogos}>
+            {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Crear Ruta
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function SubViewLlegadas() {
+  const [data, setData] = useState<EnTransitoItem[] | null>(null);
+  const [llegados, setLlegados] = useState<EnTransitoItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [reportando, setReportando] = useState<number | null>(null);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await travelsoftService.getLlegadas();
+      setData(res.en_transito);
+      setLlegados(res.llegados);
+    } catch (err) {
+      setData(null);
+      setLlegados(null);
+      console.error('Error al cargar llegadas:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargar();
+  }, [cargar]);
+
+  const handleReportar = async (v: EnTransitoItem) => {
+    setReportando(v.cod_ruta);
+    try {
+      const res = await travelsoftService.reportarLlegada(v.cod_ruta, v.origen_ruta, v.fecha_ruta ?? undefined);
+      toast.success(`Llegada de ${v.placa_vehi || v.cod_ruta} reportada a las ${res?.hora_llegada ?? ""}.`);
+      await cargar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al reportar la llegada.");
+    } finally {
+      setReportando(null);
+    }
+  };
+
+  const confirmarLlegada = (v: EnTransitoItem) => {
+    toast(`Reportar llegada de ${v.placa_vehi || "vehículo"} desde ${v.origen || "origen"}?`, {
+      action: {
+        label: "Reportar llegada",
+        onClick: () => void handleReportar(v),
+      },
+    });
+  };
+
+  if (loading) {
+    return (
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+          <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+          <span className="text-xs font-bold tracking-wide">Consultando vehículos en tránsito...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!data || !llegados) {
+    return (
+      <Card className="bg-white border-rose-200 shadow-sm">
+        <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+          <AlertTriangle className="w-8 h-8 text-rose-500" />
+          <div>
+            <h3 className="text-sm font-black text-slate-900">No se pudieron cargar las llegadas</h3>
+            <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
+          </div>
+          <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={() => void cargar()}>
+            <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const ItemRow = ({ v, onReport }: { v: EnTransitoItem; onReport?: () => void }) => (
+    <li className="py-3 flex items-center justify-between gap-3">
+      <div className="min-w-0 flex items-center gap-3">
+        <div className="p-2.5 rounded-xl bg-slate-100 text-slate-600 shrink-0">
+          <Bus className="w-4 h-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+          <p className="text-[11px] text-slate-500 truncate">
+            Desde <strong className="text-slate-700">{v.origen || "—"}</strong>
+            {v.conductor ? ` · ${v.conductor}` : ""}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="text-right">
+          <p className="text-[11px] font-bold text-slate-700 font-mono">
+            Salida {v.hora_despacho || formatHora(v.hora_ruta)}
+          </p>
+          {v.hora_llegada && (
+            <p className="text-[11px] font-bold text-emerald-700 font-mono">Llegó {v.hora_llegada}</p>
+          )}
+        </div>
+        {onReport && (
+          <Button
+            size="sm"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
+            disabled={reportando === v.cod_ruta}
+            onClick={onReport}
+          >
+            {reportando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+            Reportar Llegada
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div>
+        <h2 className="text-xl font-black text-slate-900 tracking-tight">Llegadas a la Agencia</h2>
+        <p className="text-xs text-slate-500">
+          Vehículos despachados desde otras agencias principales con destino a esta agencia.
+        </p>
+      </div>
+
+      <Card className="bg-white border-amber-200 shadow-sm">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-xs font-bold uppercase text-amber-700 flex items-center justify-between">
+            En Tránsito
+            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] font-bold">{data.length}</Badge>
+          </CardTitle>
+          <CardDescription className="text-[11px]">Reporte la llegada cuando el vehículo esté en andén.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {data.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-6 text-center">No hay vehículos en tránsito hacia esta agencia.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {data.map((v) => <ItemRow key={v.cod_ruta} v={v} onReport={() => confirmarLlegada(v)} />)}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-xs font-bold uppercase text-slate-900 flex items-center justify-between">
+            Llegados
+            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] font-bold">{llegados.length}</Badge>
+          </CardTitle>
+          <CardDescription className="text-[11px]">Vehículos cuya llegada ya fue reportada hoy.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {llegados.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-6 text-center">Aún no se reportan llegadas hoy.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {llegados.map((v) => <ItemRow key={v.cod_ruta} v={v} />)}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🎫 2. SUBVISTA: TAQUILLA DE VENTAS
 // ─────────────────────────────────────────────────────────────────────────────
-function SubViewVentas({ precioTiquete, setTotalCaja }: { precioTiquete: number; setTotalCaja: React.Dispatch<React.SetStateAction<number>> }) {
-  const [destino, setDestino] = useState('');
-  const [viaje, setViaje] = useState<{ id: string; hora: string; ruta: string } | null>(null);
-  const [doc, setDoc] = useState('');
-  const [pasajero, setPasajero] = useState<{ nom: string; cc: string } | null>(null);
-  const [silla, setSilla] = useState<number | null>(null);
-  const [factura, setFactura] = useState<{ num: string; cufe: string } | null>(null);
-  const [loading, setLoading] = useState(false);
+function SubViewVentas({
+  setTotalCaja,
+  ventaInicial,
+  onVentaInicialConsumida,
+}: {
+  setTotalCaja: React.Dispatch<React.SetStateAction<number>>;
+  ventaInicial?: VehiculoEstado | null;
+  onVentaInicialConsumida?: () => void;
+}) {
+  const [dashboard, setDashboard] = useState<DashboardCajeroData | null>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
 
-  const handleVender = () => {
-    setLoading(true);
-    toast.loading("Procesando XML y solicitando CUFE ante la DIAN...");
-    setTimeout(() => {
-      toast.dismiss();
-      setFactura({
-        num: `F-SETT-${Math.floor(Math.random() * 1000)}`,
-        cufe: "6e5c8a4b7f3d2e1a9c8b7f6e5d4c3b2a1f0e9d8c7b6a5f4e"
-      });
-      setTotalCaja(p => p + precioTiquete);
-      setLoading(false);
-      toast.success("Factura autorizada por la DIAN y tiquete generado.");
-    }, 1500);
+  const [vehiculoSel, setVehiculoSel] = useState<VehiculoEstado | null>(null);
+  const [sillas, setSillas] = useState<SillasData | null>(null);
+  const [cargandoSillas, setCargandoSillas] = useState(false);
+  const [puesto, setPuesto] = useState<number | null>(null);
+
+  const [documento, setDocumento] = useState('');
+  const [nombres, setNombres] = useState('');
+  const [apellidos, setApellidos] = useState('');
+  const [correo, setCorreo] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [buscandoPasajero, setBuscandoPasajero] = useState(false);
+  const [pasajeroExiste, setPasajeroExiste] = useState(false);
+
+  const [formaPago, setFormaPago] = useState<FormaPago>('EFECTIVO');
+  const [ticket, setTicket] = useState<TicketVenta | null>(null);
+  const [generando, setGenerando] = useState(false);
+  const impresoRef = useRef(false);
+
+  const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
+
+  // Estado de la impresora térmica USB del servidor (pyusb, sin intervención).
+  const cargarEstadoImpresora = useCallback(async () => {
+    try {
+      setImpresoraInfo(await travelsoftService.getEstadoImpresora());
+    } catch {
+      setImpresoraInfo(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarEstadoImpresora();
+  }, [cargarEstadoImpresora]);
+
+  const cargarDashboard = useCallback(async () => {
+    setLoadingDashboard(true);
+    try {
+      setDashboard(await travelsoftService.getDashboardCajero());
+    } catch {
+      setDashboard(null);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarDashboard();
+  }, [cargarDashboard]);
+
+  const porDespachar = useMemo(() => {
+    const v = dashboard?.vehiculos;
+    if (!v) return [];
+    return [...v.en_plataforma, ...v.proximos].sort(
+      (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
+    );
+  }, [dashboard]);
+
+  // Preselecciona el vehículo cuando se llega a la taquilla desde "Vender Ticket" de Despacho
+  useEffect(() => {
+    if (ventaInicial) {
+      const ruta = porDespachar.find((r) => r.cod_ruta === ventaInicial.cod_ruta);
+      if (ruta) {
+        setVehiculoSel(ruta);
+        void cargarSillas(ruta);
+      }
+      onVentaInicialConsumida?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ventaInicial, porDespachar]);
+
+  const cargarSillas = useCallback(async (ruta: VehiculoEstado) => {
+    setCargandoSillas(true);
+    setPuesto(null);
+    setTicket(null);
+    impresoRef.current = false;
+    try {
+      setSillas(await travelsoftService.getSillas(ruta.cod_ruta, ruta.fecha_ruta ?? undefined));
+    } catch (err) {
+      setSillas(null);
+      toast.error(err instanceof Error ? err.message : 'No se pudieron cargar las sillas.');
+    } finally {
+      setCargandoSillas(false);
+    }
+  }, []);
+
+  const handleSeleccionarVehiculo = (codRuta: number) => {
+    const ruta = porDespachar.find((r) => r.cod_ruta === codRuta);
+    if (!ruta) return;
+    setVehiculoSel(ruta);
+    void cargarSillas(ruta);
   };
+
+  // Limpia la taquilla de ventas y la regresa al estado inicial (cards de vehículos).
+  const reiniciar = useCallback(() => {
+    setTicket(null);
+    setVehiculoSel(null);
+    setSillas(null);
+    setPuesto(null);
+    setDocumento('');
+    setNombres('');
+    setApellidos('');
+    setCorreo('');
+    setTelefono('');
+    setPasajeroExiste(false);
+    setFormaPago('EFECTIVO');
+    impresoRef.current = false;
+  }, []);
+
+  // Impresión directa al generar el tiquete (sin que el usuario pulse imprimir):
+  // 1. Impresora USB del servidor vía pyusb (impresión silenciosa, sin diálogos).
+  // 2. Android → RawBT por Bluetooth (silencioso).
+  // 3. Respuesta: window.print() del comprobante.
+  const imprimirTiquete = useCallback(async (t: TicketVenta) => {
+    const texto = generateTicketTXT({
+      empresa: 'FLOTA SAN VICENTE S.A.',
+      consecutivo: String(t.consecutivo_pasajero),
+      fecha: t.fecha_ruta,
+      hora: t.hora_tiquete || formatHora(t.hora_ruta),
+      origen: t.origen || '',
+      destino: t.destino || '',
+      pasajero: t.pasajero.nombre,
+      documento: t.pasajero.documento,
+      asiento: String(t.puesto),
+      valor: t.valor ?? 0,
+      placa: t.placa_vehi || undefined,
+      formaPago: t.forma_pago,
+      nit: t.nit_emisor || '860.022.105-1',
+      resolucion: t.resolucion_numero,
+      numeroFactura: t.numero_factura,
+      cufe: t.cufe,
+      qr: t.qr_dian || t.qr_code_url,
+    });
+
+    try {
+      await travelsoftService.imprimirTicketEscPos(texto);
+      return;
+    } catch (err) {
+      console.error('No se pudo imprimir por USB (pyusb):', err);
+    }
+
+    if (isAndroidDevice()) {
+      window.location.href = buildRawBtIntent(texto);
+      return;
+    }
+
+    window.print();
+  }, []);
+
+  // Estructura el JSON fiscal para la emisión del tiquete ante la DIAN.
+  const construirPayloadDian = (t: TicketVenta): TiqueteTransporteDTO => {
+    const partes = splitNombreCompleto(t.pasajero.nombre);
+    return {
+      operacion: 'Emision_Tiquete_Transporte',
+      fecha_emision: t.fecha_ruta,
+      hora_emision: t.hora_tiquete || formatHora(t.hora_ruta),
+      datos_emisor: {
+        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN,
+        id_agencia: Number(user?.id_orides) || undefined,
+      },
+      datos_viaje: {
+        id_interno_viaje: t.id_planilla,
+        origen: t.origen || '',
+        destino: t.destino || '',
+        placa_vehiculo: t.placa_vehi || '',
+        numero_asiento: t.puesto,
+        valor_tiquete: t.valor ?? 0,
+      },
+      datos_pasajero: {
+        tipo_documento: t.pasajero.documento === '222222222222' ? '14' : '13',
+        numero_documento: t.pasajero.documento,
+        nombres: partes.nombres,
+        apellidos: partes.apellidos,
+        email_notificacion: t.pasajero.correo || 'tickets@sactel.net',
+      },
+      numero_asiento: String(t.puesto),
+      placa_vehiculo: t.placa_vehi || '',
+      total: t.valor ?? 0,
+      forma_pago: t.forma_pago,
+      numero_factura: t.numero_factura,
+      impuestos: [
+        {
+          codigo: '01', // IVA excluido (transporte público intermunicipal)
+          porcentaje: 0,
+          base_imponible: t.valor ?? 0,
+          valor_impuesto: 0,
+        },
+      ],
+    };
+  };
+
+  // Impresión automática del tiquete al generarlo: imprime, limpia la pantalla
+  // de datos y regresa la taquilla al estado inicial (cards de vehículos).
+  useEffect(() => {
+    if (ticket && !impresoRef.current) {
+      impresoRef.current = true;
+      const t = window.setTimeout(() => {
+        void imprimirTiquete(ticket);
+        reiniciar();
+      }, 400);
+      return () => window.clearTimeout(t);
+    }
+  }, [ticket, imprimirTiquete, reiniciar]);
+
+  const formasPago: { id: FormaPago; label: string; desc: string; icon: React.ReactNode }[] = [
+    { id: 'EFECTIVO', label: 'Efectivo', desc: 'Pago en caja', icon: <Banknote className="w-5 h-5" /> },
+    { id: 'TARJETA', label: 'Tarjeta', desc: 'Débito / crédito', icon: <CreditCard className="w-5 h-5" /> },
+    { id: 'QR', label: 'Código QR', desc: 'Pago por QR', icon: <QrCode className="w-5 h-5" /> },
+  ];
+
+  const errorValidacion = (): string | null => {
+    if (!vehiculoSel) return 'Seleccione un vehículo por despachar.';
+    if (!puesto) return 'Seleccione una silla desocupada.';
+    if (documento.trim() && !nombres.trim()) return 'Ingrese los nombres del pasajero.';
+    return null;
+  };
+
+  const buscarPasajero = async () => {
+    const doc = documento.trim();
+    if (!doc || buscandoPasajero) return;
+    setBuscandoPasajero(true);
+    try {
+      const p = await travelsoftService.getPasajero(doc);
+      if (p) {
+        setNombres(p.nombres);
+        setApellidos(p.apellidos);
+        setCorreo(p.correo ?? '');
+        setTelefono(p.telefono ?? '');
+        setPasajeroExiste(true);
+        toast.success('Pasajero encontrado. Datos cargados.');
+      } else {
+        setPasajeroExiste(false);
+        toast.info('Pasajero no registrado: se creará su perfil al generar el ticket.');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo consultar el pasajero.');
+    } finally {
+      setBuscandoPasajero(false);
+    }
+  };
+
+  const handleGenerar = async () => {
+    const err = errorValidacion();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+
+    // Sin número de identificación: pasajero por defecto "CONSUMIDOR FINAL"
+    const sinDocumento = !documento.trim();
+    const docFinal = sinDocumento ? '222222222222' : documento.trim();
+    const nombresFinal = sinDocumento ? 'CONSUMIDOR' : nombres.trim();
+    const apellidosFinal = sinDocumento ? 'FINAL' : apellidos.trim();
+    const correoFinal = sinDocumento ? 'tickets@sactel.net' : (correo.trim() || undefined);
+    if (sinDocumento) {
+      setDocumento(docFinal);
+      setNombres(nombresFinal);
+      setApellidos(apellidosFinal);
+      setCorreo(correoFinal);
+    }
+
+    setGenerando(true);
+    try {
+      const t = await travelsoftService.venderTiquete({
+        cod_ruta: vehiculoSel!.cod_ruta,
+        puesto: puesto!,
+        numero_documento: docFinal,
+        nombres: nombresFinal,
+        apellidos: apellidosFinal,
+        correo: correoFinal,
+        telefono: telefono.trim() || undefined,
+        forma_pago: formaPago,
+        fecha: vehiculoSel.fecha_ruta ?? undefined,
+      });
+
+      // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core SACTel no responde,
+      // el tiquete se imprime igualmente con la numeración de la resolución local.
+      let ticketFinal: TicketVenta = t;
+      try {
+        const resultado = await dianService.emitirTiqueteTransporte(construirPayloadDian(t), {
+          'x-user-id': user?.id || 0,
+          'x-user-role': user?.rol || 'CAJERO',
+        });
+        const data = resultado?.data || resultado;
+        if (resultado && (resultado.success || data?.cufe)) {
+          ticketFinal = {
+            ...t,
+            cufe: data?.cufe || t.cufe,
+            qr_dian: data?.qr_dian || data?.qr_code_url || t.qr_dian,
+            numero_factura: data?.numero_factura || t.numero_factura,
+          };
+        } else {
+          toast.warning(resultado?.message || 'La DIAN no autorizó el tiquete; se imprime sin CUFE.');
+        }
+      } catch (err) {
+        console.error('Core DIAN no disponible:', err);
+        toast.warning('El Core DIAN no respondió; el tiquete se imprime sin CUFE.');
+      }
+
+      setTicket(ticketFinal);
+      if (ticketFinal.valor) setTotalCaja((p) => p + ticketFinal.valor);
+      toast.success(`Tiquete ${ticketFinal.consecutivo_pasajero} generado, imprimiendo...`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo generar el tiquete.');
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  const disponibles = sillas?.sillas.filter((s) => s.estado === 'disponible').length ?? 0;
+
+  if (loadingDashboard) {
+    return (
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+          <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+          <span className="text-xs font-bold tracking-wide">Cargando vehículos por despachar...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!dashboard) {
+    return (
+      <Card className="bg-white border-rose-200 shadow-sm">
+        <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+          <AlertTriangle className="w-8 h-8 text-rose-500" />
+          <div>
+            <h3 className="text-sm font-black text-slate-900">No se pudo cargar la taquilla</h3>
+            <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
+          </div>
+          <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={() => void cargarDashboard()}>
+            <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
       <div className="lg:col-span-2 space-y-4">
-        
-        {/* Filtros de Viaje */}
+        {/* 1. Vehículo por despachar */}
         <Card className="bg-white border-slate-200 shadow-sm">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-xs font-bold uppercase text-emerald-600">1. Buscar Viaje</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase text-emerald-600">1. Vehículo por Despachar</CardTitle>
+            <CardDescription className="text-[11px]">Seleccione el vehículo en plataforma o programado.</CardDescription>
           </CardHeader>
-          <CardContent className="p-4 pt-0 flex gap-2">
-            <Input onChange={(e) => setDestino(e.target.value)} placeholder="Destino (Ej: Medellín)" value={destino} />
-            <Button onClick={() => setViaje({ id: "B-20", hora: "18:00", ruta: `Bogota a ${destino || 'Destino'}` })} size="sm" className="bg-slate-900 text-white font-bold">Buscar</Button>
+          <CardContent className="p-4 pt-0">
+            {porDespachar.length === 0 ? (
+              <div className="p-4 rounded-xl bg-slate-50 border border-dashed text-xs text-slate-400 italic text-center">
+                No hay vehículos por despachar hoy.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {porDespachar.map((r) => {
+                  const activo = vehiculoSel?.cod_ruta === r.cod_ruta;
+                  const enPlataforma = (r.habilitada_ruta ?? '0') === '1';
+                  return (
+                    <button
+                      key={r.cod_ruta}
+                      type="button"
+                      onClick={() => handleSeleccionarVehiculo(r.cod_ruta)}
+                      className={cn(
+                        "rounded-xl border p-3 text-left transition-all",
+                        activo
+                          ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20"
+                          : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-black text-slate-900 font-mono">{r.placa_vehi || 'SIN PLACA'}</span>
+                        <Badge
+                          className={cn(
+                            "text-[9px] font-bold border",
+                            enPlataforma
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                              : "bg-amber-100 text-amber-800 border-amber-200"
+                          )}
+                        >
+                          {enPlataforma ? 'EN PLATAFORMA' : 'PROGRAMADO'}
+                        </Badge>
+                      </div>
+                      <div className="mt-1.5 space-y-0.5 text-[11px]">
+                        <p className="font-bold text-slate-700 truncate">{r.destino || '—'}</p>
+                        <div className="flex items-center justify-between text-slate-500">
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatHora(r.hora_ruta)}</span>
+                          {r.capacidad ? <span className="flex items-center gap-1"><Armchair className="w-3 h-3" /> {r.capacidad}</span> : null}
+                        </div>
+                        <div className="flex items-center justify-between pt-0.5 border-t border-slate-100">
+                          <span className="flex items-center gap-1 font-bold text-emerald-700">
+                            <Ticket className="w-3 h-3" /> {r.tickets_vendidos ?? 0} vendidos
+                          </span>
+                          {r.tickets_vendidos && r.capacidad ? (
+                            <span className="text-slate-400 font-mono">
+                              {Math.round(((r.tickets_vendidos ?? 0) / r.capacidad) * 100)}%
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {vehiculoSel && sillas && (
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
+                <div className="p-2 rounded-lg bg-slate-50 border">
+                  <span className="block text-slate-400 font-bold uppercase">Destino</span>
+                  <span className="font-black text-slate-900">{sillas.destino || '—'}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border">
+                  <span className="block text-slate-400 font-bold uppercase">Hora</span>
+                  <span className="font-black text-slate-900 font-mono">{formatHora(sillas.hora_ruta)}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border">
+                  <span className="block text-slate-400 font-bold uppercase">Capacidad</span>
+                  <span className="font-black text-slate-900">{sillas.capacidad} sillas</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border">
+                  <span className="block text-slate-400 font-bold uppercase">Tarifa</span>
+                  <span className="font-black text-emerald-700">${(sillas.valor ?? 0).toLocaleString('es-CO')}</span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Registro Pasajero */}
+        {/* 2. Croquis de Sillas */}
         <Card className="bg-white border-slate-200 shadow-sm">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-xs font-bold uppercase text-emerald-600">2. Cliente</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase text-emerald-600 flex items-center justify-between">
+              2. Sillas del Vehículo
+              {sillas && (
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] font-bold">
+                  {disponibles} disponibles · {sillas.ocupadas.length} ocupadas
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription className="text-[11px]">Las sillas grises están ocupadas.</CardDescription>
           </CardHeader>
-          <CardContent className="p-4 pt-0 flex gap-2">
-            <Input onChange={(e) => setDoc(e.target.value)} placeholder="Cédula de Ciudadanía" value={doc} />
-            <Button onClick={() => setPasajero({ nom: "Arturo Calle", cc: doc })} size="sm" className="bg-slate-100 border text-slate-800 font-bold">Validar</Button>
+          <CardContent className="p-4 pt-0">
+            {cargandoSillas && (
+              <div className="py-8 flex items-center justify-center text-slate-400 gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-600" /> Cargando sillas...
+              </div>
+            )}
+            {!cargandoSillas && !sillas && (
+              <p className="text-xs text-slate-400 italic py-6 text-center">Seleccione un vehículo para ver el croquis.</p>
+            )}
+            {!cargandoSillas && sillas && (
+              <div className="grid grid-cols-5 gap-2 border p-4 rounded-xl bg-slate-50 max-h-80 overflow-y-auto">
+                {sillas.sillas.map((s) => (
+                  <button
+                    key={s.numero}
+                    disabled={s.estado === 'ocupada'}
+                    onClick={() => setPuesto(s.numero)}
+                    className={cn(
+                      "h-12 rounded-lg text-xs font-bold border transition-all flex flex-col items-center justify-center gap-0.5",
+                      s.estado === 'ocupada'
+                        ? "bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed"
+                        : puesto === s.numero
+                          ? "bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-600/30"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300"
+                    )}
+                  >
+                    <Armchair className="w-3.5 h-3.5" />
+                    {s.numero}
+                  </button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Croquis de Asientos */}
+        {/* 3. Datos del Pasajero */}
         <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="p-4 flex flex-col items-center">
-            <span className="text-xs font-bold text-emerald-600 uppercase mb-3 block w-full">3. Asignar Asiento</span>
-            <div className="grid grid-cols-4 gap-2 border p-3 rounded-xl bg-slate-50">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setSilla(n)}
-                  className={cn("w-10 h-10 rounded-lg text-xs font-bold border transition-colors", silla === n ? "bg-emerald-600 text-white border-emerald-700" : "bg-white text-slate-700 hover:bg-slate-50")}
-                >
-                  {n}
-                </button>
-              ))}
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-xs font-bold uppercase text-emerald-600">3. Datos del Pasajero</CardTitle>
+            <CardDescription className="text-[11px]">Sin identificación se asigna CONSUMIDOR FINAL (222222222222) con correo tickets@sactel.net.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="doc" className="text-[11px] font-bold text-slate-600">Número de identificación</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="doc"
+                  value={documento}
+                  onChange={(e) => {
+                    setDocumento(e.target.value);
+                    setPasajeroExiste(false);
+                  }}
+                  onBlur={() => void buscarPasajero()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void buscarPasajero();
+                  }}
+                  placeholder="Ej: 80.799.518-2"
+                  className={cn(pasajeroExiste && "border-emerald-400 bg-emerald-50")}
+                />
+                {buscandoPasajero && <Loader2 className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />}
+                {pasajeroExiste && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+              </div>
+              {pasajeroExiste && (
+                <p className="text-[10px] text-emerald-700 font-medium">Pasajero registrado — datos cargados.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nombres" className="text-[11px] font-bold text-slate-600">Nombres</Label>
+              <Input id="nombres" value={nombres} onChange={(e) => setNombres(e.target.value)} placeholder="Ej: Fredy Alberto" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="apellidos" className="text-[11px] font-bold text-slate-600">Apellidos</Label>
+              <Input id="apellidos" value={apellidos} onChange={(e) => setApellidos(e.target.value)} placeholder="Ej: Parra Quitian" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="correo" className="text-[11px] font-bold text-slate-600">Correo electrónico</Label>
+              <Input id="correo" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="Ej: correo@ejemplo.com" />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="telefono" className="text-[11px] font-bold text-slate-600">Teléfono <span className="text-slate-400 font-normal">(opcional)</span></Label>
+              <Input id="telefono" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Ej: 310 000 0000" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Recaudo y Factura */}
+      {/* Recaudo */}
       <div className="space-y-4">
         <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="p-4 space-y-3">
-            <div className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs flex justify-between items-center">
-              <span className="font-bold">Total Pasaje:</span>
-              <span className="text-base font-black text-emerald-400">${precioTiquete.toLocaleString('es-CO')}</span>
-            </div>
-            <Button 
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10" 
-              disabled={loading || !silla || !pasajero} 
-              onClick={handleVender}
-            >
-              VENDER / GENERAR XML DIAN
-            </Button>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-xs font-bold uppercase text-slate-900 flex items-center justify-between">
+              Impresora USB
+              {impresoraInfo?.detectada ? (
+                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] font-bold">
+                  Conectada
+                </Badge>
+              ) : (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] font-bold">
+                  No detectada
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {impresoraInfo?.detectada ? (
+              <p className="text-[11px] text-emerald-600 font-semibold">
+                {impresoraInfo.impresora?.producto || 'Impresora térmica'} conectada. Los tiquetes se
+                imprimirán directo al generar la venta, sin intervención del usuario.
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400">
+                No hay impresora térmica USB detectada en el servidor. Verifique que esté conectada y
+                encendida, y que el usuario del servicio tenga acceso USB.
+              </p>
+            )}
           </CardContent>
         </Card>
 
-        {factura && (
-          <Card className="bg-white border-dashed border-2 border-slate-300 p-4 font-mono text-[11px] space-y-1.5 shadow-sm">
-            <div className="text-center font-bold border-b border-dashed pb-1">COMPROBANTE ELECTRÓNICO</div>
-            <p><strong>Factura:</strong> {factura.num}</p>
-            <p><strong>Cliente:</strong> {pasajero?.nom}</p>
-            <p><strong>Silla:</strong> {silla}</p>
-            <div className="pt-1 border-t border-dashed">
-              <span className="text-[9px] text-slate-400 block font-bold">HASH CUFE DIAN:</span>
-              <p className="bg-slate-50 p-1 rounded text-[9px] break-all leading-tight text-slate-500 border">{factura.cufe}</p>
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-xs font-bold uppercase text-slate-900">4. Forma de Pago</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="grid grid-cols-3 gap-2">
+              {formasPago.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFormaPago(f.id)}
+                  className={cn(
+                    "p-3 rounded-xl border-2 text-center transition-all",
+                    formaPago === f.id
+                      ? "border-emerald-600 bg-emerald-50"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  )}
+                >
+                  <span className={cn("mx-auto flex items-center justify-center", formaPago === f.id ? "text-emerald-600" : "text-slate-500")}>
+                    {f.icon}
+                  </span>
+                  <span className="block text-[11px] font-black mt-1 text-slate-800">{f.label}</span>
+                  <span className="block text-[9px] text-slate-400">{f.desc}</span>
+                </button>
+              ))}
             </div>
-          </Card>
+
+            <div className="mt-4 p-3 bg-slate-900 text-slate-100 rounded-lg text-xs flex justify-between items-center">
+              <span className="font-bold">Total Pasaje:</span>
+              <span className="text-base font-black text-emerald-400">
+                ${(sillas?.valor ?? 0).toLocaleString('es-CO')}
+              </span>
+            </div>
+
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 mt-3 gap-2"
+              disabled={generando}
+              onClick={() => void handleGenerar()}
+            >
+              {generando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
+              GENERAR TICKET DE VENTA
+            </Button>
+
+            {ticket && (
+              <Button variant="outline" className="w-full text-xs font-bold mt-2 gap-2" onClick={reiniciar}>
+                <RefreshCcw className="w-3.5 h-3.5" /> Nueva Venta
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Comprobante / impresión */}
+        {ticket && (
+          <div id="ticket-print" className="bg-white border border-slate-300 rounded-lg p-4 font-mono text-[11px] leading-relaxed shadow-sm space-y-1.5">
+            <div className="text-center font-black border-b border-dashed pb-1.5">
+              <p className="text-xs">FLOTA SAN VICENTE S.A.</p>
+              <p className="text-[10px] text-slate-500">SERVICIO PÚBLICO DE TRANSPORTE</p>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">TIQUETE N°</span>
+              <span className="font-black">{ticket.consecutivo_pasajero}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">FECHA</span>
+              <span>{ticket.fecha_ruta} {ticket.hora_tiquete || ''}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">RUTA</span>
+              <span>{ticket.cod_ruta}</span>
+            </div>
+            <p className="text-center font-black border-y border-dashed py-1.5 my-1">
+              {ticket.origen || '—'} → {ticket.destino || '—'}
+            </p>
+            <div className="flex justify-between">
+              <span className="text-slate-500">SALIDA</span>
+              <span>{formatHora(ticket.hora_ruta)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">VEHÍCULO</span>
+              <span>{ticket.placa_vehi || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">SILLA</span>
+              <span className="font-black">{ticket.puesto}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">PASAJERO</span>
+              <span className="max-w-[55%] text-right">{ticket.pasajero.nombre}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">DOCUMENTO</span>
+              <span>{ticket.pasajero.documento}</span>
+            </div>
+            {ticket.pasajero.correo && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">CORREO</span>
+                <span className="max-w-[55%] text-right break-all">{ticket.pasajero.correo}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-dashed pt-1.5 mt-1">
+              <span className="text-slate-500">VALOR</span>
+              <span className="font-black text-base">${(ticket.valor ?? 0).toLocaleString('es-CO')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">FORMA DE PAGO</span>
+              <span>{ticket.forma_pago}</span>
+            </div>
+            {ticket.mensaje && (
+              <p className="text-center text-[9px] text-slate-400 border-t border-dashed pt-1.5 mt-1">{ticket.mensaje}</p>
+            )}
+          </div>
         )}
       </div>
     </div>

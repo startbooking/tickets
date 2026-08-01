@@ -2,8 +2,8 @@ import apiClient from "./apiClient";
 
 // Interfaces de Tipos para TypeScript
 export interface LoginCredentials {
-  email: string;
-  password: string; // Tu base de datos usa password_hash
+  cedula_usuario: string;
+  password: string;
 }
 
 export interface AuthUser {
@@ -50,7 +50,7 @@ export interface SessionInfoResponse {
 
 export const authService = {
   /**
-   * Realiza el login del empleado en la plataforma de tiquetes
+   * Realiza el login del empleado contra el backend TravelSoft
    */
   login: async (credentials: LoginCredentials): Promise<UserResponse> => {
     const response = await apiClient.post<UserResponse>('/auth/login', credentials);

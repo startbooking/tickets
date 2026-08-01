@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
+import Logout from "./pages/Logout";
 import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
 import AgenciaAdminDashboard from "./pages/admin/AgenciaAdminDashboard";
 import CajeroDashboard from "./pages/cajero/CajeroDashboard";
@@ -53,6 +54,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/logout" element={<Logout />} />
             {/* 🎟️ Ruta del Taquillero / Operador de Planillas */}
             <Route 
               path="/cajero/dashboard" 

@@ -1,12 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/layout/Navbar';
 import { LoginModal } from '@/components/auth/LoginModal';
+import { useAuth } from '@/contexts/AuthContext';
+import { getDashboardPorNivel } from '@/services/travelsoftService';
 import { Bus, MapPin, Ticket, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Footer } from '@/components/layout/Footer';
 
 const Index = () => {
   const [loginOpen, setLoginOpen] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // Si ya hay una sesión activa, llevar al usuario a su dashboard por nivel
+  useEffect(() => {
+    if (user) {
+      navigate(getDashboardPorNivel(user), { replace: true });
+    }
+  }, [user, navigate]);
 
   const features = [
     {

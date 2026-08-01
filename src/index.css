@@ -109,3 +109,24 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Impresión del tiquete de venta: solo se imprime el comprobante */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #ticket-print,
+  #ticket-print * {
+    visibility: visible !important;
+  }
+  #ticket-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+}
+

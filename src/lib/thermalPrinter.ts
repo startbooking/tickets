@@ -398,6 +398,7 @@ declare global {
   interface Navigator {
     serial?: {
       requestPort(): Promise<SerialPortInstance>;
+      getPorts(): Promise<SerialPortInstance[]>;
     };
   }
 }
@@ -446,6 +447,33 @@ class ThermalPrinterService {
       return true;
     } catch (error) {
       console.error('Failed to connect to printer:', error);
+      return false;
+    }
+  }
+
+  // Reconnect to a previously granted port (no dialog needed)
+  async reconnect(): Promise<boolean> {
+    if (!this.isSupported()) {
+      return false;
+    }
+    try {
+      const ports = await navigator.serial?.getPorts();
+      if (!ports || ports.length === 0) {
+        return false;
+      }
+      this.port = ports[0];
+      await this.port.open({
+        baudRate: 9600,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 'none',
+      });
+      this.isConnected = true;
+      console.log('Printer reconnected automatically');
+      return true;
+    } catch (error) {
+      console.error('Failed to reconnect to printer:', error);
+      this.isConnected = false;
       return false;
     }
   }

@@ -44,7 +44,12 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    // El login también devuelve 401 por credenciales inválidas; ahí NO se trata
+    // como "sesión expirada": se deja que el modal muestre el error correcto.
+    const requestUrl = error.config?.url || '';
+    const isLoginRequest = requestUrl.includes('/auth/login');
+
+    if (error.response && error.response.status === 401 && !isLoginRequest) {
       console.warn("Sesión invalidada por el Core de SACTel o expiración de token.");
 
       // Limpieza de estados locales

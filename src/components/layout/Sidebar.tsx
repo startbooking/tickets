@@ -13,7 +13,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { mockUsuario } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SidebarProps {
   activeSection: string;
@@ -31,6 +31,10 @@ const menuItems = [
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+
+  const rolLabel = (user?.rol || 'CAJERO').replace('_', ' ');
+  const agenciaNombre = (user?.agencia as string) || 'SACTel';
 
   return (
     <aside
@@ -82,21 +86,22 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       <div className="p-4 border-t border-sidebar-border">
         {!collapsed && (
           <div className="mb-3">
-            <p className="font-medium text-sm truncate">{mockUsuario.nombreCompleto}</p>
-            <p className="text-xs text-sidebar-foreground/70">{mockUsuario.municipio.nombre}</p>
+            <p className="font-medium text-sm truncate">{user?.nombreCompleto || 'Usuario'}</p>
+            <p className="text-xs text-sidebar-foreground/70">{agenciaNombre}</p>
             <span className={cn(
-              'inline-block mt-1 text-xs px-2 py-0.5 rounded-full',
-              mockUsuario.tipoVinculacion === 'EMPLEADO' 
-                ? 'bg-success/20 text-success' 
+              'inline-block mt-1 text-xs px-2 py-0.5 rounded-full capitalize',
+              user?.rol === 'CAJERO'
+                ? 'bg-success/20 text-success'
                 : 'bg-warning/20 text-warning'
             )}>
-              {mockUsuario.tipoVinculacion}
+              {rolLabel.toLowerCase()}
             </span>
           </div>
         )}
         <Button
           variant="ghost"
           size={collapsed ? 'icon' : 'default'}
+          onClick={logout}
           className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
         >
           <LogOut className="w-4 h-4" />

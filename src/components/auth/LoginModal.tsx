@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authService } from '@/services/authService';
-import { useAuth } from '@/contexts/AuthContext'; // Descoméntalo si usas el contexto para actualizar el estado global
+import { travelsoftService, getDashboardPorNivel } from '@/services/travelsoftService';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
   const navigate = useNavigate();
   const { loginStateUpdate } = useAuth(); 
   
-  const [email, setEmail] = useState('');
+  const [cedula, setCedula] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,64 +33,29 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
     e.preventDefault();
     setError(null);
 
-    const emailTrimmed = email.trim();
+    const cedulaTrimmed = cedula.trim();
     
     // 1. Validaciones previas al envío (Ahorra pegarle a la API innecesariamente)
-    if (!emailTrimmed || !password) {
+    if (!cedulaTrimmed || !password) {
       setError('Todos los campos son obligatorios.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await authService.login({ 
-        email: emailTrimmed, 
-        password 
-      });
+      // 2. Login contra travelsoft.backend.lan
+      const result = await travelsoftService.login(cedulaTrimmed, password);
 
-      // 2. Manejo de respuesta negativa del Backend
-      if (!response || response.success === false) {
-        setError(response?.message || 'Credenciales incorrectas.');
-        setLoading(false);
-        return;
-      }
+      // 3. Persistimos la sesión (usuario + token) y actualizamos el contexto
+      loginStateUpdate({ user: { ...result.user, token: result.token } });
 
-      // 3. Extraemos el objeto de usuario de forma segura
-      // Se asume formato estándar: { success: true, data: { user: { rol: '...', ... }, token: '...' } }
-      const sessionData = response.data || response;
-      const user = sessionData.user;
-
-      if (!user || !user.rol) {
-        setError('El perfil de usuario no contiene un rol válido asignado.');
-        setLoading(false);
-        return;
-      }
-
-      // 4. Guardado y actualización del contexto de sesión (persiste en localStorage)
-      loginStateUpdate(sessionData);
-
-      // 5. Enrutamiento exacto por privilegios operativos de SACTel
+      // 4. Enrutamiento por nivel del usuario a su dashboard
       onOpenChange(false);
-      
-      const userRolNormalized = (user.rol || user.role || 'CAJERO').toUpperCase();
-      const rutasPorRol: Record<string, string> = {
-        'CAJERO': '/cajero/dashboard',
-        'DESPACHADOR': '/despachador',
-        'ADMIN_AGENCIA': '/agencia',
-        'SUPERADMIN': '/superadmin/dashboard'
-      };
-
-      const rutaDestino = rutasPorRol[userRolNormalized] || '/';
-      navigate(rutaDestino, { replace: true });
+      navigate(getDashboardPorNivel(result.user), { replace: true });
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error de conexión con el Core de SACTel.');
+      setError(err instanceof Error ? err.message : 'Error de conexión con el backend TravelSoft.');
     } finally {
       setLoading(false);
     }
@@ -117,15 +82,14 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email">Correo electrónico</Label>
+            <Label htmlFor="cedula">Número de documento</Label>
             <Input
-              id="email"
-              type="email"
-              placeholder="usuario@empresa.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="cedula"
+              placeholder="Cédula de ciudadanía"
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value)}
               disabled={loading}
-              autoComplete="email"
+              autoComplete="username"
               required
             />
           </div>
@@ -135,7 +99,7 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
             <Input
               id="password"
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Contraseña"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
