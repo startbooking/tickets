@@ -47,7 +47,7 @@ Archivo de estado de la sesión para retomar el trabajo más adelante. Actualiza
 1. Confirmar físicamente que el feed del tiquete corregido es de ~6 líneas (se imprimió el ticket corregido: 604 bytes).
 2. Levantar el Core DIAN (`backend.sactel.lan`) y probar emisión real CUFE/QR.
 3. (A largo plazo) Introducir los datos reales de la resolución DIAN tras las pruebas.
-4. Revisar `git status`: hay cambios sin commitear en `src/` (App, auth, sidebar, cajero, resoluciones, servicios, formatter, docs/CAMBIOS_BASE_DE_DATOS.md, etc.) — decidir commit.
+4. ~~Revisar `git status` y decidir commit~~ → **Hecho 2026-08-01**: commit `3860d35` (18 archivos, 2949 inserciones). Verificación previa: `tsc --noEmit` 0 errores, `npm run build` OK, `lint` solo 1 warning preexistente.
 
 ## Relevant Files
 - `/var/www/backend.lan/travelsoft/app/api/printer.py` + `app/api/travel.py` (`GET/POST /resoluciones/agencia`, `PUT/DELETE /resoluciones/agencia/{id}`, `_get_resolucion_activa`, `_agencia_objetivo`, `_rol_usuario`, `_agencia_usuario`).
