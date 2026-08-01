@@ -40,12 +40,16 @@ Archivo de estado de la sesión para retomar el trabajo más adelante. Actualiza
 ### Active
 - (ninguno — pendiente de validación humana de la impresión con feed corregido)
 
-### Blocked
-- Core DIAN (`backend.sactel.lan`) caído en runtime (HTTP 000) → el CUFE/QR real no se puede emitir; el fallback imprime sin CUFE y muestra toast de advertencia.
+### Active
+- (ninguno — Core DIAN expuesto pero sin emitir CUFE todavía)
+
+### Blocked (emisión CUFE real)
+- ~~Core DIAN caído~~ → **RESUELTO 2026-08-01**: `backend.sactel.lan` no resolvía (el wildcard `*.sactel.lan` de /etc/hosts no aplica). Se agregó `127.0.0.1 backend.sactel.lan` a `/etc/hosts` y vhost Apache `backend.sactel.lan.conf` → proxy `127.0.0.1:8008` (SACTel Cloud FE Engine, `/var/www/backend.lan/dian-fe`). Script idempotente: `/tmp/opencode/levantar_backend_dian.sh`. Verificado: `GET /api/v1/empresas` → 200; `POST /api/v1/tiquete-transporte/emitir` con token → 422 (validación de esquema, auth OK).
+- **Falta configurar el Core para emitir CUFE** (BD `facturacore_db`): `api_keys` id=6 valida el token (`sk_live_7777777…`, empresa_id=6 NIT `777777777` "OTRA EMPRESA TEST", ambiente 2=pruebas, 1100 folios, 0 consumidos) pero **`resoluciones` está vacía** y **`certificados_digitales` está vacío** → `_obtener_empresa_y_resolucion` y `_firmar_y_enviar` fallarían (400). Además `DIAN_SOFTWARE_ID`/`DIAN_SOFTWARE_PASSWORD` están comentados en `dian-fe/.env`.
 
 ## Next Move
 1. Confirmar físicamente que el feed del tiquete corregido es de ~6 líneas (se imprimió el ticket corregido: 604 bytes).
-2. Levantar el Core DIAN (`backend.sactel.lan`) y probar emisión real CUFE/QR.
+2. Probar emisión real CUFE/QR: insertar resolución `TIQUETE_TRANSPORTE` para empresa 6 en `facturacore_db`, cargar certificado digital activo/vigente, configurar `DIAN_SOFTWARE_ID`/pin de habilitación y disparar `POST /tiquete-transporte/emitir`.
 3. (A largo plazo) Introducir los datos reales de la resolución DIAN tras las pruebas.
 4. ~~Revisar `git status` y decidir commit~~ → **Hecho 2026-08-01**: commit `3860d35` (18 archivos, 2949 inserciones). Verificación previa: `tsc --noEmit` 0 errores, `npm run build` OK, `lint` solo 1 warning preexistente.
 
