@@ -38,10 +38,7 @@ Archivo de estado de la sesión para retomar el trabajo más adelante. Actualiza
 - **Impresión física DIAN validada**: QR escanea correctamente (CUFE sintético `7CBC8F46A05C96A491A61565DD8648FEEA35C834`). Primera impresión 606 bytes (feed bug), después de corregir ESC_POS reimpreso **604 bytes con feed de 6 líneas** (HTTP 200 cola TMU) — pendiente confirmación humana del feed corregido.
 
 ### Active
-- (ninguno — pendiente de validación humana de la impresión con feed corregido)
-
-### Active
-- (ninguno — Core DIAN expuesto pero sin emitir CUFE todavía)
+- (ninguno — Core DIAN expuesto pero sin emitir CUFE todavía; impresión física pendiente de validación humana del feed)
 
 ### Blocked (emisión CUFE real)
 - ~~Core DIAN caído~~ → **RESUELTO 2026-08-01**: `backend.sactel.lan` no resolvía (el wildcard `*.sactel.lan` de /etc/hosts no aplica). Se agregó `127.0.0.1 backend.sactel.lan` a `/etc/hosts` y vhost Apache `backend.sactel.lan.conf` → proxy `127.0.0.1:8008` (SACTel Cloud FE Engine, `/var/www/backend.lan/dian-fe`). Script idempotente: `/tmp/opencode/levantar_backend_dian.sh`. Verificado: `GET /api/v1/empresas` → 200; `POST /api/v1/tiquete-transporte/emitir` con token → 422 (validación de esquema, auth OK).
@@ -52,6 +49,12 @@ Archivo de estado de la sesión para retomar el trabajo más adelante. Actualiza
 2. Probar emisión real CUFE/QR: insertar resolución `TIQUETE_TRANSPORTE` para empresa 6 en `facturacore_db`, cargar certificado digital activo/vigente, configurar `DIAN_SOFTWARE_ID`/pin de habilitación y disparar `POST /tiquete-transporte/emitir`.
 3. (A largo plazo) Introducir los datos reales de la resolución DIAN tras las pruebas.
 4. ~~Revisar `git status` y decidir commit~~ → **Hecho 2026-08-01**: commit `3860d35` (18 archivos, 2949 inserciones). Verificación previa: `tsc --noEmit` 0 errores, `npm run build` OK, `lint` solo 1 warning preexistente.
+
+## Mock resoluciones DIAN (2026-08-01)
+Resoluciones de prueba en BD `travelSoft.resoluciones` para las agencias operativas (con cajeros):
+`id 5` BOGOTA `18764000000001` FSV (consec 4) · `id 6` TOCAIMA `...02` TCM · `id 7` LA MESA `...03` LMA · `id 8` IBAGUE `...04` IBA · `id 9` GIRARDOT `...05` GRD · `id 10` MOSQUERA `...06` MSQ · `id 11` PTO BERRIO `...07` PTB · `id 12` PTO BOYACA `...08` PBA · `id 13` APULO `...09` APL · `id 14` ANAPOIMA `...10` ANP · `id 15` HONDA `...11` HDA · `id 16` HOSPICIO `...12` HSP. Rango 1–1.000.000, vigencia 2026-01-01→2027-12-31, activas, notas "Resolución de prueba (mock DIAN)". La venta de un tiquete usa la resolución activa de la agencia del cajero.
+**Verificación impresión (flujo completo)**: login cajero `79.404.593` → venta ruta 1 (BOGOTA→ZIPACON, EQQ-031, puesto 1, doc 79900002, $14.000) → `numero_factura=FSV3`, `resolucion_numero=18764000000001` → ESC/POS 481 bytes → `POST /impresion/ticket` → **HTTP 200, impresora TMU, 481 bytes** (sin CUFE/QR: el Core aún no emite).
+Notas: (a) `POST /ventas/tiquete` devuelve `id_planilla: 0` (bug menor: `cursor.lastrowid` se pierde tras `SELECT LAST_INSERT_ID()`; la fila sí se inserta, ej. `45470144`); (b) hubo venta concurrente de otro usuario (`80.799.518-2`, FSV4, planilla `45470145`) — el entorno está en uso.
 
 ## Relevant Files
 - `/var/www/backend.lan/travelsoft/app/api/printer.py` + `app/api/travel.py` (`GET/POST /resoluciones/agencia`, `PUT/DELETE /resoluciones/agencia/{id}`, `_get_resolucion_activa`, `_agencia_objetivo`, `_rol_usuario`, `_agencia_usuario`).
