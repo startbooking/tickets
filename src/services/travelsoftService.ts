@@ -13,6 +13,7 @@ export interface TravelsoftUser {
   rol: string; // SUPERADMIN | ADMIN | AGENCIA | CAJERO | DESPACHADOR
   id_orides: number;
   agencia?: string | null;
+  tipo_agencia?: 'principal' | 'satelite' | null;
   nivel_usuario: number;
   [key: string]: unknown;
 }
@@ -48,6 +49,7 @@ export interface VehiculoEstado {
   conductor: string | null;
   capacidad: number | null;
   tickets_vendidos?: number | null;
+  estado_sitio?: string | null;
 }
 
 export interface DashboardCajeroData {
@@ -73,10 +75,48 @@ export interface DashboardCajeroResponse {
   data: DashboardCajeroData;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Agencias satélite: ciudades intermedias por las que pasa la ruta.
+// Venden tiquetes de los vehículos que pasan hoy por su ciudad; NO programan
+// viajes ni reportan salida/llegada (no tienen vehículos en parqueadero).
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface SateliteSegmento {
+  destino_ruta: number;
+  destino: string | null;
+  valor: number | null;
+}
+
+export interface SateliteVehiculo {
+  cod_ruta: number;
+  fecha_ruta: string | null;
+  placa_vehi: string | null;
+  hora_ruta: number | null;
+  hora_despacho: string | null;
+  conductor: string | null;
+  origen_ruta: number | null;
+  origen: string | null;
+  destino_ruta: number | null;
+  destino: string | null;
+  capacidad: number | null;
+  tickets_vendidos: number | null;
+  segmentos: SateliteSegmento[];
+}
+
+export interface SateliteDashboardData {
+  fecha: string;
+  id_orides: number;
+  agencia: string | null;
+  tipo_agencia: 'satelite';
+  resumen: { vehiculos: number } | null;
+  vehiculos: SateliteVehiculo[];
+}
+
 export interface EnTransitoItem {
   cod_ruta: number;
   origen_ruta: number;
   fecha_ruta: string | null;
+  fecha_llegada: string | null;
   origen: string | null;
   destino: string | null;
   placa_vehi: string | null;
@@ -84,6 +124,8 @@ export interface EnTransitoItem {
   hora_despacho: string | null;
   hora_llegada: string | null;
   conductor: string | null;
+  novedad_llegada: string | null;
+  estado_sitio: string | null;
 }
 
 export interface LlegadasData {
@@ -148,6 +190,10 @@ export interface SillasData {
   valor: number | null;
   ocupadas: number[];
   sillas: SillaItem[];
+  // Tramo origen (presente en el croquis de las agencias satélite)
+  origen?: string | null;
+  origen_ruta?: number | null;
+  segmentos?: SateliteSegmento[];
 }
 
 export type FormaPago = "EFECTIVO" | "TARJETA" | "QR";
@@ -162,6 +208,10 @@ export interface VentaTiqueteInput {
   telefono?: string;
   forma_pago: FormaPago;
   fecha?: string;
+  // Tramo vendido (obligatorio en agencias satélite)
+  origen_ruta?: number;
+  destino_ruta?: number;
+  valor?: number;
 }
 
 export interface TicketVenta {
@@ -292,8 +342,10 @@ export function normalizeRol(user: { rol?: string; nivel_usuario?: number }): Ap
 
 /**
  * Devuelve la ruta del dashboard según el nivel del usuario.
+ * Las agencias satélite siempre van al panel móvil /satelite (solo venta).
  */
-export function getDashboardPorNivel(user: { rol?: string; nivel_usuario?: number }): string {
+export function getDashboardPorNivel(user: { rol?: string; nivel_usuario?: number; tipo_agencia?: string | null }): string {
+  if (user.tipo_agencia === 'satelite') return '/satelite';
   return DASHBOARD_POR_ROL[normalizeRol(user)];
 }
 
@@ -323,6 +375,19 @@ export function formatHora(minutos: number | null | undefined): string {
   const m = Math.floor(total % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
 }
+
+/**
+ * Estado del sitio donde queda el vehículo tras reportar su llegada,
+ * para ser despachado más adelante desde la agencia.
+ */
+export type EstadoSitio = "EN_PARQUEADERO" | "EN_SITIO";
+
+export const ESTADOS_SITIO: EstadoSitio[] = ["EN_PARQUEADERO", "EN_SITIO"];
+
+export const ESTADO_SITIO_LABEL: Record<EstadoSitio, string> = {
+  EN_PARQUEADERO: "En Parqueadero",
+  EN_SITIO: "En Sitio",
+};
 
 export const travelsoftService = {
   /**
@@ -382,6 +447,54 @@ export const travelsoftService = {
   },
 
   /**
+   * Panel de la agencia satélite: vehículos que pasan hoy por la ciudad.
+   * GET /dashboard/satelite?fecha=YYYY-MM-DD (403 si la agencia no es satélite).
+   */
+  getDashboardSatelite: async (fecha?: string): Promise<SateliteDashboardData> => {
+    const response = await apiClient.get<{ success: boolean; data: SateliteDashboardData }>(
+      "/dashboard/satelite",
+      { params: fecha ? { fecha } : undefined }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudieron cargar los vehículos de la agencia satélite.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * Croquis de sillas de un vehículo que pasa por la agencia satélite.
+   * GET /ventas/satelite/sillas?cod_ruta=&fecha=
+   */
+  getSillasSatelite: async (cod_ruta: number, fecha?: string): Promise<SillasData> => {
+    const response = await apiClient.get<{ success: boolean; data: SillasData }>(
+      "/ventas/satelite/sillas",
+      { params: { cod_ruta, ...(fecha ? { fecha } : {}) } }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudieron cargar las sillas del vehículo.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * Vende el tiquete de un tramo en una agencia satélite.
+   * POST /ventas/satelite/tiquete
+   */
+  venderTiqueteSatelite: async (input: VentaTiqueteInput): Promise<TicketVenta> => {
+    const response = await apiClient.post<{ success: boolean; data: TicketVenta }>(
+      "/ventas/satelite/tiquete",
+      input
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudo generar el tiquete.");
+    }
+    return payload.data;
+  },
+
+  /**
    * Despacha un vehículo de la agencia autenticada (POST /despacho/vehiculo).
    * Marca la ruta como despachada_ruta='1' con hora_despacho.
    */
@@ -420,12 +533,17 @@ export const travelsoftService = {
   reportarLlegada: async (
     cod_ruta: number,
     origen_ruta: number,
-    fecha?: string
+    options: { fecha?: string; fecha_llegada?: string; hora?: string; conductor?: string; novedad?: string; estado_sitio?: string } = {}
   ): Promise<OperacionResponse["data"]> => {
     const response = await apiClient.post<OperacionResponse>("/llegadas/reportar", {
       cod_ruta,
       origen_ruta,
-      ...(fecha ? { fecha } : {}),
+      ...(options.fecha ? { fecha: options.fecha } : {}),
+      ...(options.fecha_llegada ? { fecha_llegada: options.fecha_llegada } : {}),
+      ...(options.hora ? { hora: options.hora } : {}),
+      ...(options.conductor ? { conductor: options.conductor } : {}),
+      ...(options.novedad ? { novedad: options.novedad } : {}),
+      ...(options.estado_sitio ? { estado_sitio: options.estado_sitio } : {}),
     });
     const payload = response.data;
     if (!payload || payload.success !== true) {

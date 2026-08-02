@@ -12,6 +12,7 @@ import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
 import AgenciaAdminDashboard from "./pages/admin/AgenciaAdminDashboard";
 import CajeroDashboard from "./pages/cajero/CajeroDashboard";
 import DespachadorDashboard from "./pages/despacho/DespachadorDashboard";
+import SateliteDashboard from "./pages/satelite/SateliteDashboard";
 
 
 const queryClient = new QueryClient();
@@ -70,6 +71,17 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRole="DESPACHADOR">
                   <DespachadorDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            {/* 📱 Panel móvil de la Agencia Satélite (solo venta de tiquetes).
+                Internamente valida que la agencia autenticada sea satélite
+                (403 en el backend) y redirige a su dashboard según el rol. */}
+            <Route 
+              path="/satelite" 
+              element={
+                <ProtectedRoute>
+                  <SateliteDashboard />
                 </ProtectedRoute>
               } 
             />

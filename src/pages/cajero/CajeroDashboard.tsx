@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, splitNombreCompleto, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, splitNombreCompleto, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL } from '@/services/travelsoftService';
 import { dianService } from '@/services/dianService';
 import type { TiqueteTransporteDTO } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
@@ -807,11 +808,122 @@ function NuevaRutaDialog({
     </Dialog>
   );
 }
+function SitioBadge({ estado }: { estado?: string | null }) {
+  if (!estado) return null;
+  const label = ESTADO_SITIO_LABEL[estado as EstadoSitio] ?? estado;
+  const esParqueadero = estado === "EN_PARQUEADERO";
+  return (
+    <Badge className={cn(
+      "text-[10px] font-bold border shrink-0",
+      esParqueadero
+        ? "bg-sky-100 text-sky-800 border-sky-200"
+        : "bg-emerald-100 text-emerald-800 border-emerald-200"
+    )}>
+      {label}
+    </Badge>
+  );
+}
+
+function DialogoRegistrarLlegada({ vehiculo, onClose, onConfirm, reportando }: {
+  vehiculo: EnTransitoItem | null;
+  onClose: () => void;
+  onConfirm: (opciones: { fecha_llegada: string; hora: string; conductor?: string; novedad?: string; estado_sitio: EstadoSitio }) => void;
+  reportando: boolean;
+}) {
+  const [fechaLlegada, setFechaLlegada] = useState("");
+  const [hora, setHora] = useState("");
+  const [conductor, setConductor] = useState("");
+  const [novedad, setNovedad] = useState("");
+  const [estado, setEstado] = useState<EstadoSitio>("EN_SITIO");
+
+  useEffect(() => {
+    const ahora = new Date();
+    const hh = ahora.getHours().toString().padStart(2, "0");
+    const mm = ahora.getMinutes().toString().padStart(2, "0");
+    setFechaLlegada(ahora.toISOString().slice(0, 10));
+    setHora(`${hh}:${mm}`);
+    setConductor(vehiculo?.conductor ?? "");
+    setNovedad("");
+    setEstado("EN_SITIO");
+  }, [vehiculo]);
+
+  const abierto = vehiculo !== null;
+
+  return (
+    <Dialog open={abierto} onOpenChange={(open) => { if (!open && !reportando) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-slate-900">
+            <MapPin className="w-4 h-4 text-emerald-600" />
+            Registrar llegada · <span className="font-mono">{vehiculo?.placa_vehi || "SIN PLACA"}</span>
+          </DialogTitle>
+          <DialogDescription className="text-[11px]">
+            {vehiculo
+              ? <>Desde <strong>{vehiculo.origen || "—"}</strong> · Salida {vehiculo.hora_despacho || formatHora(vehiculo.hora_ruta)}</>
+              : " "}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-bold text-slate-700">Fecha de llegada</Label>
+            <Input type="date" value={fechaLlegada} onChange={(e) => setFechaLlegada(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-bold text-slate-700">Hora de llegada</Label>
+            <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-[11px] font-bold text-slate-700">Estado del vehículo</Label>
+          <Select value={estado} onValueChange={(v) => setEstado(v as EstadoSitio)}>
+            <SelectTrigger className="text-xs">
+              <SelectValue placeholder="Seleccione el estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="EN_SITIO">En Sitio</SelectItem>
+              <SelectItem value="EN_PARQUEADERO">En Parqueadero</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-slate-500">El vehículo quedará disponible para ser despachado más adelante.</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-[11px] font-bold text-slate-700">Conductor</Label>
+          <Input value={conductor} onChange={(e) => setConductor(e.target.value)} placeholder="Nombre del conductor" />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-[11px] font-bold text-slate-700">Novedades de la llegada</Label>
+          <Textarea value={novedad} onChange={(e) => setNovedad(e.target.value)} rows={3} placeholder="Ej: retraso por derrumbe, avería mecánica, pasajeros en espera..." />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button size="sm" variant="outline" className="text-xs font-bold" onClick={onClose} disabled={reportando}>
+            Cancelar
+          </Button>
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] gap-1.5"
+            disabled={reportando || !fechaLlegada || !hora || !estado}
+            onClick={() => onConfirm({ fecha_llegada: fechaLlegada, hora, conductor, novedad, estado_sitio: estado })}
+          >
+            {reportando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            Registrar Llegada
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SubViewLlegadas() {
   const [data, setData] = useState<EnTransitoItem[] | null>(null);
   const [llegados, setLlegados] = useState<EnTransitoItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportando, setReportando] = useState<number | null>(null);
+  const [vehiculoDialogo, setVehiculoDialogo] = useState<EnTransitoItem | null>(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -832,26 +944,28 @@ function SubViewLlegadas() {
     void cargar();
   }, [cargar]);
 
-  const handleReportar = async (v: EnTransitoItem) => {
+  const handleReportar = async (
+    v: EnTransitoItem,
+    opciones: { fecha_llegada: string; hora: string; conductor?: string; novedad?: string; estado_sitio: EstadoSitio }
+  ) => {
     setReportando(v.cod_ruta);
     try {
-      const res = await travelsoftService.reportarLlegada(v.cod_ruta, v.origen_ruta, v.fecha_ruta ?? undefined);
-      toast.success(`Llegada de ${v.placa_vehi || v.cod_ruta} reportada a las ${res?.hora_llegada ?? ""}.`);
+      const res = await travelsoftService.reportarLlegada(v.cod_ruta, v.origen_ruta, {
+        fecha: v.fecha_ruta ?? undefined,
+        fecha_llegada: opciones.fecha_llegada,
+        hora: opciones.hora,
+        conductor: opciones.conductor,
+        novedad: opciones.novedad,
+        estado_sitio: opciones.estado_sitio,
+      });
+      toast.success(`Llegada de ${v.placa_vehi || v.cod_ruta} registrada a las ${res?.hora_llegada ?? opciones.hora}.`);
       await cargar();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al reportar la llegada.");
     } finally {
       setReportando(null);
+      setVehiculoDialogo(null);
     }
-  };
-
-  const confirmarLlegada = (v: EnTransitoItem) => {
-    toast(`Reportar llegada de ${v.placa_vehi || "vehículo"} desde ${v.origen || "origen"}?`, {
-      action: {
-        label: "Reportar llegada",
-        onClick: () => void handleReportar(v),
-      },
-    });
   };
 
   if (loading) {
@@ -882,50 +996,12 @@ function SubViewLlegadas() {
     );
   }
 
-  const ItemRow = ({ v, onReport }: { v: EnTransitoItem; onReport?: () => void }) => (
-    <li className="py-3 flex items-center justify-between gap-3">
-      <div className="min-w-0 flex items-center gap-3">
-        <div className="p-2.5 rounded-xl bg-slate-100 text-slate-600 shrink-0">
-          <Bus className="w-4 h-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
-          <p className="text-[11px] text-slate-500 truncate">
-            Desde <strong className="text-slate-700">{v.origen || "—"}</strong>
-            {v.conductor ? ` · ${v.conductor}` : ""}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="text-right">
-          <p className="text-[11px] font-bold text-slate-700 font-mono">
-            Salida {v.hora_despacho || formatHora(v.hora_ruta)}
-          </p>
-          {v.hora_llegada && (
-            <p className="text-[11px] font-bold text-emerald-700 font-mono">Llegó {v.hora_llegada}</p>
-          )}
-        </div>
-        {onReport && (
-          <Button
-            size="sm"
-            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
-            disabled={reportando === v.cod_ruta}
-            onClick={onReport}
-          >
-            {reportando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
-            Reportar Llegada
-          </Button>
-        )}
-      </div>
-    </li>
-  );
-
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <div>
         <h2 className="text-xl font-black text-slate-900 tracking-tight">Llegadas a la Agencia</h2>
         <p className="text-xs text-slate-500">
-          Vehículos despachados desde otras agencias principales con destino a esta agencia.
+          Vehículos despachados desde otras agencias con destino a esta agencia.
         </p>
       </div>
 
@@ -935,15 +1011,47 @@ function SubViewLlegadas() {
             En Tránsito
             <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] font-bold">{data.length}</Badge>
           </CardTitle>
-          <CardDescription className="text-[11px]">Reporte la llegada cuando el vehículo esté en andén.</CardDescription>
+          <CardDescription className="text-[11px]">Registre la llegada cuando el vehículo esté en andén.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           {data.length === 0 ? (
             <p className="text-xs text-slate-400 italic py-6 text-center">No hay vehículos en tránsito hacia esta agencia.</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {data.map((v) => <ItemRow key={v.cod_ruta} v={v} onReport={() => confirmarLlegada(v)} />)}
-            </ul>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {data.map((v) => (
+                <div key={v.cod_ruta} className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 shrink-0">
+                        <Bus className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          Desde <strong className="text-slate-700">{v.origen || "—"}</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Salida</p>
+                      <p className="text-[11px] font-bold text-slate-700 font-mono">{v.hora_despacho || formatHora(v.hora_ruta)}</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {v.conductor ? <><User className="w-3 h-3 inline mr-1 text-slate-400" />{v.conductor}</> : "Sin conductor"}
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] gap-1.5"
+                    disabled={reportando === v.cod_ruta}
+                    onClick={() => setVehiculoDialogo(v)}
+                  >
+                    {reportando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                    Registrar Llegada
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -951,21 +1059,61 @@ function SubViewLlegadas() {
       <Card className="bg-white border-slate-200 shadow-sm">
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-xs font-bold uppercase text-slate-900 flex items-center justify-between">
-            Llegados
+            Llegados · Listos para despachar
             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] font-bold">{llegados.length}</Badge>
           </CardTitle>
-          <CardDescription className="text-[11px]">Vehículos cuya llegada ya fue reportada hoy.</CardDescription>
+          <CardDescription className="text-[11px]">Vehículos que llegaron hoy y quedaron en parqueadero o en sitio.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           {llegados.length === 0 ? (
             <p className="text-xs text-slate-400 italic py-6 text-center">Aún no se reportan llegadas hoy.</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {llegados.map((v) => <ItemRow key={v.cod_ruta} v={v} />)}
-            </ul>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {llegados.map((v) => (
+                <div key={v.cod_ruta} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                        <Bus className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          Desde <strong className="text-slate-700">{v.origen || "—"}</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <SitioBadge estado={v.estado_sitio} />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="flex items-center gap-1 font-bold text-emerald-700">
+                      <Clock className="w-3 h-3" /> Llegó {v.hora_llegada || "—"}
+                    </span>
+                    <span className="text-slate-500 font-mono">{v.fecha_llegada || v.fecha_ruta || ""}</span>
+                  </div>
+                  {v.novedad_llegada && (
+                    <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 line-clamp-2">
+                      {v.novedad_llegada}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {v.conductor ? <><User className="w-3 h-3 inline mr-1 text-slate-400" />{v.conductor}</> : "Sin conductor"}
+                  </p>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
+
+      <DialogoRegistrarLlegada
+        vehiculo={vehiculoDialogo}
+        reportando={reportando !== null}
+        onClose={() => setVehiculoDialogo(null)}
+        onConfirm={(opciones) => {
+          if (vehiculoDialogo) void handleReportar(vehiculoDialogo, opciones);
+        }}
+      />
     </div>
   );
 }
@@ -1412,57 +1560,10 @@ function SubViewVentas({
           </CardContent>
         </Card>
 
-        {/* 2. Croquis de Sillas */}
+        {/* 2. Datos del Pasajero */}
         <Card className="bg-white border-slate-200 shadow-sm">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-xs font-bold uppercase text-emerald-600 flex items-center justify-between">
-              2. Sillas del Vehículo
-              {sillas && (
-                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] font-bold">
-                  {disponibles} disponibles · {sillas.ocupadas.length} ocupadas
-                </Badge>
-              )}
-            </CardTitle>
-            <CardDescription className="text-[11px]">Las sillas grises están ocupadas.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {cargandoSillas && (
-              <div className="py-8 flex items-center justify-center text-slate-400 gap-2">
-                <Loader2 className="w-5 h-5 animate-spin text-emerald-600" /> Cargando sillas...
-              </div>
-            )}
-            {!cargandoSillas && !sillas && (
-              <p className="text-xs text-slate-400 italic py-6 text-center">Seleccione un vehículo para ver el croquis.</p>
-            )}
-            {!cargandoSillas && sillas && (
-              <div className="grid grid-cols-5 gap-2 border p-4 rounded-xl bg-slate-50 max-h-80 overflow-y-auto">
-                {sillas.sillas.map((s) => (
-                  <button
-                    key={s.numero}
-                    disabled={s.estado === 'ocupada'}
-                    onClick={() => setPuesto(s.numero)}
-                    className={cn(
-                      "h-12 rounded-lg text-xs font-bold border transition-all flex flex-col items-center justify-center gap-0.5",
-                      s.estado === 'ocupada'
-                        ? "bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed"
-                        : puesto === s.numero
-                          ? "bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-600/30"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300"
-                    )}
-                  >
-                    <Armchair className="w-3.5 h-3.5" />
-                    {s.numero}
-                  </button>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 3. Datos del Pasajero */}
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-xs font-bold uppercase text-emerald-600">3. Datos del Pasajero</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase text-emerald-600">2. Datos del Pasajero</CardTitle>
             <CardDescription className="text-[11px]">Sin identificación se asigna CONSUMIDOR FINAL (222222222222) con correo tickets@sactel.net.</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1506,6 +1607,53 @@ function SubViewVentas({
               <Label htmlFor="telefono" className="text-[11px] font-bold text-slate-600">Teléfono <span className="text-slate-400 font-normal">(opcional)</span></Label>
               <Input id="telefono" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Ej: 310 000 0000" />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Croquis de Sillas */}
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-xs font-bold uppercase text-emerald-600 flex items-center justify-between">
+              3. Sillas del Vehículo
+              {sillas && (
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] font-bold">
+                  {disponibles} disponibles · {sillas.ocupadas.length} ocupadas
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription className="text-[11px]">Las sillas grises están ocupadas.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {cargandoSillas && (
+              <div className="py-8 flex items-center justify-center text-slate-400 gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-600" /> Cargando sillas...
+              </div>
+            )}
+            {!cargandoSillas && !sillas && (
+              <p className="text-xs text-slate-400 italic py-6 text-center">Seleccione un vehículo para ver el croquis.</p>
+            )}
+            {!cargandoSillas && sillas && (
+              <div className="grid grid-cols-5 gap-2 border p-4 rounded-xl bg-slate-50 max-h-80 overflow-y-auto">
+                {sillas.sillas.map((s) => (
+                  <button
+                    key={s.numero}
+                    disabled={s.estado === 'ocupada'}
+                    onClick={() => setPuesto(s.numero)}
+                    className={cn(
+                      "h-12 rounded-lg text-xs font-bold border transition-all flex flex-col items-center justify-center gap-0.5",
+                      s.estado === 'ocupada'
+                        ? "bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed"
+                        : puesto === s.numero
+                          ? "bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-600/30"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300"
+                    )}
+                  >
+                    <Armchair className="w-3.5 h-3.5" />
+                    {s.numero}
+                  </button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
