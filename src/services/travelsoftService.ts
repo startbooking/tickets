@@ -87,12 +87,17 @@ export interface SateliteSegmento {
   valor: number | null;
 }
 
+export type EstadoVehiculoSatelite = 'POR_DESPACHAR' | 'EN_TRANSITO' | 'LLEGADO';
+
 export interface SateliteVehiculo {
   cod_ruta: number;
   fecha_ruta: string | null;
   placa_vehi: string | null;
   hora_ruta: number | null;
   hora_despacho: string | null;
+  despachada_ruta?: string | null;
+  llegada_ruta?: string | null;
+  estado?: EstadoVehiculoSatelite | null;
   conductor: string | null;
   origen_ruta: number | null;
   origen: string | null;
@@ -101,6 +106,46 @@ export interface SateliteVehiculo {
   capacidad: number | null;
   tickets_vendidos: number | null;
   segmentos: SateliteSegmento[];
+}
+
+export interface TurnoSateliteVenta {
+  id_planilla: number;
+  consecutivo: number;
+  hora: string;
+  cod_ruta: number;
+  placa: string;
+  origen: string;
+  destino: string;
+  asiento: number;
+  pasajero: string;
+  documento?: string;
+  valor: number;
+  forma_pago: string;
+  numero_factura?: string | null;
+  resolucion_numero?: string | null;
+  cufe?: string | null;
+  qr_dian?: string | null;
+  nit_emisor?: string | null;
+  fecha_ruta?: string | null;
+  hora_ruta?: number | null;
+}
+
+export interface CierreTurnoSateliteInput {
+  operador: string;
+  inicio: string;
+  cierre: string;
+  tiquetes: number;
+  total: number;
+  efectivo: number;
+  tarjeta: number;
+  qr: number;
+  ventas: TurnoSateliteVenta[];
+}
+
+export interface CierreTurnoSateliteResult {
+  id_turno: number;
+  tiquetes: number;
+  total: number;
 }
 
 export interface SateliteDashboardData {
@@ -490,6 +535,22 @@ export const travelsoftService = {
     const payload = response.data;
     if (!payload || payload.success !== true || !payload.data) {
       throw new Error("No se pudo generar el tiquete.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * Persiste el cierre de turno de la agencia satélite.
+   * POST /turnos/satelite/cierre
+   */
+  cerrarTurnoSatelite: async (input: CierreTurnoSateliteInput): Promise<CierreTurnoSateliteResult> => {
+    const response = await apiClient.post<{ success: boolean; data: CierreTurnoSateliteResult }>(
+      "/turnos/satelite/cierre",
+      input
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudo guardar el cierre del turno.");
     }
     return payload.data;
   },

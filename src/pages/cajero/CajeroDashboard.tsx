@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, splitNombreCompleto, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL } from '@/services/travelsoftService';
-import { dianService } from '@/services/dianService';
-import type { TiqueteTransporteDTO } from '@/types';
+import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL } from '@/services/travelsoftService';
+import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +24,6 @@ import {
   User, Phone, Mail, Armchair, CheckCircle2, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateTicketTXT, buildRawBtIntent, isAndroidDevice } from '@/utils/ticketFormatter';
 
 type CajeroSection = 'inicio' | 'ventas' | 'reservas' | 'informes' | 'cierre' | 'despacho' | 'llegadas';
 
@@ -1242,85 +1240,10 @@ function SubViewVentas({
 
   // Impresión directa al generar el tiquete (sin que el usuario pulse imprimir):
   // 1. Impresora USB del servidor vía pyusb (impresión silenciosa, sin diálogos).
-  // 2. Android → RawBT por Bluetooth (silencioso).
-  // 3. Respuesta: window.print() del comprobante.
-  const imprimirTiquete = useCallback(async (t: TicketVenta) => {
-    const texto = generateTicketTXT({
-      empresa: 'FLOTA SAN VICENTE S.A.',
-      consecutivo: String(t.consecutivo_pasajero),
-      fecha: t.fecha_ruta,
-      hora: t.hora_tiquete || formatHora(t.hora_ruta),
-      origen: t.origen || '',
-      destino: t.destino || '',
-      pasajero: t.pasajero.nombre,
-      documento: t.pasajero.documento,
-      asiento: String(t.puesto),
-      valor: t.valor ?? 0,
-      placa: t.placa_vehi || undefined,
-      formaPago: t.forma_pago,
-      nit: t.nit_emisor || '860.022.105-1',
-      resolucion: t.resolucion_numero,
-      numeroFactura: t.numero_factura,
-      cufe: t.cufe,
-      qr: t.qr_dian || t.qr_code_url,
-    });
-
-    try {
-      await travelsoftService.imprimirTicketEscPos(texto);
-      return;
-    } catch (err) {
-      console.error('No se pudo imprimir por USB (pyusb):', err);
-    }
-
-    if (isAndroidDevice()) {
-      window.location.href = buildRawBtIntent(texto);
-      return;
-    }
-
-    window.print();
-  }, []);
-
-  // Estructura el JSON fiscal para la emisión del tiquete ante la DIAN.
-  const construirPayloadDian = (t: TicketVenta): TiqueteTransporteDTO => {
-    const partes = splitNombreCompleto(t.pasajero.nombre);
-    return {
-      operacion: 'Emision_Tiquete_Transporte',
-      fecha_emision: t.fecha_ruta,
-      hora_emision: t.hora_tiquete || formatHora(t.hora_ruta),
-      datos_emisor: {
-        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN,
-        id_agencia: Number(user?.id_orides) || undefined,
-      },
-      datos_viaje: {
-        id_interno_viaje: t.id_planilla,
-        origen: t.origen || '',
-        destino: t.destino || '',
-        placa_vehiculo: t.placa_vehi || '',
-        numero_asiento: t.puesto,
-        valor_tiquete: t.valor ?? 0,
-      },
-      datos_pasajero: {
-        tipo_documento: t.pasajero.documento === '222222222222' ? '14' : '13',
-        numero_documento: t.pasajero.documento,
-        nombres: partes.nombres,
-        apellidos: partes.apellidos,
-        email_notificacion: t.pasajero.correo || 'tickets@sactel.net',
-      },
-      numero_asiento: String(t.puesto),
-      placa_vehiculo: t.placa_vehi || '',
-      total: t.valor ?? 0,
-      forma_pago: t.forma_pago,
-      numero_factura: t.numero_factura,
-      impuestos: [
-        {
-          codigo: '01', // IVA excluido (transporte público intermunicipal)
-          porcentaje: 0,
-          base_imponible: t.valor ?? 0,
-          valor_impuesto: 0,
-        },
-      ],
-    };
-  };
+  // 2. Bluetooth directo (Web Bluetooth) → Android, sin app intermedia.
+  // 3. RawBT (Android con app) → window.print() (escritorio).
+  // Lógica de impresión / emisión fiscal compartida con el panel satélite:
+  const { imprimirTicket, emitirConDian } = useTicketFiscal();
 
   // Impresión automática del tiquete al generarlo: imprime, limpia la pantalla
   // de datos y regresa la taquilla al estado inicial (cards de vehículos).
@@ -1328,12 +1251,12 @@ function SubViewVentas({
     if (ticket && !impresoRef.current) {
       impresoRef.current = true;
       const t = window.setTimeout(() => {
-        void imprimirTiquete(ticket);
+        void imprimirTicket(ticket);
         reiniciar();
       }, 400);
       return () => window.clearTimeout(t);
     }
-  }, [ticket, imprimirTiquete, reiniciar]);
+  }, [ticket, imprimirTicket, reiniciar]);
 
   const formasPago: { id: FormaPago; label: string; desc: string; icon: React.ReactNode }[] = [
     { id: 'EFECTIVO', label: 'Efectivo', desc: 'Pago en caja', icon: <Banknote className="w-5 h-5" /> },
@@ -1408,27 +1331,7 @@ function SubViewVentas({
 
       // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core SACTel no responde,
       // el tiquete se imprime igualmente con la numeración de la resolución local.
-      let ticketFinal: TicketVenta = t;
-      try {
-        const resultado = await dianService.emitirTiqueteTransporte(construirPayloadDian(t), {
-          'x-user-id': user?.id || 0,
-          'x-user-role': user?.rol || 'CAJERO',
-        });
-        const data = resultado?.data || resultado;
-        if (resultado && (resultado.success || data?.cufe)) {
-          ticketFinal = {
-            ...t,
-            cufe: data?.cufe || t.cufe,
-            qr_dian: data?.qr_dian || data?.qr_code_url || t.qr_dian,
-            numero_factura: data?.numero_factura || t.numero_factura,
-          };
-        } else {
-          toast.warning(resultado?.message || 'La DIAN no autorizó el tiquete; se imprime sin CUFE.');
-        }
-      } catch (err) {
-        console.error('Core DIAN no disponible:', err);
-        toast.warning('El Core DIAN no respondió; el tiquete se imprime sin CUFE.');
-      }
+      const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
 
       setTicket(ticketFinal);
       if (ticketFinal.valor) setTotalCaja((p) => p + ticketFinal.valor);

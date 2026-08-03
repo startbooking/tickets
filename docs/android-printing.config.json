@@ -1,0 +1,45 @@
+{
+  "app": "Sactel.Cloud — Agencia Satélite (móvil)",
+  "version": "1.1.0",
+  "descripcion": "Configuración de impresión de tiquetes desde el móvil Android. Define los UUIDs Bluetooth LE de la impresora térmica ESC/POS y la cadena de respaldo de impresión que usa useTicketFiscal.",
+  "imprenta": {
+    "nombre": "Impresora Térmica BLE ESC/POS",
+    "ble": {
+      "service_uuid": "ffe0",
+      "characteristic_uuid": "ffe1",
+      "mtu": 20,
+      "modelo": "UART (0xFFE0 / 0xFFE1)",
+      "chunk_size_bytes": 20,
+      "especificacion": "GS ( k modelo 2, módulo 6, corrección H"
+    },
+    "usb": {
+      "backend": "pyusb (CUPS cola TMU)",
+      "endpoint": "POST /api/v1/impresion/ticket",
+      "nota": "Impresión silenciosa desde el servidor; no disponible en móvil directo"
+    },
+    "rawbt": {
+      "app": "ru.a402d.rawbtprinter",
+      "scheme": "rawbt",
+      "fallback": "intent://base64,<base64>#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;"
+    }
+  },
+  "cadena_respaldo": [
+    { "orden": 1, "medio": "usb", "condicion": "Backend disponible y servidor con impresora USB" },
+    { "orden": 2, "medio": "ble", "condicion": "Web Bluetooth soportado y usuario empareja impresora" },
+    { "orden": 3, "medio": "rawbt", "condicion": "Android + app RawBT instalada y emparejada" },
+    { "orden": 4, "medio": "print", "condicion": "Último recurso: diálogo de impresión del navegador" }
+  ],
+  "android_setup": {
+    "navegador_requerido": "Chrome / Chromium (Android 8+) — soporta Web Bluetooth y PWA",
+    "permisos": [
+      "bluetooth",
+      "bluetooth_admin",
+      "location"
+    ],
+    "pwa": {
+      "instalable": "requiere HTTPS o localhost (el SW no se registra en HTTP <IP>)",
+      "url_acceso": "http://192.168.40.2  (ServerAlias del vhost tickets.sactel.lan)",
+      "offline_cache": true
+    }
+  }
+}

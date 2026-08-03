@@ -1,6 +1,6 @@
-# SESIÓN — Resoluciones DIAN + Emisión fiscal + Impresión térmica (2026-07-31)
+# SESIÓN — Resoluciones DIAN + Emisión fiscal + Impresión térmica + Panel Satélite móvil (2026-08-02)
 
-Archivo de estado de la sesión para retomar el trabajo más adelante. Actualizado 2026-07-31.
+Archivo de estado de la sesión para retomar el trabajo más adelante. Actualizado 2026-08-02.
 
 ## Objective
 - CRUD de resoluciones de facturación DIAN por agencia (backend + frontend).
@@ -91,3 +91,31 @@ Flujo completo de la agencia satélite (PDA / móvil) verificado end-to-end cont
 - `/var/www/sactel.lan/rutas/src/services/dianService.ts` (`emitirTiqueteTransporte`) y `src/services/travelsoftService.ts` (tipos y endpoints satélite).
 - `/var/www/sactel.lan/rutas/src/pages/admin/views/ResolutionsManagementView.tsx`, `src/pages/admin/agencia-views/LocalResolutionsView.tsx`, `src/components/resoluciones/ResolucionFormDialog.tsx`.
 - Herramientas de prueba: `/tmp/opencode/gen_ticket.mjs`, `/tmp/opencode/ticketFormatter.cjs` (bundled), `/tmp/opencode/ticket.txt` (bug) y `ticket2.txt` (corregido), `/tmp/opencode/token.txt`.
+
+## Despliegue móvil (PDA) — 2026-08-02
+Panel satélite desplegado para dispositivos de la LAN, sin DNS `.lan` especial en el móvil:
+- **Build de producción** con `.env.production` (Vite lo carga solo en `npm run build`; `.env.local` sigue para dev):
+  `VITE_TICKETS_BACKEND_URL=/api/v1` (mismo origen), `VITE_BACKEND_DIAN_URL=http://backend.sactel.lan/api/v1`, `VITE_EMPRESA_TOKEN=...`, `VITE_DIAN_ENVIRONMENT=test`.
+- **Vhost Apache nuevo** `/etc/apache2/sites-available/tickets.sactel.lan.conf` (activo, `a2ensite`):
+  - `ServerName tickets.sactel.lan` + `ServerAlias 192.168.40.2 192.168.40.3` → el móvil abre **`http://192.168.40.2/`** sin tocar DNS.
+  - `DocumentRoot /var/www/sactel.lan/rutas/dist` (build PWA).
+  - `ProxyPass /api/v1 http://127.0.0.1:8005/api/v1` + `ProxyPassReverse` (mismo origen). **Ojo**: el target NO debe terminar en `/` o se duplica la barra (`/api/v1//auth/login` → 404). `ProxyPreserveHost On`.
+  - Fallback SPA: `RewriteCond %{REQUEST_URI} !^/api/` + `!-f`/`!-d` → `/index.html`. **Ojo**: en contexto VirtualHost el patrón recibe `/` inicial; con `^(?!api/)` NO excluye `/api/...` (se reescribía index.html); se corrigió con `%{REQUEST_URI} !^/api/`.
+  - `/etc/hosts`: `127.0.0.1 tickets.sactel.lan`.
+- **Verificado end-to-end vía proxy** (Host: 192.168.40.2): login `{cedula_usuario:"99999", password:"quipile2026"}` → `data.token`; `GET /dashboard/satelite?fecha=2026-04-19` → 4 vehículos QUIPILE (517/518/548/549, estado POR_DESPACHAR, capacidades 32/24…); `GET /ventas/satelite/sillas` → capacidad 24, 2 ocupadas; `POST /turnos/satelite/cierre` → id_turno 3 persistido (`turnos_satelite`). HTTP 200 en todos.
+- **Cierre de turno persistido en backend**: `POST /api/v1/turnos/satelite/cierre` (schemas `TurnoSateliteVenta`/`TurnoSateliteCierre`) graba en `turnos_satelite` (id_orides, operador, fecha_inicio, inicio, cierre, tiquetes, total, efectivo, tarjeta, qr, `detalle` JSON con numero_factura/resolucion_numero/cufe). **Corrección de esta sesión**: `inicio`/`cierre` se convierten a MySQL `%Y-%m-%d %H:%M:%S` con helper `_iso_a_mysql` (antes se intentaba guardar ISO `+00:00` → 500). Verificado: id_turno 2 (MARIA LOPEZ, 3 tiquetes, 46200) e id_turno 3 (MOBILE TEST).
+ - **PWA**: `generateSW` precachea dist; el Service Worker NO se registra en `http://<ip>` (contexto no seguro) — la app funciona igual como web normal en el móvil; instalable de verdad solo con HTTPS/localhost.
+
+## Refactorización + Tests + Impresión BLE (2026-08-02)
+- **Hook unificado `useTicketFiscal`** (`src/hooks/useTicketFiscal.ts`): consolida la lógica de venta/impresión/emitir-DIAN que estaba duplicada 1:1 entre `CajeroDashboard` y `SateliteDashboard` (`imprimirTiquete`, `construirPayloadDian`, flujo de emisión con fallback). Ambos panels usan el hook; el código duplicado se eliminó.
+- **Servicio puro `ticketFiscalService`** (`src/services/ticketFiscalService.ts`): `construirPayloadDian(t, ctx)`, `ticketATextoImpresion(t)`, `ventaATextoImpresion(v)` — funciones puras, testeables, con constantes `EMPRESA_NIT`/`EMPRESA_NOMBRE`.
+- **Store de turno** (`src/stores/turnoSateliteStore.ts`): persistencia localStorage (`cargarTurno`/`guardarTurno`/`limpiarTurno`), `totalTurno`, `desglosePorFormaPago`, `hoyISO` — extraído del SatéliteDashboard (que tenía todo inline + duplicado en `CierreTurno`/`ListaTiquetes`).
+- **Impresión Bluetooth directa (Web Bluetooth)** en `src/utils/ticketFormatter.ts` (`imprimirBleEscPos` + `soportaBluetoothEscPos` + `BLE_PRINTER` config): escribe bytes ESC/POS vía GATT (service `0xFFE0` / characteristic `0xFFE1`) en chunks de 20B, con fallback `writeValueWithoutResponse`→`writeValue`. La cadena de impresión unificada es: **USB → BLE → RawBT → window.print**.
+- **Tests (Vitest) — +66 pruebas, 4 archivos nuevos**:
+  - `src/utils/ticketFormatter.test.ts` (27): byte-fidelidad crítica de ESC/POS (`FEED_6=\x06` no `\x36`, `DOUBLE_SIZE=\x11`, alineaciones, `BOLD`, `CUT`), QR `GS(k`, `normalizarImpresion` sobre bytes de control, `encodarEscPos` latin-1, `buildRawBtIntent`, `isAndroidDevice`.
+  - `src/services/ticketFiscalService.test.ts` (17): payload DIAN (split nombres/apellidos, consumidor vs persona, token fallback), generación de texto imprimir.
+  - `src/stores/turnoSateliteStore.test.ts` (15): total, desglose por forma de pago, persistencia localStorage (corrupto/normalizado).
+  - `src/hooks/useTicketFiscal.test.ts` (6): `construirPayload`, `emitirConDian` (éxito/fallback/error), impresión USB.
+- **Verificación**: `tsc --noEmit` 0 errores, `eslint` 0 errores en archivos tocados, `npm run build` OK, `vitest run` 66/66 OK.
+- **Config Android**: `docs/android-printing.md` (setup del móvil: BLE, PWA, cadena de respaldo, troubleshooting) + `docs/android-printing.config.json` (UUIDs BLE, MTU, permisos).
+- **Security**: `.gitignore` extiende `.env*`, `.env.production`/`.env.development` → no se commiten (el token `VITE_EMPRESA_TOKEN` ya figura documentado en SESION.md).

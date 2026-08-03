@@ -4,18 +4,27 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   travelsoftService,
   formatHora,
-  splitNombreCompleto,
   getDashboardPorNivel,
   SateliteDashboardData,
   SateliteVehiculo,
   SateliteSegmento,
+  TurnoSateliteVenta,
   SillasData,
-  TicketVenta,
   FormaPago,
   EstadoImpresora,
+  EstadoVehiculoSatelite,
 } from '@/services/travelsoftService';
-import { dianService } from '@/services/dianService';
-import type { TiqueteTransporteDTO } from '@/types';
+import { useTicketFiscal } from '@/hooks/useTicketFiscal';
+import {
+  cargarTurno,
+  guardarTurno,
+  limpiarTurno,
+  totalTurno as totalTurnoCompute,
+  desglosePorFormaPago,
+  hoyISO,
+  FORMA_PAGO_LABEL,
+  type TurnoSatelite,
+} from '@/stores/turnoSateliteStore';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,56 +34,10 @@ import {
   Bus, Clock, Ticket, LogOut, User, MapPin, Armchair,
   Loader2, AlertTriangle, RefreshCcw, Banknote, CreditCard,
   QrCode, CheckCircle2, Printer, ChevronLeft, Coins, X, Phone, Mail,
+  CalendarDays, History,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateTicketTXT, buildRawBtIntent, isAndroidDevice } from '@/utils/ticketFormatter';
 import axios from 'axios';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TURNO LOCAL (PDA): se guarda en localStorage hasta el cierre (resumen local).
-// La agencia satélite solo vende tiquetes: NO programa viajes, NO reporta
-// salida/llegada y NO tiene vehículos en parqueadero.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const TURNO_KEY = 'sateliteTurno';
-
-interface TurnoVenta {
-  id_planilla: number;
-  consecutivo: number;
-  hora: string;
-  cod_ruta: number;
-  placa: string;
-  origen: string;
-  destino: string;
-  asiento: number;
-  pasajero: string;
-  valor: number;
-  forma_pago: string;
-}
-
-interface TurnoSatelite {
-  operador: string;
-  inicio: string;
-  ventas: TurnoVenta[];
-}
-
-function cargarTurno(): TurnoSatelite | null {
-  try {
-    const raw = localStorage.getItem(TURNO_KEY);
-    if (!raw) return null;
-    const t = JSON.parse(raw) as TurnoSatelite;
-    if (!t.operador || !t.inicio) return null;
-    return { operador: t.operador, inicio: t.inicio, ventas: Array.isArray(t.ventas) ? t.ventas : [] };
-  } catch {
-    return null;
-  }
-}
-
-const FORMA_PAGO_LABEL: Record<string, string> = {
-  EFECTIVO: 'Efectivo',
-  TARJETA: 'Tarjeta',
-  QR: 'QR',
-};
 
 export default function SateliteDashboard() {
   const { user, logout } = useAuth();
@@ -107,6 +70,10 @@ export default function SateliteDashboard() {
 
   const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
   const [cierreAbierto, setCierreAbierto] = useState(false);
+  const [listaTiquetesAbierta, setListaTiquetesAbierta] = useState(false);
+  const [guardandoCierre, setGuardandoCierre] = useState(false);
+
+  const [fechaSel, setFechaSel] = useState(hoyISO);
 
   const nombreAgencia = String(user?.agencia ?? '') || dashboard?.agencia || 'Agencia Satélite';
   const nombreOperador = turno?.operador || user?.nombreCompleto || user?.nombre || 'Operador';
@@ -117,11 +84,11 @@ export default function SateliteDashboard() {
     return () => window.clearInterval(t);
   }, []);
 
-  const cargarDashboard = useCallback(async () => {
+  const cargarDashboard = useCallback(async (fecha?: string) => {
     setLoading(true);
     setErrorRed(null);
     try {
-      const data = await travelsoftService.getDashboardSatelite();
+      const data = await travelsoftService.getDashboardSatelite(fecha ?? undefined);
       setDashboard(data);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 403) {
@@ -148,36 +115,57 @@ export default function SateliteDashboard() {
   }, [cargarEstadoImpresora]);
 
   useEffect(() => {
-    if (turno) void cargarDashboard();
-  }, [turno, cargarDashboard]);
+    if (turno) void cargarDashboard(fechaSel);
+  }, [turno, cargarDashboard, fechaSel]);
 
-  // ─── Turno ────────────────────────────────────────────────────────────────
+   // ─── Turno ────────────────────────────────────────────────────────────────
   const iniciarTurno = (operador: string) => {
     const nuevo: TurnoSatelite = { operador, inicio: new Date().toISOString(), ventas: [] };
-    localStorage.setItem(TURNO_KEY, JSON.stringify(nuevo));
+    guardarTurno(nuevo);
     setTurno(nuevo);
     toast.success(`Turno iniciado. Bienvenido(a), ${operador}.`);
   };
 
-  const cerrarTurno = () => {
-    localStorage.removeItem(TURNO_KEY);
-    setTurno(null);
-    setVehiculoSel(null);
-    setSegmento(null);
-    setSillas(null);
-    setPuesto(null);
-    setCierreAbierto(false);
-    toast.success('Turno cerrado. Resumen guardado en este dispositivo.');
+  const cerrarTurno = async () => {
+    if (!turno) return;
+    setGuardandoCierre(true);
+    try {
+      const porForma = desglosePorFormaPago(turno.ventas);
+      await travelsoftService.cerrarTurnoSatelite({
+        operador: turno.operador,
+        inicio: turno.inicio,
+        cierre: new Date().toISOString(),
+        tiquetes: turno.ventas.length,
+        total: totalTurnoCompute(turno.ventas),
+        efectivo: porForma.EFECTIVO,
+        tarjeta: porForma.TARJETA,
+        qr: porForma.QR,
+        ventas: turno.ventas,
+      });
+      limpiarTurno();
+      setTurno(null);
+      setVehiculoSel(null);
+      setSegmento(null);
+      setSillas(null);
+      setPuesto(null);
+      setCierreAbierto(false);
+      setListaTiquetesAbierta(false);
+      toast.success('Turno cerrado. Resumen guardado en el servidor.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo guardar el cierre en el servidor.');
+    } finally {
+      setGuardandoCierre(false);
+    }
   };
 
   const totalTurno = useMemo(
-    () => (turno?.ventas || []).reduce((acc, v) => acc + (v.valor || 0), 0),
+    () => totalTurnoCompute(turno?.ventas || []),
     [turno]
   );
 
   const guardarVenta = (v: TicketVenta) => {
     if (!turno) return;
-    const nueva: TurnoVenta = {
+    const nueva: TurnoSateliteVenta = {
       id_planilla: v.id_planilla,
       consecutivo: v.consecutivo_pasajero,
       hora: v.hora_tiquete || formatHora(v.hora_ruta),
@@ -187,16 +175,28 @@ export default function SateliteDashboard() {
       destino: v.destino || '',
       asiento: v.puesto,
       pasajero: v.pasajero.nombre,
+      documento: v.pasajero.documento,
       valor: v.valor ?? 0,
       forma_pago: v.forma_pago,
+      numero_factura: v.numero_factura,
+      resolucion_numero: v.resolucion_numero,
+      cufe: v.cufe,
+      qr_dian: v.qr_dian || v.qr_code_url,
+      nit_emisor: v.nit_emisor,
+      fecha_ruta: v.fecha_ruta,
+      hora_ruta: v.hora_ruta,
     };
     const actualizado: TurnoSatelite = { ...turno, ventas: [...turno.ventas, nueva] };
-    localStorage.setItem(TURNO_KEY, JSON.stringify(actualizado));
+    guardarTurno(actualizado);
     setTurno(actualizado);
   };
 
   // ─── Selección de vehículo y tramo ────────────────────────────────────────
   const seleccionarTramo = async (v: SateliteVehiculo, s: SateliteSegmento) => {
+    if (v.estado === 'LLEGADO') {
+      toast.error('Este vehículo ya llegó a su destino final; no se puede vender en este tramo.');
+      return;
+    }
     setVehiculoSel(v);
     setSegmento(s);
     setPuesto(null);
@@ -231,7 +231,7 @@ export default function SateliteDashboard() {
     setCorreo('');
     setPasajeroExiste(false);
     setFormaPago('EFECTIVO');
-    void cargarDashboard();
+    void cargarDashboard(fechaSel);
   };
 
   const buscarPasajero = async () => {
@@ -258,77 +258,18 @@ export default function SateliteDashboard() {
     }
   };
 
-  const imprimirTiquete = useCallback(async (t: TicketVenta) => {
-    const texto = generateTicketTXT({
-      empresa: 'FLOTA SAN VICENTE S.A.',
-      consecutivo: String(t.consecutivo_pasajero),
-      fecha: t.fecha_ruta,
-      hora: t.hora_tiquete || formatHora(t.hora_ruta),
-      origen: t.origen || '',
-      destino: t.destino || '',
-      pasajero: t.pasajero.nombre,
-      documento: t.pasajero.documento,
-      asiento: String(t.puesto),
-      valor: t.valor ?? 0,
-      placa: t.placa_vehi || undefined,
-      formaPago: t.forma_pago,
-      nit: t.nit_emisor || '860.022.105-1',
-      resolucion: t.resolucion_numero,
-      numeroFactura: t.numero_factura,
-      cufe: t.cufe,
-      qr: t.qr_dian || t.qr_code_url,
-    });
+  // ─── Lógica de impresión / emisión fiscal compartida ────────────────────────
+  const { imprimirTicket, reimprimirVenta: reimprimirRemoto, emitirConDian } = useTicketFiscal();
 
-    try {
-      await travelsoftService.imprimirTicketEscPos(texto);
-      return;
-    } catch (err) {
-      console.error('No se pudo imprimir por USB (pyusb):', err);
-    }
-
-    if (isAndroidDevice()) {
-      window.location.href = buildRawBtIntent(texto);
-      return;
-    }
-
-    window.print();
-  }, []);
-
-  const construirPayloadDian = (t: TicketVenta): TiqueteTransporteDTO => {
-    const partes = splitNombreCompleto(t.pasajero.nombre);
-    return {
-      operacion: 'Emision_Tiquete_Transporte',
-      fecha_emision: t.fecha_ruta,
-      hora_emision: t.hora_tiquete || formatHora(t.hora_ruta),
-      datos_emisor: {
-        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN,
-        id_agencia: Number(user?.id_orides) || undefined,
-      },
-      datos_viaje: {
-        id_interno_viaje: t.id_planilla,
-        origen: t.origen || '',
-        destino: t.destino || '',
-        placa_vehiculo: t.placa_vehi || '',
-        numero_asiento: t.puesto,
-        valor_tiquete: t.valor ?? 0,
-      },
-      datos_pasajero: {
-        tipo_documento: t.pasajero.documento === '222222222222' ? '14' : '13',
-        numero_documento: t.pasajero.documento,
-        nombres: partes.nombres,
-        apellidos: partes.apellidos,
-        email_notificacion: t.pasajero.correo || 'tickets@sactel.net',
-      },
-      numero_asiento: String(t.puesto),
-      placa_vehiculo: t.placa_vehi || '',
-      total: t.valor ?? 0,
-      forma_pago: t.forma_pago,
-      numero_factura: t.numero_factura,
-      impuestos: [
-        { codigo: '01', porcentaje: 0, base_imponible: t.valor ?? 0, valor_impuesto: 0 },
-      ],
-    };
-  };
+  const reimprimirVenta = useCallback(
+    async (v: TurnoSateliteVenta) => {
+      const r = await reimprimirRemoto(v);
+      if (r === 'usb' || r === 'ble' || r === 'rawbt' || r === 'print') {
+        toast.success(`Tiquete #${v.consecutivo} reimpreso.`);
+      }
+    },
+    [reimprimirRemoto]
+  );
 
   const handleGenerar = async () => {
     if (!vehiculoSel || !segmento || !sillas) {
@@ -369,32 +310,12 @@ export default function SateliteDashboard() {
       });
 
       // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core no responde,
-      // el tiquete se imprime igualmente con la numeración de la resolución.
-      let ticketFinal: TicketVenta = t;
-      try {
-        const resultado = await dianService.emitirTiqueteTransporte(construirPayloadDian(t), {
-          'x-user-id': user?.id || 0,
-          'x-user-role': user?.rol || 'CAJERO',
-        });
-        const data = resultado?.data || resultado;
-        if (resultado && (resultado.success || data?.cufe)) {
-          ticketFinal = {
-            ...t,
-            cufe: data?.cufe || t.cufe,
-            qr_dian: data?.qr_dian || data?.qr_code_url || t.qr_dian,
-            numero_factura: data?.numero_factura || t.numero_factura,
-          };
-        } else {
-          toast.warning(resultado?.message || 'La DIAN no autorizó el tiquete; se imprime sin CUFE.');
-        }
-      } catch (err) {
-        console.error('Core DIAN no disponible:', err);
-        toast.warning('El Core DIAN no respondió; el tiquete se imprime sin CUFE.');
-      }
+      // el tiquete se imprime igualmente con la numeración de la resolución local.
+      const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
 
       guardarVenta(ticketFinal);
       toast.success(`Tiquete ${ticketFinal.consecutivo_pasajero} generado, imprimiendo...`);
-      void imprimirTiquete(ticketFinal);
+      void imprimirTicket(ticketFinal);
       reiniciarVenta();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo generar el tiquete.');
@@ -441,6 +362,28 @@ export default function SateliteDashboard() {
             </div>
           </div>
 
+          {/* Fecha del panel + tiquetes del turno */}
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-slate-800/70 rounded-lg px-2 py-1 flex-1 min-w-0">
+              <CalendarDays className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <input
+                type="date"
+                value={fechaSel}
+                onChange={(e) => { if (e.target.value) setFechaSel(e.target.value); }}
+                className="bg-transparent text-[11px] font-bold text-slate-200 w-full outline-none [color-scheme:dark]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 border-slate-700 text-slate-300 text-[11px] font-bold gap-1.5 px-2"
+              onClick={() => setListaTiquetesAbierta(true)}
+            >
+              <History className="w-3.5 h-3.5 text-emerald-400" />
+              Tiquetes ({turno.ventas.length})
+            </Button>
+          </div>
+
           {/* Resumen del turno */}
           <div className="mt-2 grid grid-cols-3 gap-2 text-center">
             <div className="bg-slate-800/70 rounded-lg py-1.5">
@@ -461,12 +404,14 @@ export default function SateliteDashboard() {
               {/* Encabezado de lista */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm font-black text-white">Vehículos de hoy</h2>
+                  <h2 className="text-sm font-black text-white">
+                    {fechaSel === hoyISO() ? 'Vehículos de hoy' : 'Vehículos del día'}
+                  </h2>
                   <p className="text-[10px] text-slate-400">
-                    Los que pasan por {nombreAgencia} · {new Date().toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    Los que pasan por {nombreAgencia} · {new Date(fechaSel + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" className="h-9 w-9 p-0 border-slate-700 text-slate-300" onClick={() => void cargarDashboard()} title="Actualizar">
+                <Button variant="outline" size="sm" className="h-9 w-9 p-0 border-slate-700 text-slate-300" onClick={() => void cargarDashboard(fechaSel)} title="Actualizar">
                   <RefreshCcw className={cn("w-4 h-4", loading && "animate-spin")} />
                 </Button>
               </div>
@@ -482,7 +427,7 @@ export default function SateliteDashboard() {
                 <div className="rounded-xl border border-red-800 bg-red-950/40 p-4 text-center">
                   <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
                   <p className="text-[11px] text-red-300 font-semibold">{errorRed}</p>
-                  <Button size="sm" variant="outline" className="mt-3 text-[11px] border-red-800 text-red-300" onClick={() => void cargarDashboard()}>
+                  <Button size="sm" variant="outline" className="mt-3 text-[11px] border-red-800 text-red-300" onClick={() => void cargarDashboard(fechaSel)}>
                     <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
                   </Button>
                 </div>
@@ -491,7 +436,7 @@ export default function SateliteDashboard() {
               {!loading && !errorRed && dashboard && dashboard.vehiculos.length === 0 && (
                 <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-6 text-center">
                   <Bus className="w-7 h-7 text-slate-500 mx-auto mb-2" />
-                  <p className="text-xs text-slate-300 font-bold">No hay vehículos programados hoy</p>
+                  <p className="text-xs text-slate-300 font-bold">No hay vehículos programados para esta fecha</p>
                   <p className="text-[10px] text-slate-500 mt-1">
                     Las rutas que pasan por {nombreAgencia} se programan en la agencia principal.
                   </p>
@@ -688,8 +633,20 @@ export default function SateliteDashboard() {
           <CierreTurno
             turno={turno}
             agencia={nombreAgencia}
-            onCerrar={cerrarTurno}
+            guardando={guardandoCierre}
+            onReimprimir={(v) => void reimprimirVenta(v)}
+            onCerrar={() => void cerrarTurno()}
             onVolver={() => setCierreAbierto(false)}
+          />
+        )}
+
+        {/* Lista de tiquetes del turno (reimpresión rápida) */}
+        {listaTiquetesAbierta && !cierreAbierto && (
+          <ListaTiquetes
+            turno={turno}
+            agencia={nombreAgencia}
+            onReimprimir={(v) => void reimprimirVenta(v)}
+            onCerrar={() => setListaTiquetesAbierta(false)}
           />
         )}
       </div>
@@ -758,7 +715,19 @@ function InicioTurno({ nombreAgencia, onIniciar }: { nombreAgencia: string; onIn
 // ─────────────────────────────────────────────────────────────────────────────
 // Tarjeta de vehículo en tránsito con sus destinos/tarifas disponibles.
 // ─────────────────────────────────────────────────────────────────────────────
+function EstadoVehiculoBadge({ estado }: { estado?: EstadoVehiculoSatelite | null }) {
+  if (!estado) return null;
+  const cfg: Record<EstadoVehiculoSatelite, { label: string; cls: string }> = {
+    POR_DESPACHAR: { label: 'Por despachar', cls: 'bg-slate-900 text-slate-300 border-slate-700' },
+    EN_TRANSITO: { label: 'En tránsito', cls: 'bg-amber-900/40 text-amber-300 border-amber-700' },
+    LLEGADO: { label: 'Ya llegó', cls: 'bg-emerald-900/40 text-emerald-300 border-emerald-700' },
+  };
+  const c = cfg[estado];
+  return <Badge className={cn("text-[9px] font-bold border", c.cls)}>{c.label}</Badge>;
+}
+
 function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: SateliteSegmento) => void }) {
+  const llegado = v.estado === 'LLEGADO';
   return (
     <div className="rounded-xl bg-slate-800/50 border border-slate-800 overflow-hidden">
       <div className="p-3 pb-2 flex items-center justify-between gap-2">
@@ -766,6 +735,7 @@ function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: Sat
           <div className="flex items-center gap-2">
             <span className="font-mono font-black text-white text-sm">{v.placa_vehi || 'SIN PLACA'}</span>
             <Badge className="bg-slate-900 text-emerald-300 border-slate-700 text-[9px] font-bold">Ruta {v.cod_ruta}</Badge>
+            <EstadoVehiculoBadge estado={v.estado} />
           </div>
           <p className="text-[10px] text-slate-400 truncate mt-0.5">{v.conductor || '—'}</p>
         </div>
@@ -797,8 +767,14 @@ function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: Sat
         {v.segmentos.map((s) => (
           <button
             key={s.destino_ruta}
+            disabled={llegado}
             onClick={() => onTramo(s)}
-            className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-left active:border-emerald-500 active:bg-emerald-950/40 transition-colors"
+            className={cn(
+              "rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-left transition-colors",
+              llegado
+                ? "opacity-50 cursor-not-allowed"
+                : "active:border-emerald-500 active:bg-emerald-950/40"
+            )}
           >
             <span className="block text-[9px] uppercase font-bold text-slate-500">Hasta</span>
             <span className="block text-[11px] font-black text-white truncate">{s.destino || '—'}</span>
@@ -815,17 +791,16 @@ function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: Sat
 // ─────────────────────────────────────────────────────────────────────────────
 // Cierre de turno: resumen local (tiquetes, valor, desglose por forma de pago).
 // ─────────────────────────────────────────────────────────────────────────────
-function CierreTurno({ turno, agencia, onCerrar, onVolver }: {
+function CierreTurno({ turno, agencia, guardando, onReimprimir, onCerrar, onVolver }: {
   turno: TurnoSatelite;
   agencia: string;
+  guardando: boolean;
+  onReimprimir: (v: TurnoSateliteVenta) => void;
   onCerrar: () => void;
   onVolver: () => void;
 }) {
-  const total = turno.ventas.reduce((acc, v) => acc + (v.valor || 0), 0);
-  const porForma = turno.ventas.reduce<Record<string, number>>((acc, v) => {
-    acc[v.forma_pago] = (acc[v.forma_pago] || 0) + (v.valor || 0);
-    return acc;
-  }, {});
+  const total = totalTurnoCompute(turno.ventas);
+  const porForma = desglosePorFormaPago(turno.ventas);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center">
@@ -837,7 +812,7 @@ function CierreTurno({ turno, agencia, onCerrar, onVolver }: {
             </h3>
             <p className="text-[10px] text-slate-400 mt-0.5">{agencia}</p>
           </div>
-          <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-slate-400" onClick={onVolver}>
+          <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-slate-400" onClick={onVolver} disabled={guardando}>
             <X className="w-4 h-4" />
           </Button>
         </div>
@@ -887,7 +862,17 @@ function CierreTurno({ turno, agencia, onCerrar, onVolver }: {
                       {v.origen} → {v.destino} · Asiento {v.asiento} · {v.placa}
                     </p>
                   </div>
-                  <span className="text-[11px] font-black text-emerald-400 shrink-0">${v.valor.toLocaleString('es-CO')}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] font-black text-emerald-400">${v.valor.toLocaleString('es-CO')}</span>
+                    <button
+                      onClick={() => onReimprimir(v)}
+                      disabled={guardando}
+                      className="p-1.5 rounded-lg border border-slate-700 text-slate-300 active:bg-slate-800"
+                      title={`Reimprimir tiquete ${v.consecutivo}`}
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -895,13 +880,82 @@ function CierreTurno({ turno, agencia, onCerrar, onVolver }: {
         )}
 
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 h-11 border-slate-700 text-slate-300 text-xs font-bold" onClick={onVolver}>
+          <Button variant="outline" className="flex-1 h-11 border-slate-700 text-slate-300 text-xs font-bold" onClick={onVolver} disabled={guardando}>
             Seguir vendiendo
           </Button>
-          <Button className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white text-xs font-black gap-2" onClick={onCerrar}>
-            <LogOut className="w-3.5 h-3.5" /> CERRAR TURNO
+          <Button className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white text-xs font-black gap-2" onClick={onCerrar} disabled={guardando}>
+            {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+            {guardando ? 'GUARDANDO...' : 'CERRAR TURNO'}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lista de tiquetes del turno (reimpresión rápida durante la venta).
+// ─────────────────────────────────────────────────────────────────────────────
+function ListaTiquetes({ turno, agencia, onReimprimir, onCerrar }: {
+  turno: TurnoSatelite;
+  agencia: string;
+  onReimprimir: (v: TurnoSateliteVenta) => void;
+  onCerrar: () => void;
+}) {
+  const total = totalTurnoCompute(turno.ventas);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center">
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-black text-white flex items-center gap-2">
+              <History className="w-4 h-4 text-emerald-400" /> Tiquetes del turno
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-0.5">{agencia} · {turno.operador}</p>
+          </div>
+          <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-slate-400" onClick={onCerrar}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {turno.ventas.length === 0 ? (
+          <p className="text-[11px] text-slate-500 italic py-6 text-center">Aún no hay tiquetes vendidos en este turno.</p>
+        ) : (
+          <div className="divide-y divide-slate-800 rounded-xl bg-slate-950 border border-slate-800 max-h-[65vh] overflow-y-auto">
+            {turno.ventas.map((v) => (
+              <div key={v.id_planilla} className="px-3 py-2.5 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black text-white truncate">
+                    #{v.consecutivo} · {v.pasajero}
+                    {v.numero_factura ? <span className="text-emerald-400 font-mono"> · {v.numero_factura}</span> : null}
+                  </p>
+                  <p className="text-[9px] text-slate-500 truncate">
+                    {v.origen} → {v.destino} · Asiento {v.asiento} · {v.placa} · {FORMA_PAGO_LABEL[v.forma_pago] || v.forma_pago}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[11px] font-black text-emerald-400">${v.valor.toLocaleString('es-CO')}</span>
+                  <button
+                    onClick={() => onReimprimir(v)}
+                    className="p-2 rounded-lg border border-slate-700 text-slate-300 active:bg-slate-800"
+                    title={`Reimprimir tiquete ${v.consecutivo}`}
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="px-3 py-2.5 flex justify-between border-t border-slate-800 text-[11px] font-black text-slate-300">
+              <span>TOTAL ({turno.ventas.length})</span>
+              <span className="text-emerald-400">${total.toLocaleString('es-CO')}</span>
+            </div>
+          </div>
+        )}
+
+        <Button className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black" onClick={onCerrar}>
+          Cerrar
+        </Button>
       </div>
     </div>
   );

@@ -150,3 +150,90 @@ export function encodarEscPos(texto: string): Uint8Array {
   }
   return bytes;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPRESIÓN DIRECTA POR BLUETOOTH (Web Bluetooth API)
+// ─────────────────────────────────────────────────────────────────────────────
+// Las impresoras térmicas ESC/POS BLE exponen typicamente:
+//   - Service UUID  : 0xFFE0  (UART-like)
+//   - Characteristic: 0xFFE1  (write sin response)
+// Soportado en Android Chrome/Chromium (no en iOS Safari; allí se usa RawBT).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Configuración BLE genérica de impresoras térmicas ESC/POS. */
+export const BLE_PRINTER = {
+  SERVICE_UUID: 'ffe0',
+  CHARACTERISTIC_UUID: 'ffe1',
+  /** Fabricantes/aliases para filtrar dispositivos en el selector del navegador. */
+  DISPOSITIVO_LABEL: 'Impresora Térmica',
+};
+
+export interface BluetoothEscPosResult {
+  ok: true;
+  dispositivo?: string;
+}
+
+/**
+ * Imprime en silencio un texto ESC/POS directamente sobre una impresora Bluetooth
+ * emparejada por el usuario. No requiere app intermedia ni RawBT.
+ * Lanza si Web Bluetooth no está disponible o el usuario rechaza el emparejamiento.
+ */
+export async function imprimirBleEscPos(texto: string): Promise<BluetoothEscPosResult> {
+  if (typeof navigator === 'undefined' || !('bluetooth' in navigator)) {
+    throw new Error('Web Bluetooth no disponible en este navegador/dispositivo.');
+  }
+  const device = await navigator.bluetooth!.requestDevice({
+    filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
+    optionalServices: [BLE_PRINTER.SERVICE_UUID],
+  });
+  if (!device?.gatt) {
+    throw new Error('El dispositivo Bluetooth no expone GATT.');
+  }
+  const server = await device.gatt.connect();
+  const service = await server.getPrimaryService(BLE_PRINTER.SERVICE_UUID);
+  const characteristic = await service.getCharacteristic(BLE_PRINTER.CHARACTERISTIC_UUID);
+
+  const bytes = encodarEscPos(texto);
+
+  // Algunas impresoras requieren trozos pequeños (<= 20 bytes) por paquete BLE.
+  const CHUNK = Number(BLE_PRINTER.chunk_size_bytes) || 20;
+
+  // La mayoría de impresoras térmicas BLE aceptan escritura sin response; si el
+  // primer chunk falla (la impr. no soporta withoutResponse), reintentamos con
+  // writeValue (con respuesta), que es universalmente aceptado.
+  let write: (d: Uint8Array) => Promise<unknown> = async (chunk) => {
+    const fn = characteristic.writeValueWithoutResponse?.bind(characteristic)
+      ?? characteristic.writeValue.bind(characteristic);
+    await fn(chunk);
+  };
+  const fallback = async (chunk: Uint8Array) => {
+    await characteristic.writeValue(chunk);
+  };
+
+  let modo: 'withoutResponse' | 'withResponse' = 'withoutResponse';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const chunk = bytes.slice(i, i + CHUNK);
+    try {
+      await write(chunk);
+    } catch (err) {
+      if (modo === 'withoutResponse') {
+        modo = 'withResponse';
+        write = fallback;
+        await fallback(chunk);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  server.disconnect();
+  const nombre = device.name ?? BLE_PRINTER.DISPOSITIVO_LABEL;
+  return { ok: true, dispositivo: nombre };
+}
+
+/**
+ * Indica si el entorno actual puede usar Web Bluetooth para impresión directa.
+ */
+export function soportaBluetoothEscPos(): boolean {
+  return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+}
