@@ -82,6 +82,7 @@ export interface DashboardCajeroResponse {
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface SateliteSegmento {
+  origen_ruta: number;
   destino_ruta: number;
   destino: string | null;
   valor: number | null;
@@ -106,6 +107,13 @@ export interface SateliteVehiculo {
   capacidad: number | null;
   tickets_vendidos: number | null;
   segmentos: SateliteSegmento[];
+  segmento_post_parada?: {
+    origen_ruta: number;
+    origen: string | null;
+    destino_ruta: number;
+    destino: string | null;
+    valor: number | null;
+  } | null;
 }
 
 export interface TurnoSateliteVenta {

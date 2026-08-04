@@ -119,11 +119,13 @@ export default function SateliteDashboard() {
   }, [turno, cargarDashboard, fechaSel]);
 
    // ─── Turno ────────────────────────────────────────────────────────────────
-  const iniciarTurno = (operador: string) => {
-    const nuevo: TurnoSatelite = { operador, inicio: new Date().toISOString(), ventas: [] };
+  // El operador ya no se pide al usuario: se toma del usuario autenticado.
+  const nombreOperador = user?.nombreCompleto || user?.nombre || user?.nombre_usuario || 'Operador';
+  const iniciarTurno = () => {
+    const nuevo: TurnoSatelite = { operador: nombreOperador, inicio: new Date().toISOString(), ventas: [] };
     guardarTurno(nuevo);
     setTurno(nuevo);
-    toast.success(`Turno iniciado. Bienvenido(a), ${operador}.`);
+    toast.success(`Turno iniciado. Bienvenido(a), ${nombreOperador}.`);
   };
 
   const cerrarTurno = async () => {
@@ -219,6 +221,12 @@ export default function SateliteDashboard() {
     }
   };
 
+  // Marca un vehículo como "llegado a esta agencia satélite"
+  const marcarArribe = (cod_ruta: number) => {
+    setVehiculosArrivados(prev => new Set(prev).add(cod_ruta));
+    toast.info('Vehículo marcado como llegado. Ya puede vender tiquetes desde esta agencia hasta el destino final.');
+  };
+
   const reiniciarVenta = () => {
     setVehiculoSel(null);
     setSegmento(null);
@@ -304,7 +312,7 @@ export default function SateliteDashboard() {
         telefono: telefono.trim() || undefined,
         forma_pago: formaPago,
         fecha: vehiculoSel.fecha_ruta ?? undefined,
-        origen_ruta: vehiculoSel.origen_ruta ?? undefined,
+        origen_ruta: segmento.origen_ruta ?? vehiculoSel.origen_ruta ?? undefined,
         destino_ruta: segmento.destino_ruta,
         valor: valorNum,
       });
@@ -333,7 +341,7 @@ export default function SateliteDashboard() {
 
   // ─── Inicio de turno (sin operador aún) ───────────────────────────────────
   if (!turno) {
-    return <InicioTurno nombreAgencia={nombreAgencia} onIniciar={iniciarTurno} />;
+    return <InicioTurno nombreAgencia={nombreAgencia} nombreOperador={nombreOperador} onIniciar={iniciarTurno} />;
   }
 
   return (
@@ -444,7 +452,13 @@ export default function SateliteDashboard() {
               )}
 
               {dashboard?.vehiculos.map((v) => (
-                <TarjetaVehiculo key={v.cod_ruta} v={v} onTramo={(s) => void seleccionarTramo(v, s)} />
+                <TarjetaVehiculo
+                  key={v.cod_ruta}
+                  v={v}
+                  arrivado={vehiculosArrivados.has(v.cod_ruta)}
+                  onTramo={(s) => void seleccionarTramo(v, s)}
+                  onMarcarArribe={() => marcarArribe(v.cod_ruta)}
+                />
               ))}
             </>
           ) : (
@@ -655,20 +669,14 @@ export default function SateliteDashboard() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Inicio de turno: solicita el nombre del operador (PDA).
+// Inicio de turno: el operador ya está definido por el usuario autenticado,
+// no se solicita un nombre nuevo. Solo se confirma el inicio.
 // ─────────────────────────────────────────────────────────────────────────────
-function InicioTurno({ nombreAgencia, onIniciar }: { nombreAgencia: string; onIniciar: (operador: string) => void }) {
-  const [nombre, setNombre] = useState('');
-
-  const iniciar = () => {
-    const operador = nombre.trim();
-    if (!operador) {
-      toast.error('Ingrese el nombre del operador para iniciar el turno.');
-      return;
-    }
-    onIniciar(operador);
-  };
-
+function InicioTurno({ nombreAgencia, nombreOperador, onIniciar }: {
+  nombreAgencia: string;
+  nombreOperador: string;
+  onIniciar: () => void;
+}) {
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-6">
@@ -687,23 +695,10 @@ function InicioTurno({ nombreAgencia, onIniciar }: { nombreAgencia: string; onIn
               <User className="w-6 h-6 text-emerald-400" />
             </div>
             <h2 className="text-sm font-black text-white">Iniciar Turno</h2>
-            <p className="text-[10px] text-slate-400 mt-0.5">Las ventas del turno se guardan en este dispositivo hasta el cierre.</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Operador: <span className="font-semibold text-white">{nombreOperador}</span></p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="operador" className="text-[11px] font-bold text-slate-400">Nombre del operador</Label>
-            <Input
-              id="operador"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') iniciar(); }}
-              placeholder="Ej: María López"
-              autoFocus
-              className="h-12 bg-slate-800 border-slate-700 text-sm text-white placeholder:text-slate-600"
-            />
-          </div>
-
-          <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm h-12 gap-2" onClick={iniciar}>
+          <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm h-12 gap-2" onClick={onIniciar}>
             <Ticket className="w-4 h-4" /> INICIAR TURNO
           </Button>
         </div>
@@ -739,6 +734,17 @@ function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: Sat
           </div>
           <p className="text-[10px] text-slate-400 truncate mt-0.5">{v.conductor || '—'}</p>
         </div>
+        {v.estado === 'EN_TRANSITO' && !arrivado && !llegado && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[10px] font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-800"
+            onClick={onMarcarArribe}
+          >
+            <MapPin className="w-3 h-3 mr-1" />
+            Arrivó
+          </Button>
+        )}
         <div className="text-right shrink-0">
           <span className="block text-[9px] uppercase font-bold text-slate-500">Hora</span>
           <span className="block font-mono font-black text-emerald-300 text-sm">{formatHora(v.hora_ruta)}</span>
