@@ -21,7 +21,8 @@ export default defineConfig(({ mode }) => ({
         name: 'Tickets Transporte Intermunicipal',
         short_name: 'AppTicket',
         description: 'Plataforma integral para la gestión de tickets, control de rutas, administración de flota y validación de despachos en tiempo real.',
-        theme_color: '#ffffff',
+         lang: 'es',
+         theme_color: '#ffffff',
         icons: [
           {
             src: 'pwa-192x192.png',

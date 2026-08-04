@@ -1,6 +1,13 @@
 {
-  "name": "Your Website",
-  "short_name": "Website",
+  "name": "Tickets Transporte Intermunicipal",
+  "short_name": "AppTicket",
+  "description": "Plataforma integral para la gestión de tickets, control de rutas, administración de flota y validación de despachos en tiempo real.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "scope": "/",
+  "lang": "es",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
@@ -11,9 +18,12 @@
       "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "/maskable-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
-  "display": "standalone"
+  ]
 }
