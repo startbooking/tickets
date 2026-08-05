@@ -23,15 +23,16 @@ import SuperAdminHome from './SuperAdminHome';
 import { SuperMaintenanceView } from './views/SuperMaintenanceView';
 import { SuperRoutesView } from './views/SuperRoutesView';
 import { SuperFleetView } from './views/SuperFleetView';
+import { PassengersManagementView } from './views/PassengersManagementView';
 
-type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas';
+type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros';
 
 export default function SuperAdminDashboard() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState<AdminSection>('inicio');
   const [configOpen, setConfigOpen] = useState(() => {
     // Si la sección activa pertenece a configuración, arranca expandido
-    return ['empresa', 'usuarios', 'resoluciones', 'agencias', 'conductores'].includes(activeSection);
+    return ['empresa', 'usuarios', 'resoluciones', 'agencias', 'vehiculos', 'conductores'].includes(activeSection);
   });
 
   // Configuración del menú dinámico con sus respectivos iconos y etiquetas
@@ -40,6 +41,7 @@ export default function SuperAdminDashboard() {
     { id: 'buses', label: 'Flota de Buses', icon: <Bus className="w-5 h-5" /> },
     { id: 'mantenimiento', label: 'Mantenimiento Global', icon: <Bus className="w-5 h-5" /> },
     { id: 'rutas', label: 'Configuración de Rutas', icon: <Map className="w-5 h-5" /> },
+    { id: 'pasajeros', label: 'Pasajeros', icon: <Users className="w-5 h-5" /> },
   ] as const;
 
   const configSubItems = [
@@ -63,6 +65,7 @@ export default function SuperAdminDashboard() {
       case 'inicio':return <SuperAdminHome />;
       case 'mantenimiento':return <SuperMaintenanceView />;
       case 'rutas':return <SuperRoutesView />;
+      case 'pasajeros': return <PassengersManagementView />;
       case 'empresa': return <GeneralSettingsView />;
       default: return <SuperAdminHome />;
     }
@@ -73,7 +76,7 @@ export default function SuperAdminDashboard() {
       
       {/* ─── MENÚ LATERAL IZQUIERDO (SIDEBAR) ─── */}
       <aside className="w-72 bg-slate-900 text-slate-200 flex flex-col justify-between border-r border-slate-800 shadow-xl z-20">
-        <div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Header del Sidebar */}
           <div className="p-6 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
             <div className="p-2 bg-amber-500 rounded-lg text-slate-950">
@@ -155,7 +158,7 @@ export default function SuperAdminDashboard() {
                 onClick={() => setConfigOpen(!configOpen)}
                 className={cn(
                   "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150",
-                  ['empresa', 'usuarios', 'resoluciones', 'agencias', 'conductores'].includes(activeSection)
+                  ['empresa', 'usuarios', 'resoluciones', 'agencias', 'vehiculos', 'conductores'].includes(activeSection)
                     ? "text-red-400 font-semibold"
                     : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                 )}
@@ -167,9 +170,9 @@ export default function SuperAdminDashboard() {
                 {configOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
 
-              {/* Contenedor del Submenú con sangría visual */}
+              {/* Contenedor del Submenú con sangría visual y scroll para >= 5 opciones */}
               {configOpen && (
-                <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 animate-in slide-in-from-top-2 duration-200">
+                <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 animate-in slide-in-from-top-2 duration-200 overflow-y-auto max-h-80">
                   {configSubItems.map((subItem) => {
                     const isSubActive = activeSection === subItem.id;
                     return (

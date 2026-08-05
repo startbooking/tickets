@@ -27,6 +27,8 @@ import {
   NIVEL_USUARIO_LABEL,
 } from '@/services/travelsoftService';
 import { OridesOption } from '@/services/travelsoftService';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationBar } from "@/components/PaginationBar";
 
 interface UsuarioFormProps {
   open: boolean;
@@ -380,6 +382,9 @@ export function UsersManagementView() {
     );
   });
 
+  const { paginatedItems, currentPage, totalPages, pageSize, setPageSize, goToPage, nextPage, prevPage, goToFirst, goToLast } =
+    usePagination<UsuarioSACTelConAgencia>(usuariosFiltrados, 25);
+
   const rolLabel = (u: UsuarioSACTelConAgencia): string => {
     return NIVEL_USUARIO_LABEL[u.nivel_usuario] || String(u.nivel_usuario);
   };
@@ -432,7 +437,7 @@ export function UsersManagementView() {
               </tr>
             </thead>
             <tbody className="divide-y text-sm">
-              {usuariosFiltrados.map((u) => {
+              {paginatedItems.map((u) => {
                 const estaBloqueado = u.estado_usuario === '0';
                 return (
                   <tr key={u.cedula_usuario} className="hover:bg-slate-50/80 transition-colors">
@@ -489,7 +494,7 @@ export function UsersManagementView() {
                   </tr>
                 );
               })}
-              {!loading && usuariosFiltrados.length === 0 && (
+              {!loading && paginatedItems.length === 0 && (
                 <tr>
                   <td colSpan={6} className="p-6 text-center text-slate-400">
                     No se encontraron usuarios.
@@ -499,6 +504,19 @@ export function UsersManagementView() {
             </tbody>
           </table>
         </div>
+
+        <PaginationBar
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={usuariosFiltrados.length}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          onGoToPage={goToPage}
+          onPrevPage={prevPage}
+          onNextPage={nextPage}
+          onGoToFirst={goToFirst}
+          onGoToLast={goToLast}
+        />
       </CardContent>
 
       {/* Formulario de crear/editar */}

@@ -21,6 +21,8 @@ import {
   type VehiculoCreateInput,
   type VehiculoUpdateInput,
 } from '@/services/travelsoftService';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationBar } from "@/components/PaginationBar";
 
 interface VehiculoFormProps {
   open: boolean;
@@ -198,7 +200,7 @@ export function BusesManagementView() {
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      const data = await travelsoftService.getVehiculos();
+      const data = await travelsoftService.getFlotaVehiculos();
       setVehiculos(data);
     } catch (err) {
       toast.error('No se pudieron cargar los vehículos.');
@@ -264,6 +266,9 @@ export function BusesManagementView() {
     );
   });
 
+  const { paginatedItems, currentPage, totalPages, pageSize, setPageSize, goToPage, nextPage, prevPage, goToFirst, goToLast } =
+    usePagination<VehiculoSACTel>(vehiculosFiltrados, 25);
+
   const estadoLabel = (v: VehiculoSACTel): string => {
     if (v.estado_vehi !== '1') return 'Inactivo';
     if (v.bloqueo_vehi === '1') return 'Bloqueado';
@@ -325,7 +330,7 @@ export function BusesManagementView() {
               </tr>
             </thead>
             <tbody className="divide-y text-sm">
-              {vehiculosFiltrados.map((v) => {
+              {paginatedItems.map((v) => {
                 const bloqueado = v.bloqueo_vehi === '1';
                 return (
                   <tr key={v.placa_vehi} className="hover:bg-slate-50/80 transition-colors">
@@ -368,7 +373,7 @@ export function BusesManagementView() {
                   </tr>
                 );
               })}
-              {!loading && vehiculosFiltrados.length === 0 && (
+              {!loading && paginatedItems.length === 0 && (
                 <tr>
                   <td colSpan={7} className="p-6 text-center text-slate-400">
                     No se encontraron vehículos.
@@ -378,6 +383,19 @@ export function BusesManagementView() {
             </tbody>
           </table>
         </div>
+
+        <PaginationBar
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={vehiculosFiltrados.length}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          onGoToPage={goToPage}
+          onPrevPage={prevPage}
+          onNextPage={nextPage}
+          onGoToFirst={goToFirst}
+          onGoToLast={goToLast}
+        />
       </CardContent>
 
       {/* Formulario de crear/editar */}

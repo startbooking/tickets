@@ -206,6 +206,65 @@ export interface ConductorOption {
   estado_conduc?: string;
 }
 
+// ── Conductor (tabla `conductores`, PK = cedula_conduc) ──────────────────
+
+export interface ConductorSACTel {
+  cedula_conduc: string;
+  nombre_conduc: string;
+  telefono_conduc?: string | null;
+  celular_conduc?: string | null;
+  correo_conduc?: string | null;
+  estado_conduc?: string;
+}
+
+export interface ConductorCreateInput {
+  cedula_conduc: string;
+  nombre_conduc: string;
+  telefono_conduc?: string;
+  celular_conduc?: string;
+  correo_conduc?: string;
+  estado_conduc?: string;
+}
+
+export interface ConductorUpdateInput {
+  nombre_conduc?: string;
+  telefono_conduc?: string;
+  celular_conduc?: string;
+  correo_conduc?: string;
+  estado_conduc?: string;
+}
+
+// ── Pasajero (tabla `pasajero`) ──────────────────────────────────────────
+
+export interface PasajeroSACTel {
+  cedula_pasajero?: string;
+  nombre_pasajero?: string;
+  telefono_pasajero?: string | null;
+  correo_pasajero?: string | null;
+  pasajero_internet?: string | null;
+  cedula_usuario?: string | null;
+  direccion_pasajero?: string | null;
+}
+
+// ── Viaje de un pasajero (tabla `planillas`) ─────────────────────────────
+
+export interface ViajePasajero {
+  id_planilla?: number;
+  cod_ruta?: number;
+  fecha_ruta?: string | null;
+  hora_ruta?: number | null;
+  origen_ruta?: number | null;
+  destino_ruta?: number | null;
+  placa_vehi?: string | null;
+  cedula_conduc?: string | null;
+  cedula_pasajero?: string | null;
+  valor?: number | null;
+  puesto?: number | null;
+  forma_pago?: string | null;
+  anulado_tiquete?: string | null;
+  hora_tiquete?: string | null;
+}
+
 // ── Vehículo (tabla `vehiculo`, PK = placa_vehi) ──────────────────────────────
 
 export interface VehiculoSACTel {
@@ -559,12 +618,16 @@ export const travelsoftService = {
   /**
    * Trae el usuario del backend travelsoft por cédula (GET /usuarios/{cedula}).
    */
-  getUsuario: async (cedula: string): Promise<TravelsoftUser> => {
-    const response = await apiClient.get<TravelsoftUser>(
-      `/usuarios/${encodeURIComponent(cedula)}`
-    );
-    return response.data;
-  },
+  /**
+    * Trae el usuario del backend travelsoft por cédula (GET /usuarios/{cedula}).
+    * Retorna el perfil de TravelSoft con: cedula, nombres, apellidos, rol y nivel.
+    */
+   getUsuarioOrides: async (cedula: string): Promise<TravelsoftUser> => {
+     const response = await apiClient.get<TravelsoftUser>(
+       `/usuarios/${encodeURIComponent(cedula)}`
+     );
+     return response.data;
+   },
 
   /**
    * Estadísticas de vehículos del día para la agencia del cajero autenticado.
@@ -716,7 +779,8 @@ export const travelsoftService = {
     const response = await apiClient.get<ConductorOption[]>("/conductores", { params: { limit: 500 } });
     return response.data;
   },
-  getVehiculos: async (): Promise<VehiculoOption[]> => {
+  /** Lista de vehículos para dropdowns/selects (GET /vehiculos). */
+  getVehiculosDropdown: async (): Promise<VehiculoOption[]> => {
     const response = await apiClient.get<VehiculoOption[]>("/vehiculos", { params: { limit: 500 } });
     return response.data;
   },
@@ -880,11 +944,11 @@ export const travelsoftService = {
     }));
   },
 
-  /** Obtiene un usuario por su cédula (GET /usuario/{cedula}). */
-  getUsuario: async (cedula: string): Promise<UsuarioSACTel> => {
-    const response = await apiClient.get<UsuarioSACTel>(`/usuario/${cedula}`);
-    return response.data;
-  },
+   /** Obtiene un usuario por su cédula (GET /usuario/{cedula}). */
+   getUsuarioLocal: async (cedula: string): Promise<UsuarioSACTel> => {
+     const response = await apiClient.get<UsuarioSACTel>(`/usuario/${cedula}`);
+     return response.data;
+   },
 
   /** Crea un nuevo usuario (POST /usuario/). */
   crearUsuario: async (input: UsuarioCreateInput): Promise<UsuarioSACTel> => {
@@ -912,8 +976,8 @@ export const travelsoftService = {
 
   // ── CRUD de vehículos (tabla `vehiculo` vía router genérico /api/v1/vehiculo/) ──
 
-  /** Lista todos los vehículos (GET /vehiculo/). */
-  getVehiculos: async (limit = 500): Promise<VehiculoSACTel[]> => {
+  /** Lista todos los vehículos de la flota SACTel (GET /vehiculo/). */
+  getFlotaVehiculos: async (limit = 500): Promise<VehiculoSACTel[]> => {
     const response = await apiClient.get<VehiculoSACTel[]>("/vehiculo/", { params: { limit } });
     return Array.isArray(response.data) ? response.data : [];
   },
@@ -943,5 +1007,59 @@ export const travelsoftService = {
       observacion_bloqueo: observacion,
     });
     return response.data;
+  },
+
+  // ── CRUD de conductores (tabla `conductores` vía router /api/v1/conductores) ──
+
+  /** Lista todos los conductores de la base SACTel (GET /conductores). */
+  getFlotaConductores: async (limit = 500): Promise<ConductorSACTel[]> => {
+    const response = await apiClient.get<ConductorSACTel[]>("/conductores", { params: { limit } });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  /** Obtiene un conductor por su cédula (GET /conductores/{cedula}). */
+  getConductor: async (cedula: string): Promise<ConductorSACTel> => {
+    const response = await apiClient.get<ConductorSACTel>(`/conductores/${encodeURIComponent(cedula)}`);
+    return response.data;
+  },
+
+  /** Crea un nuevo conductor (POST /conductores). */
+  crearConductor: async (input: ConductorCreateInput): Promise<{ message: string; id?: number }> => {
+    const response = await apiClient.post<{ message: string; id?: number }>("/conductores", input);
+    return response.data;
+  },
+
+  /** Actualiza un conductor por cédula (PUT /conductores/{cedula}). */
+  actualizarConductor: async (cedula: string, input: ConductorUpdateInput): Promise<{ message: string }> => {
+    const response = await apiClient.put<{ message: string }>(`/conductores/${encodeURIComponent(cedula)}`, input);
+    return response.data;
+  },
+
+  /** Bloquea o desbloquea un conductor cambiando `estado_conduc` (PUT /conductores/{cedula}). */
+  toggleConductorBloqueado: async (cedula: string, bloqueado: boolean): Promise<{ message: string }> => {
+    const response = await apiClient.put<{ message: string }>(`/conductores/${encodeURIComponent(cedula)}`, {
+      estado_conduc: bloqueado ? '0' : '1',
+    });
+    return response.data;
+  },
+
+  // ── Consulta de pasajeros y sus viajes (solo lectura) ─────────────────
+
+  /** Lista todos los pasajeros registrados (GET /pasajero/). */
+  getPasajeros: async (limit = 500): Promise<PasajeroSACTel[]> => {
+    const response = await apiClient.get<PasajeroSACTel[]>("/pasajero/", { params: { limit } });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  /** Consulta los viajes de un pasajero por su cédula (GET /planillas/ + filtro local). */
+  getViajesPasajero: async (cedula: string, limit = 500): Promise<ViajePasajero[]> => {
+    const response = await apiClient.get<ViajePasajero[]>("/planillas/", { params: { limit } });
+    const raw = Array.isArray(response.data) ? response.data : [];
+    const target = (cedula || '').trim();
+    if (!target) return raw;
+    return raw.filter((v) => {
+      const c = v?.cedula_pasajero || '';
+      return c.trim() === target;
+    });
   },
 };

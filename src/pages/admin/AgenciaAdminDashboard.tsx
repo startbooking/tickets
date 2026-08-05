@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   Users, Bus, FileText, Monitor, CalendarDays,
   Coins, LogOut, Building2, ChevronRight, ChevronDown, Package, Settings,
-  Wrench
+  Wrench, Tag, Landmark
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,11 @@ import { LocalResolutionsView } from './agencia-views/LocalResolutionsView';
 import { DeviceInventoryView } from './agencia-views/DeviceInventoryView';
 import { CashClosingView } from './agencia-views/CashClosingView';
 import { LocalVehiclesView } from './agencia-views/LocalVehiclesView';
+import { TarifasView } from './agencia-views/TarifasView';
+import { EmpresasView } from './agencia-views/EmpresasView';
 
 
-type AgenciaSection = 'inicio' | 'despachos' | 'programacion' | 'envios' | 'mantenimiento' | 'cierre' | 'usuarios' | 'inventario' | 'resoluciones';
+type AgenciaSection = 'inicio' | 'despachos' | 'programacion' | 'envios' | 'mantenimiento' | 'cierre' | 'usuarios' | 'inventario' | 'resoluciones' | 'tarifas' | 'empresas';
 export default function AgenciaAdminDashboard() {
   // const [activeSection, setActiveSection] = useState<AgenciaSection>('despachos');
   const { user, logout } = useAuth();
@@ -28,7 +30,7 @@ export default function AgenciaAdminDashboard() {
   // 🧭 Estado para colapsar/expandir el submenú de Configuración
   const [configOpen, setConfigOpen] = useState(() => {
     // Si la opción activa pertenece a configuración, arranca abierto
-    return ['usuarios', 'inventario', 'resoluciones'].includes(activeSection);
+    return ['usuarios', 'inventario', 'resoluciones', 'tarifas', 'empresas'].includes(activeSection);
   });
 
   const getIniciales = (name: string) => {
@@ -59,6 +61,8 @@ export default function AgenciaAdminDashboard() {
   const configSubItems = [
     { id: 'usuarios', label: 'Cajeros y Despachadores', icon: <Users className="w-4 h-4" /> },
     { id: 'inventario', label: 'Inventario de Equipos', icon: <Monitor className="w-4 h-4" /> },
+    { id: 'tarifas', label: 'Tarifas y Rutas', icon: <Tag className="w-4 h-4" /> },
+    { id: 'empresas', label: 'Empresas y Concesionarios', icon: <Landmark className="w-4 h-4" /> },
     { id: 'resoluciones', label: 'Resoluciones DIAN', icon: <FileText className="w-4 h-4" /> },
   ] as const;
 
@@ -67,10 +71,12 @@ export default function AgenciaAdminDashboard() {
       case 'despachos': return <DespachoBusesView idAgencia={idAgencia} />;
       case 'programacion': return <TravelSchedulerView idAgencia={idAgencia} />;
       case 'envios': return <LocalEnviosView idAgencia={idAgencia} />;
-      case 'mantenimiento': return <LocalVehiclesView idAgencia={idAgencia} />; // 👈 Inyección de la vista
+      case 'mantenimiento': return <LocalVehiclesView idAgencia={idAgencia} />;
       case 'cierre': return <CashClosingView idAgencia={idAgencia} />;
       case 'usuarios': return <LocalUsersView idAgencia={idAgencia} />;
       case 'inventario': return <DeviceInventoryView idAgencia={idAgencia} />;
+      case 'tarifas': return <TarifasView idAgencia={idAgencia} />;
+      case 'empresas': return <EmpresasView idAgencia={idAgencia} />;
       case 'resoluciones': return <LocalResolutionsView idAgencia={idAgencia} />;
       default: return <DespachoBusesView idAgencia={idAgencia} />;
     }
@@ -159,9 +165,9 @@ export default function AgenciaAdminDashboard() {
                 {configOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
 
-              {/* Contenedor colapsable animado */}
+              {/* Contenedor colapsable animado con scroll para >= 5 opciones */}
               {configOpen && (
-                <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 animate-in slide-in-from-top-2 duration-200">
+                <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 animate-in slide-in-from-top-2 duration-200 overflow-y-auto max-h-80">
                   {configSubItems.map((subItem) => {
                     const isSubActive = activeSection === subItem.id;
                     return (

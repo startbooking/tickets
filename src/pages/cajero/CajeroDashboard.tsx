@@ -624,7 +624,7 @@ function NuevaRutaDialog({
       const [o, c, v] = await Promise.all([
         travelsoftService.getOrides(),
         travelsoftService.getConductores(),
-        travelsoftService.getVehiculos(),
+        travelsoftService.getVehiculosDropdown(),
       ]);
       setOrides(o);
       setConductores(c.filter((x) => (x.estado_conduc ?? '1') === '1'));

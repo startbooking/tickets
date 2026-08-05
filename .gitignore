@@ -27,3 +27,6 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+# Memoria de sesion local (contiene credenciales)
+MEMORIA_SESION.md

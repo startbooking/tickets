@@ -7,6 +7,8 @@ import {
   Wrench, FileText, History, User, Users, AlertTriangle, 
   Clock, MapPin, CheckCircle2, ShieldAlert, ChevronRight 
 } from "lucide-react";
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationBar } from "@/components/PaginationBar";
 
 interface ViajeBitacora {
   idViaje: string;
@@ -94,11 +96,57 @@ export function LocalVehiclesView({ idAgencia }: { idAgencia: number }) {
       tecnomecanica: "Vencida hace 3 días",
       ultimoCambioAceite: "Requiere Cambio Urgente",
       bitacoraViajes: []
+    },
+    {
+      placa: "RTG-451",
+      interno: "220",
+      empresa: "Cootranshuila",
+      estadoMantenimiento: "OPERATIVO",
+      soatVencimiento: "2026-12-01",
+      tecnomecanica: "Vigente (Vence 2027-01-15)",
+      ultimoCambioAceite: "Hace 2,300 KM",
+      bitacoraViajes: [
+        {
+          idViaje: "V-9951",
+          fecha: "2026-07-03",
+          conductor: "Néstor Iván Quintero",
+          pasajerosDespachados: 29,
+          novedadesTrayecto: "Ninguna. Vía despejada.",
+          destino: "Neiva",
+          horaLlegada: "06:30 PM",
+          novedadLlegada: "Ninguna. Vehículo entregado a recibo."
+        }
+      ]
+    },
+    {
+      placa: "MNO-612",
+      interno: "304",
+      empresa: "Autobuses Rápidos del Caribe",
+      estadoMantenimiento: "MANTENIMIENTO_PREVENTIVO",
+      soatVencimiento: "2027-03-20",
+      tecnomecanica: "Vigente (Vence 2027-04-02)",
+      ultimoCambioAceite: "Hace 6,800 KM",
+      bitacoraViajes: [
+        {
+          idViaje: "V-9907",
+          fecha: "2026-07-01",
+          conductor: "Hugo Armando Páez",
+          pasajerosDespachados: 34,
+          novedadesTrayecto: "Frenos con desgaste leve, revisión programada.",
+          destino: "Barranquilla",
+          horaLlegada: "03:55 PM",
+          novedadLlegada: "Pasa a taller para cambio de balatas."
+        }
+      ]
     }
   ]);
 
   // Vehículo seleccionado actualmente para inspección de Hoja de Vida
   const [vehiculoSeleccionado, setVehiculoSeleccionado] = useState<Vehiculo>(vehiculos[0]);
+
+  // Paginación de la lista de vehículos (columna izquierda)
+  const { paginatedItems, currentPage, totalPages, pageSize, setPageSize, goToPage, nextPage, prevPage, goToFirst, goToLast } =
+    usePagination<Vehiculo>(vehiculos, 25);
 
   const getBadgeEstado = (estado: Vehiculo['estadoMantenimiento']) => {
     switch (estado) {
@@ -123,7 +171,7 @@ export function LocalVehiclesView({ idAgencia }: { idAgencia: number }) {
           <CardDescription>Estado de mantenimiento técnico de los autobuses en terminal.</CardDescription>
         </CardHeader>
         <CardContent className="p-2 divide-y">
-          {vehiculos.map((v) => (
+          {paginatedItems.map((v) => (
             <button
               key={v.placa}
               type="button"
@@ -147,6 +195,22 @@ export function LocalVehiclesView({ idAgencia }: { idAgencia: number }) {
               <ChevronRight className="w-4 h-4 text-slate-400" />
             </button>
           ))}
+          {totalPages > 1 && (
+            <div className="p-3 border-t">
+              <PaginationBar
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={vehiculos.length}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
+                onGoToPage={goToPage}
+                onPrevPage={prevPage}
+                onNextPage={nextPage}
+                onGoToFirst={goToFirst}
+                onGoToLast={goToLast}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
