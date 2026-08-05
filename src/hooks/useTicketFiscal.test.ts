@@ -57,6 +57,12 @@ vi.mock('@/utils/ticketFormatter', async (importOriginal) => {
   };
 });
 
+// ── Mock del loader de logo ESC/POS: en entorno jsdom no hay canvas ni Image ────
+vi.mock('@/utils/escPosImage', () => ({
+  obtenerLogoEscPos: vi.fn().mockResolvedValue(''),
+  limpiarCacheLogo: vi.fn(),
+}));
+
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import type { TicketVenta } from '@/services/travelsoftService';
 

@@ -27,6 +27,7 @@ import {
   type FiscalContext,
   type ImpresionResultado,
 } from '@/services/ticketFiscalService';
+import { obtenerLogoEscPos } from '@/utils/escPosImage';
 import type { TicketVenta, TurnoSateliteVenta } from '@/services/travelsoftService';
 import type { TiqueteTransporteDTO } from '@/types';
 
@@ -61,13 +62,16 @@ export interface UseTicketFiscalResult {
  *
  * Cada salto se registra en el resultado para que el UI muestre el medio usado.
  */
-async function imprimirConRespaldo(
+async function imprimirConRespalado(
   texto: string,
-  onResultado?: (r: ImpresionResultado) => void
+  onResultado?: (r: ImpresionResultado) => void,
+  logoEscPos?: string
 ): Promise<ImpresionResultado> {
+  const textoFinal = logoEscPos ? logoEscPos + texto : texto;
+
   // 1. USB (backend)
   try {
-    await travelsoftService.imprimirTicketEscPos(texto);
+    await travelsoftService.imprimirTicketEscPos(textoFinal);
     onResultado?.('usb');
     return 'usb';
   } catch (err) {
@@ -77,7 +81,7 @@ async function imprimirConRespaldo(
   // 2. Bluetooth directo (Android Chromium)
   if (soportaBluetoothEscPos()) {
     try {
-      await imprimirBleEscPos(texto);
+      await imprimirBleEscPos(textoFinal);
       onResultado?.('ble');
       return 'ble';
     } catch (err) {
@@ -88,7 +92,7 @@ async function imprimirConRespaldo(
 
   // 3. RawBT (Android con app instalada)
   if (isAndroidDevice()) {
-    window.location.href = buildRawBtIntent(texto);
+    window.location.href = buildRawBtIntent(textoFinal);
     onResultado?.('rawbt');
     return 'rawbt';
   }
@@ -142,13 +146,19 @@ export function useTicketFiscal(): UseTicketFiscalResult {
 
   // ── Impresión de un ticket recién vendido ────────────────────────────────────
   const imprimirTicket = useCallback(
-    (t: TicketVenta) => imprimirConRespaldo(ticketATextoImpresion(t)),
+    async (t: TicketVenta) => {
+      const logo = await obtenerLogoEscPos();
+      return imprimirConRespalado(ticketATextoImpresion(t), undefined, logo);
+    },
     []
   );
 
   // ── Reimpresión de un ticket del turno satélite ──────────────────────────────
   const reimprimirVenta = useCallback(
-    (v: TurnoSateliteVenta) => imprimirConRespaldo(ventaATextoImpresion(v)),
+    async (v: TurnoSateliteVenta) => {
+      const logo = await obtenerLogoEscPos();
+      return imprimirConRespalado(ventaATextoImpresion(v), undefined, logo);
+    },
     []
   );
 

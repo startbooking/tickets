@@ -206,6 +206,47 @@ export interface ConductorOption {
   estado_conduc?: string;
 }
 
+// ── Vehículo (tabla `vehiculo`, PK = placa_vehi) ──────────────────────────────
+
+export interface VehiculoSACTel {
+  placa_vehi: string;
+  orden_vehi?: string | null;
+  modelo_vehi?: number | null;
+  marca_vehi?: string | null;
+  pasajeros_vehi?: number | null;
+  tipo_vehi?: string | null;
+  estado_vehi?: string | null;
+  bloqueo_vehi?: string | null;
+  observacion_bloqueo?: string | null;
+  numero_chasis_vehi?: string | null;
+  numero_motor_vehi?: string | null;
+}
+
+export interface VehiculoCreateInput {
+  placa_vehi: string;
+  orden_vehi?: string;
+  modelo_vehi?: number;
+  marca_vehi?: string;
+  pasajeros_vehi?: number;
+  tipo_vehi?: string;
+  estado_vehi?: string;
+  bloqueo_vehi?: string;
+  observacion_bloqueo?: string;
+  numero_chasis_vehi?: string;
+  numero_motor_vehi?: string;
+}
+
+export interface VehiculoUpdateInput {
+  orden_vehi?: string;
+  modelo_vehi?: number;
+  marca_vehi?: string;
+  pasajeros_vehi?: number;
+  tipo_vehi?: string;
+  estado_vehi?: string;
+  bloqueo_vehi?: string;
+  observacion_bloqueo?: string;
+}
+
 export interface VehiculoOption {
   placa_vehi: string;
   orden_vehi?: string;
@@ -353,8 +394,50 @@ export interface ImprimirTicketResult {
   copias?: number;
 }
 
+// ── Tipos de usuario (tabla `usuario` del backend) ───────────────────────────
+
+/** Niveles de usuario que reconoce TravelSoft (mapeo nivel_usuario → rol). */
+export const NIVEL_USUARIO_LABEL: Record<number, string> = {
+  10: "SUPERADMIN",
+  5: "ADMIN_AGENCIA",
+  2: "CAJERO",
+  0: "DESPACHADOR",
+};
+
+export type EstadoUsuario = "1" | "0";
+
+export interface UsuarioSACTel {
+  cedula_usuario: string;
+  nombre_usuario: string;
+  clave_usuario: string;
+  id_orides: number;
+  nivel_usuario: number;
+  estado_usuario: EstadoUsuario;
+}
+
+export interface UsuarioSACTelConAgencia extends UsuarioSACTel {
+  agencia?: string;
+  tipo_agencia?: string;
+}
+
+export interface UsuarioCreateInput {
+  cedula_usuario: string;
+  nombre_usuario: string;
+  clave_usuario: string;
+  id_orides: number;
+  nivel_usuario: number;
+  estado_usuario?: EstadoUsuario;
+}
+
+export interface UsuarioUpdateInput {
+  nombre_usuario?: string;
+  clave_usuario?: string;
+  id_orides?: number;
+  nivel_usuario?: number;
+  estado_usuario?: EstadoUsuario;
+}
+
 // Roles que entiende el frontend (App.tsx / ProtectedRoute)
-export type AppRol = "SUPERADMIN" | "ADMIN_AGENCIA" | "CAJERO" | "DESPACHADOR";
 
 export const DASHBOARD_POR_ROL: Record<AppRol, string> = {
   SUPERADMIN: "/superadmin/dashboard",
@@ -778,8 +861,87 @@ export const travelsoftService = {
       ...(agencia ? { params: { agencia } } : {}),
     });
     const payload = response.data;
-    if (!payload || payload.success !== true) {
-      throw new Error("No se pudo eliminar la resolución.");
-    }
+     if (!payload || payload.success !== true) {
+       throw new Error("No se pudo eliminar la resolución.");
+     }
+   },
+
+  // ── CRUD de usuarios (tabla `usuario` vía router genérico /api/v1/usuario/) ──
+
+  /** Lista todos los usuarios con el nombre de su agencia (GET /usuario/). */
+  getUsuarios: async (): Promise<UsuarioSACTelConAgencia[]> => {
+    const response = await apiClient.get<UsuarioSACTel[]>("/usuario/", { params: { limit: 500 } });
+    const raw = Array.isArray(response.data) ? response.data : [];
+    const orides = await travelsoftService.getOrides();
+    const mapaOrides = new Map(orides.map((o) => [o.id_orides, o.desc_orides]));
+    return raw.map((u) => ({
+      ...u,
+      agencia: mapaOrides.get(u.id_orides) || String(u.id_orides),
+    }));
+  },
+
+  /** Obtiene un usuario por su cédula (GET /usuario/{cedula}). */
+  getUsuario: async (cedula: string): Promise<UsuarioSACTel> => {
+    const response = await apiClient.get<UsuarioSACTel>(`/usuario/${cedula}`);
+    return response.data;
+  },
+
+  /** Crea un nuevo usuario (POST /usuario/). */
+  crearUsuario: async (input: UsuarioCreateInput): Promise<UsuarioSACTel> => {
+    const response = await apiClient.post<UsuarioSACTel>("/usuario/", input);
+    return response.data;
+  },
+
+  /** Actualiza un usuario existente (PUT /usuario/{cedula}). */
+  actualizarUsuario: async (cedula: string, input: UsuarioUpdateInput): Promise<UsuarioSACTel> => {
+    const response = await apiClient.put<UsuarioSACTel>(`/usuario/${cedula}`, input);
+    return response.data;
+  },
+
+  /** Bloquea o desbloquea un usuario cambiando `estado_usuario` (PUT /usuario/{cedula}). */
+  toggleUsuarioBloqueado: async (cedula: string, estado: EstadoUsuario): Promise<UsuarioSACTel> => {
+    const response = await apiClient.put<UsuarioSACTel>(`/usuario/${cedula}`, { estado_usuario: estado });
+    return response.data;
+  },
+
+  /** Cambia la clave de un usuario (PUT /usuario/{cedula}). */
+  cambiarClaveUsuario: async (cedula: string, nuevaClave: string): Promise<UsuarioSACTel> => {
+    const response = await apiClient.put<UsuarioSACTel>(`/usuario/${cedula}`, { clave_usuario: nuevaClave });
+    return response.data;
+  },
+
+  // ── CRUD de vehículos (tabla `vehiculo` vía router genérico /api/v1/vehiculo/) ──
+
+  /** Lista todos los vehículos (GET /vehiculo/). */
+  getVehiculos: async (limit = 500): Promise<VehiculoSACTel[]> => {
+    const response = await apiClient.get<VehiculoSACTel[]>("/vehiculo/", { params: { limit } });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  /** Obtiene un vehículo por placa (GET /vehiculo/{placa}). */
+  getVehiculo: async (placa: string): Promise<VehiculoSACTel> => {
+    const response = await apiClient.get<VehiculoSACTel>(`/vehiculo/${encodeURIComponent(placa)}`);
+    return response.data;
+  },
+
+  /** Crea un nuevo vehículo (POST /vehiculo/). */
+  crearVehiculo: async (input: VehiculoCreateInput): Promise<{ message: string; id?: number }> => {
+    const response = await apiClient.post<{ message: string; id?: number }>("/vehiculo/", input);
+    return response.data;
+  },
+
+  /** Actualiza un vehículo por placa (PUT /vehiculo/{placa}). */
+  actualizarVehiculo: async (placa: string, input: VehiculoUpdateInput): Promise<{ message: string }> => {
+    const response = await apiClient.put<{ message: string }>(`/vehiculo/${encodeURIComponent(placa)}`, input);
+    return response.data;
+  },
+
+  /** Bloquea o desbloquea un vehículo cambiando `bloqueo_vehi` (PUT /vehiculo/{placa}). */
+  toggleVehiculoBloqueado: async (placa: string, bloqueado: boolean, observacion = ''): Promise<{ message: string }> => {
+    const response = await apiClient.put<{ message: string }>(`/vehiculo/${encodeURIComponent(placa)}`, {
+      bloqueo_vehi: bloqueado ? '1' : '0',
+      observacion_bloqueo: observacion,
+    });
+    return response.data;
   },
 };

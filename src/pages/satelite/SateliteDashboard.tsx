@@ -119,9 +119,8 @@ export default function SateliteDashboard() {
   }, [turno, cargarDashboard, fechaSel]);
 
    // ─── Turno ────────────────────────────────────────────────────────────────
-  // El operador ya no se pide al usuario: se toma del usuario autenticado.
-  const nombreOperador = user?.nombreCompleto || user?.nombre || user?.nombre_usuario || 'Operador';
-  const iniciarTurno = () => {
+   // El operador ya no se pide al usuario: se toma del usuario autenticado.
+   const iniciarTurno = () => {
     const nuevo: TurnoSatelite = { operador: nombreOperador, inicio: new Date().toISOString(), ventas: [] };
     guardarTurno(nuevo);
     setTurno(nuevo);
@@ -356,6 +355,9 @@ export default function SateliteDashboard() {
             </div>
             <Button variant="ghost" size="sm" onClick={() => setCierreAbierto(true)} className="text-[11px] text-red-300 hover:text-red-200 hover:bg-red-950/40 gap-1 h-9 px-2 font-bold">
               <Coins className="w-3.5 h-3.5" /> Cerrar Turno
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-[11px] text-slate-300 hover:text-white hover:bg-slate-800/40 gap-1 h-9 px-2 font-bold">
+              <LogOut className="w-3.5 h-3.5" /> Cerrar Sesión
             </Button>
           </div>
 

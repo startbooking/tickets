@@ -92,6 +92,15 @@ export function InvoicePreview({
         
         {/* Ticket Receipt Style */}
         <div className="bg-white text-gray-900 rounded-lg p-6 font-mono text-sm space-y-4">
+          {/* Logo */}
+          <div className="text-center mb-2">
+            <img
+              src="/images/logo_tiquete.jpg"
+              alt="Flota San Vicente S.A."
+              className="mx-auto h-12 w-auto object-contain"
+              loading="eager"
+            />
+          </div>
           {/* Header */}
           <div className="text-center space-y-1">
             <div className="flex justify-center mb-2">

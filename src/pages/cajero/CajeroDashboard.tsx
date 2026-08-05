@@ -1646,6 +1646,14 @@ function SubViewVentas({
         {/* Comprobante / impresión */}
         {ticket && (
           <div id="ticket-print" className="bg-white border border-slate-300 rounded-lg p-4 font-mono text-[11px] leading-relaxed shadow-sm space-y-1.5">
+            <div className="text-center mb-2">
+              <img
+                src="/images/logo_tiquete.jpg"
+                alt="Flota San Vicente S.A."
+                className="mx-auto h-12 w-auto object-contain"
+                loading="eager"
+              />
+            </div>
             <div className="text-center font-black border-b border-dashed pb-1.5">
               <p className="text-xs">FLOTA SAN VICENTE S.A.</p>
               <p className="text-[10px] text-slate-500">SERVICIO PÚBLICO DE TRANSPORTE</p>
