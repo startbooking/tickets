@@ -28,6 +28,8 @@ export const EMPRESA_DIRECCION = 'Calle 24 A No. 44-35, Quinta Paredes, Bogotá 
 export const EMPRESA_TELEFONO = '(601) 368 2390';
 /** Página web de la empresa (encabezado del tiquete). */
 export const EMPRESA_WEB = 'www.flotasanvicente.co';
+/** Correo institucional de la empresa (encabezado y párrafo de contacto). */
+export const EMPRESA_EMAIL = 'fsv@flotasanvicente.co';
 /** Tipo de régimen de la empresa de transporte (encabezado del tiquete). */
 export const EMPRESA_REGIMEN = 'Regimen Comun';
 /** Documento usado como marcador cuando el pasajero no provee identificación. */
@@ -36,6 +38,8 @@ export const DOCUMENTO_CONSUMIDOR = '222222222222';
 export const TIPO_DOC_CONSUMIDOR = '14';
 /** Tipo de documento DIAN para personas con identificación real. */
 export const TIPO_DOC_PERSONA = '13';
+/** CUFE mock para pruebas offline (el Core DIAN otorga el real en producción). */
+export const CUFE_MOCK = '7CBC8F46A05C96A491A61565DD8648FEEA35C834';
 
 /**
  * Contexto fiscal operativo: datos del usuario autenticado necesarios para
@@ -78,7 +82,7 @@ const cantidad = t.cantidad || t.puestos?.length || 1;
   const agencia = t.origen || t.municipio || '';
   const tipoVenta =
     t.fecha_venta ? (t.fecha_venta.split(' ')[0] === t.fecha_ruta ? 'PARA HOY' : 'RESERVA') : 'PARA HOY';
-  const cufe = t.cufe || '';
+  const cufe = t.cufe || CUFE_MOCK;
   const horaSalida = t.hora_ruta != null ? formatHora(t.hora_ruta) : (t.hora_tiquete || '');
   const qrData =
     `Numpool=${numeroFactura}&Fec=${t.fecha_ruta}&Hora=${horaSalida}&ValFac=${(unitario * rowCount).toFixed(2)}` +
@@ -113,7 +117,7 @@ const cantidad = t.cantidad || t.puestos?.length || 1;
       },
       contacto: {
         telefono: EMPRESA_TELEFONO,
-        email: 'fsv@flotasanvicente.co',
+        email: EMPRESA_EMAIL,
       },
     },
     adquirente: {
@@ -240,6 +244,7 @@ export function ticketATextoImpresion(t: TicketVenta): string {
       t.fecha_venta ? (t.fecha_venta.split(' ')[0] === t.fecha_ruta ? 'PARA HOY' : 'RESERVA') : undefined,
     tipoTransporte: 'Terrestre',
     elaboro: t.cajero_nombre || t.cajero || undefined,
+    mensaje: t.mensaje || undefined,
   });
 }
 
@@ -272,6 +277,7 @@ export function ventaATextoImpresion(v: TurnoSateliteVenta): string {
     numeroFactura: v.numero_factura,
     cufe: v.cufe,
     qr: v.qr_dian,
+    mensaje: v.mensaje || undefined,
   });
 }
 

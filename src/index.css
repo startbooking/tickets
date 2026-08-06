@@ -110,6 +110,26 @@ All colors MUST be HSL.
   }
 }
 
+/* PDA / móvil touch-friendly: targets mínimos 44px */
+@media (max-width: 639px) {
+  button, .btn-touch {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  input, select, textarea {
+    @apply h-11;
+  }
+  .touch-list {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+@supports (height: 100dvh) {
+  .h-screen-dyn { height: 100dvh; }
+}
+@supports not (height: 100dvh) {
+  .h-screen-dyn { height: 100vh; }
+}
+
 /* Impresión del tiquete de venta: solo se imprime el comprobante */
 @media print {
   body * {

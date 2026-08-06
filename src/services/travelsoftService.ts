@@ -136,6 +136,7 @@ export interface TurnoSateliteVenta {
   nit_emisor?: string | null;
   fecha_ruta?: string | null;
   hora_ruta?: number | null;
+  mensaje?: string | null;
 }
 
 export interface CierreTurnoSateliteInput {

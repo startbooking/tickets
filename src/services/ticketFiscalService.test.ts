@@ -8,6 +8,7 @@ import {
   DOCUMENTO_CONSUMIDOR,
   TIPO_DOC_CONSUMIDOR,
   TIPO_DOC_PERSONA,
+  CUFE_MOCK,
 } from './ticketFiscalService';
 import { splitNombreCompleto, formatHora } from '@/services/travelsoftService';
 import type { TicketVenta, TurnoSateliteVenta } from '@/services/travelsoftService';
@@ -190,6 +191,27 @@ describe('ticketATextoImpresion', () => {
   it('formatea la hora con formatHora cuando no hay hora_tiquete', () => {
     const sinHoraTiquete = { ...ticketBase, hora_tiquete: undefined, hora_ruta: 1246 };
     expect(ticketATextoImpresion(sinHoraTiquete)).toContain(`Salida: 2026-07-31 ${formatHora(1246)}`);
+  });
+
+  it('no incluye "¡Buen Viaje!" en el texto ESC/POS', () => {
+    const txt = ticketATextoImpresion(ticketBase);
+    expect(txt).not.toContain('Buen Viaje');
+    expect(txt).not.toContain('BUEN VIAJE');
+  });
+
+  it('usa el CUFE mock (CUFE_MOCK) cuando el ticket no trae cufe', () => {
+    const sinCufe = { ...ticketBase, cufe: undefined, cufe: undefined };
+    const payload = construirPayloadDian(sinCufe, { id_orides: 1 });
+    expect(payload.cufe).toBe(CUFE_MOCK);
+  });
+
+  it('imprime el CUFE al final del ticket, después del QR', () => {
+    const txt = ticketATextoImpresion(ticketBase);
+    const cufeIdx = txt.lastIndexOf('CUFE:');
+    const qrIdx = txt.indexOf(String.fromCharCode(0x1d, 0x28, 0x6b));
+    expect(cufeIdx).toBeGreaterThan(-1);
+    expect(qrIdx).toBeGreaterThan(-1);
+    expect(cufeIdx).toBeGreaterThan(qrIdx);
   });
 });
 

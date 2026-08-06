@@ -110,6 +110,39 @@ describe('generateTicketTXT', () => {
     expect(txt).not.toContain('José');
     expect(txt).toContain('JOSE !HOLA! ?VAMOS?');
   });
+
+  it('NO imprime "¡Buen Viaje!" (texto removido)', () => {
+    const txt = generateTicketTXT(base);
+    expect(txt).not.toContain('Buen Viaje');
+    expect(txt).not.toContain('BUEN VIAJE');
+  });
+
+  it('usa "impreso por" en el pie legal (no "ingreso por")', () => {
+    const txt = generateTicketTXT(base);
+    expect(txt).toContain('impreso por Software propio');
+    expect(txt).not.toContain('ingreso por Software propio');
+  });
+
+  it('el CUFE se imprime al final, después del código QR', () => {
+    const txt = generateTicketTXT(base);
+    const cufeIdx = txt.lastIndexOf('CUFE:');
+    const qrIdx = txt.indexOf(String.fromCharCode(0x1d, 0x28, 0x6b));
+    expect(cufeIdx).toBeGreaterThan(-1);
+    expect(qrIdx).toBeGreaterThan(-1);
+    expect(cufeIdx).toBeGreaterThan(qrIdx);
+  });
+
+  it('imprime el mensaje configurable (parametros.mensaje_tiquete) cuando se provee', () => {
+    const txt = generateTicketTXT({ ...base, mensaje: 'FLOTA SAN VICENTE S.A. LES DESEA UN FELIZ VIAJE' });
+    expect(txt).toContain('FLOTA SAN VICENTE S.A. LES DESEA UN FELIZ VIAJE');
+  });
+
+  it('NO imprime el mensaje cuando no se provee (sin fallback "¡Buen Viaje!")', () => {
+    const txt = generateTicketTXT({ ...base });
+    expect(txt).not.toContain('LES DESEA UN FELIZ VIAJE');
+    expect(txt).not.toContain('Buen Viaje');
+    expect(txt).not.toContain('BUEN VIAJE');
+  });
 });
 
 describe('normalizarImpresion', () => {

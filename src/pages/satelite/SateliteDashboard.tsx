@@ -186,6 +186,7 @@ export default function SateliteDashboard() {
       nit_emisor: v.nit_emisor,
       fecha_ruta: v.fecha_ruta,
       hora_ruta: v.hora_ruta,
+      mensaje: v.mensaje || undefined,
     };
     const actualizado: TurnoSatelite = { ...turno, ventas: [...turno.ventas, nueva] };
     guardarTurno(actualizado);

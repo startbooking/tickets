@@ -16,12 +16,13 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { 
+import {
   Ticket, CalendarDays, BarChart3, LogOut, 
   Coins, ArrowUpRight, Building2, BookmarkCheck,
   TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
   Send, MapPin, Plus, Banknote, CreditCard, QrCode,
-  User, Phone, Mail, Armchair, CheckCircle2, Clock
+  User, Phone, Mail, Armchair, CheckCircle2, Clock,
+  Menu, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,6 +31,7 @@ type CajeroSection = 'inicio' | 'ventas' | 'reservas' | 'informes' | 'cierre' | 
 export default function CajeroDashboard() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState<CajeroSection>('inicio');
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
   const [totalCajaTurno, setTotalCajaTurno] = useState<number>(145000);
@@ -66,11 +68,49 @@ export default function CajeroDashboard() {
     return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
   };
 
+  // Items de navegación (reutilizables en sidebar desktop y drawer móvil)
+  const navItems: { id: CajeroSection; label: string; icon: React.ReactNode }[] = useMemo(() => [
+    { id: 'inicio', label: 'Inicio / Resumen Diario', icon: <BarChart3 className="w-5 h-5" /> },
+    ...(dashboard?.tipo_agencia === 'principal'
+      ? [
+          { id: 'despacho' as CajeroSection, label: 'Despacho de Vehículos', icon: <Send className="w-5 h-5" /> },
+          { id: 'llegadas' as CajeroSection, label: 'Llegadas a la Agencia', icon: <MapPin className="w-5 h-5" /> },
+        ]
+      : []),
+    { id: 'ventas', label: 'Taquilla de Ventas', icon: <Ticket className="w-5 h-5" /> },
+    { id: 'reservas', label: 'Control de Reservas', icon: <CalendarDays className="w-5 h-5" /> },
+    { id: 'informes', label: 'Informes y Métricas', icon: <ArrowUpRight className="w-5 h-5" /> },
+    { id: 'cierre', label: 'Cierre de Cajero', icon: <Coins className="w-5 h-5" /> },
+  ], [dashboard?.tipo_agencia]);
+
+  const toggleMenu = (close = false) => {
+    setMenuAbierto(close === undefined ? !menuAbierto : close);
+  };
+
+  const SeleccionarSeccion = (id: CajeroSection) => {
+    setActiveSection(id);
+    setMenuAbierto(false);
+  };
+
+  // Cerrar menú con Escape y bloquear scroll del body cuando está abierto (PDA)
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuAbierto(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [menuAbierto]);
+
   return (
-    <div className="flex h-screen bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
+    <div className="flex h-screen-dyn bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
       
-      {/* ─── BARRA LATERAL IZQUIERDA (IDENTIDAD VERDE TAQUILLA) ─── */}
-      <aside className="w-72 bg-slate-950 text-slate-200 flex flex-col justify-between border-r border-slate-900 shadow-xl z-20 shrink-0">
+      {/* ─── BARRA LATERAL IZQUIERDA (desktop ≥640px) ─── */}
+      <aside className="hidden sm:block w-72 bg-slate-950 text-slate-200 flex flex-col justify-between border-r border-slate-900 shadow-xl z-20 shrink-0">
         <div>
           {/* Encabezado Corporativo */}
           <div className="p-5 flex items-center gap-4 bg-slate-950">
@@ -78,7 +118,7 @@ export default function CajeroDashboard() {
               <Building2 className="w-6 h-6 stroke-[2.5]" />
             </div>
             <div>
-              <h1 className="font-black text-xl tracking-wide text-white">SACTel.Cloud</h1>
+              <h1 className="font-black text-xl tracking-wide text-white">SACTel</h1>
               <span className="text-[11px] font-bold text-emerald-400 tracking-widest uppercase block mt-0.5">
                 TAQUILLA OPERATIVA
               </span>
@@ -102,24 +142,13 @@ export default function CajeroDashboard() {
 
           {/* Menú de Navegación */}
           <nav className="p-4 space-y-1">
-            {[
-              { id: 'inicio', label: 'Inicio / Resumen Diario', icon: <BarChart3 className="w-4 h-4" /> },
-              ...(dashboard?.tipo_agencia === 'principal'
-                ? [
-                    { id: 'despacho', label: 'Despacho de Vehículos', icon: <Send className="w-4 h-4" /> },
-                    { id: 'llegadas', label: 'Llegadas a la Agencia', icon: <MapPin className="w-4 h-4" /> },
-                  ]
-                : []),
-              { id: 'ventas', label: 'Taquilla de Ventas', icon: <Ticket className="w-4 h-4" /> },
-              { id: 'reservas', label: 'Control de Reservas', icon: <CalendarDays className="w-4 h-4" /> },
-              { id: 'informes', label: 'Informes y Métricas', icon: <ArrowUpRight className="w-4 h-4" /> },
-              { id: 'cierre', label: 'Cierre de Cajero', icon: <Coins className="w-4 h-4" /> },
-            ].map((item) => (
+            {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id as CajeroSection)}
+                onClick={() => setActiveSection(item.id)}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold tracking-wide transition-all",
+                  "min-h-[44px]",
                   activeSection === item.id 
                     ? "bg-emerald-600 text-white shadow-md shadow-emerald-950/50" 
                     : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
@@ -135,7 +164,7 @@ export default function CajeroDashboard() {
         {/* Botón de Salida */}
         <div className="p-4 bg-slate-950/60 border-t border-slate-900">
           <Button 
-            className="w-full justify-start text-xs text-slate-400 hover:bg-red-950/30 hover:text-red-400 gap-2 h-10 font-bold" 
+            className="w-full justify-start text-xs text-slate-400 hover:bg-red-950/30 hover:text-red-400 gap-2 h-12 font-bold touch-list" 
             onClick={logout} 
             variant="ghost"
           >
@@ -144,24 +173,115 @@ export default function CajeroDashboard() {
         </div>
       </aside>
 
+      {/* ─── OVERLAY MENÚ MÓVIL (PDA: drawer con backdrop) ─── */}
+      {menuAbierto && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40 sm:hidden motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+            onClick={() => toggleMenu(false)}
+            aria-hidden="true"
+          />
+          <aside
+            className={cn(
+              "fixed top-0 left-0 h-screen-dyn w-72 max-w-[80vw] bg-slate-950 text-slate-200 flex flex-col justify-between shadow-2xl z-50 sm:hidden overflow-y-auto",
+              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left motion-safe:duration-[300ms] motion-safe:ease-out motion-safe:delay-75"
+            )}
+          >
+            <div>
+              {/* Header del drawer con botón de cerrar */}
+              <div className="p-4 flex items-center justify-between bg-slate-950 border-b border-slate-900">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shrink-0">
+                    <Building2 className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h1 className="font-black text-lg tracking-wide text-white">SACTel</h1>
+                    <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase block">TAQUILLA</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleMenu(false)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 touch-list min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Cerrar menú"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Perfil del Cajero */}
+              <div className="p-4 flex items-center gap-3 bg-slate-950/40 border-b border-slate-900">
+                <div className="w-11 h-11 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center font-bold text-slate-200 tracking-wider shrink-0">
+                  {getIniciales(nombreUsuario)}
+                </div>
+                <div className="overflow-hidden">
+                  <h4 className="font-bold text-sm text-slate-100 truncate">{nombreUsuario}</h4>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">{correoUsuario}</p>
+                </div>
+              </div>
+
+              {/* Menú de Navegación */}
+              <nav className="p-3 space-y-1">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => SeleccionarSeccion(item.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold tracking-wide transition-all touch-list",
+                      "min-h-[48px]",
+                      activeSection === item.id 
+                        ? "bg-emerald-600 text-white shadow-md shadow-emerald-950/50" 
+                        : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                    )}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            {/* Botón de Salida del drawer móvil */}
+            <div className="p-4 bg-slate-950/60 border-t border-slate-900">
+              <Button 
+                className="w-full justify-center text-xs text-slate-400 hover:bg-red-950/30 hover:text-red-400 gap-2 h-12 font-bold touch-list" 
+                onClick={logout} 
+                variant="ghost"
+              >
+                <LogOut className="w-5 h-5" /> Salir del Turno
+              </Button>
+            </div>
+          </aside>
+        </>
+      )}
+
       {/* ─── ÁREA DE CONTENIDO DINÁMICO ─── */}
       <main className="flex-1 flex flex-col overflow-hidden">
         
         {/* Cabecera Superior */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 shrink-0">
-          <div className="text-xs text-slate-400 font-bold tracking-wider uppercase">
-            Terminal {nombreAgencia} / <span className="text-emerald-600 font-black">{activeSection}</span>
+        <header className="h-14 sm:h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-8 shadow-sm z-10 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Botón hamburguesa solo en PDA (oculto en desktop) */}
+            <button
+              className="sm:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 touch-list min-h-[44px] min-w-[44px] flex items-center justify-center"
+              onClick={() => toggleMenu(true)}
+              aria-label="Abrir menú"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <span className="text-[10px] sm:text-xs text-slate-400 font-bold tracking-wider uppercase">
+              Terminal {nombreAgencia} / <span className="text-emerald-600 font-black">{activeSection}</span>
+            </span>
           </div>
           <div className="flex items-center gap-2 border-l pl-4">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-xs font-mono font-bold text-slate-600">
+            <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-600">
               Caja: ${totalCajaTurno.toLocaleString('es-CO')}
             </span>
           </div>
         </header>
 
         {/* Inyección de Subvistas */}
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-8 bg-slate-50/50 touch-list">
           {(() => {
             switch (activeSection) {
               case 'inicio':
@@ -218,7 +338,7 @@ function SubViewInicio({
       {/* Carga */}
       {loading && (
         <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+          <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-slate-400">
             <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
             <span className="text-xs font-bold tracking-wide">Consultando estado de vehículos...</span>
           </CardContent>
@@ -228,13 +348,13 @@ function SubViewInicio({
       {/* Error de conexión */}
       {!loading && !dashboard && (
         <Card className="bg-white border-rose-200 shadow-sm">
-          <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+          <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-center">
             <AlertTriangle className="w-8 h-8 text-rose-500" />
             <div>
               <h3 className="text-sm font-black text-slate-900">No se pudo consultar el backend</h3>
               <p className="text-xs text-slate-500 mt-1">Verifica que el servicio travelsoft esté disponible e inténtalo de nuevo.</p>
             </div>
-            <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={onRetry}>
+            <Button size="sm" variant="outline" className="text-xs font-bold gap-2 h-11 touch-list" onClick={onRetry}>
               <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
             </Button>
           </CardContent>
@@ -457,7 +577,7 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
   if (loading) {
     return (
       <Card className="bg-white border-slate-200 shadow-sm">
-        <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-slate-400">
           <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
           <span className="text-xs font-bold tracking-wide">Cargando rutas del día...</span>
         </CardContent>
@@ -468,13 +588,13 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
   if (!dashboard) {
     return (
       <Card className="bg-white border-rose-200 shadow-sm">
-        <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-8 h-8 text-rose-500" />
           <div>
             <h3 className="text-sm font-black text-slate-900">No se pudieron cargar las rutas</h3>
             <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
           </div>
-          <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={() => void cargar()}>
+          <Button size="sm" variant="outline" className="text-xs font-bold gap-2 h-11 touch-list" onClick={() => void cargar()}>
             <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
           </Button>
         </CardContent>
@@ -711,7 +831,7 @@ function NuevaRutaDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900">
             <Plus className="w-4 h-4 text-emerald-600" /> Adicionar Ruta
@@ -907,7 +1027,7 @@ function DialogoRegistrarLlegada({ vehiculo, onClose, onConfirm, reportando }: {
 
   return (
     <Dialog open={abierto} onOpenChange={(open) => { if (!open && !reportando) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-[95vw] sm:max-w-md sm:max-h-[90vh] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900">
             <MapPin className="w-4 h-4 text-emerald-600" />
@@ -1027,7 +1147,7 @@ function SubViewLlegadas() {
   if (loading) {
     return (
       <Card className="bg-white border-slate-200 shadow-sm">
-        <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-slate-400">
           <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
           <span className="text-xs font-bold tracking-wide">Consultando vehículos en tránsito...</span>
         </CardContent>
@@ -1038,13 +1158,13 @@ function SubViewLlegadas() {
   if (!data || !llegados) {
     return (
       <Card className="bg-white border-rose-200 shadow-sm">
-        <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-8 h-8 text-rose-500" />
           <div>
             <h3 className="text-sm font-black text-slate-900">No se pudieron cargar las llegadas</h3>
             <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
           </div>
-          <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={() => void cargar()}>
+          <Button size="sm" variant="outline" className="text-xs font-bold gap-2 h-11 touch-list" onClick={() => void cargar()}>
             <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
           </Button>
         </CardContent>
@@ -1423,7 +1543,7 @@ function SubViewVentas({
   if (loadingDashboard) {
     return (
       <Card className="bg-white border-slate-200 shadow-sm">
-        <CardContent className="p-8 flex flex-col items-center gap-3 text-slate-400">
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-slate-400">
           <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
           <span className="text-xs font-bold tracking-wide">Cargando vehículos por despachar...</span>
         </CardContent>
@@ -1434,13 +1554,13 @@ function SubViewVentas({
   if (!dashboard) {
     return (
       <Card className="bg-white border-rose-200 shadow-sm">
-        <CardContent className="p-8 flex flex-col items-center gap-3 text-center">
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-8 h-8 text-rose-500" />
           <div>
             <h3 className="text-sm font-black text-slate-900">No se pudo cargar la taquilla</h3>
             <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
           </div>
-          <Button size="sm" variant="outline" className="text-xs font-bold gap-2" onClick={() => void cargarDashboard()}>
+          <Button size="sm" variant="outline" className="text-xs font-bold gap-2 h-11 touch-list" onClick={() => void cargarDashboard()}>
             <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
           </Button>
         </CardContent>
@@ -1449,8 +1569,8 @@ function SubViewVentas({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
-      <div className="lg:col-span-2 space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 animate-in fade-in duration-200">
+      <div className="lg:col-span-2 space-y-3 sm:space-y-4">
         {/* 1. Vehículo por despachar */}
         <Card className={cn("bg-white shadow-sm", mostrarErrores && !vehiculoSel ? "border-red-400 ring-1 ring-red-300" : "border-slate-200")}>
           <CardHeader className="p-4 pb-2">
@@ -1458,7 +1578,7 @@ function SubViewVentas({
             <CardDescription className="text-[11px]">Seleccione el vehículo en plataforma o programado.</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            {porDespachar.length === 0 ? (
+            {          porDespachar.length === 0 ? (
               <div className="p-4 rounded-xl bg-slate-50 border border-dashed text-xs text-slate-400 italic text-center">
                 No hay vehículos por despachar hoy.
               </div>
@@ -1473,7 +1593,7 @@ function SubViewVentas({
                       type="button"
                       onClick={() => handleSeleccionarVehiculo(r.cod_ruta)}
                       className={cn(
-                        "rounded-xl border p-3 text-left transition-all",
+                        "rounded-xl border p-3 text-left transition-all min-h-[72px] sm:min-h-[80px] touch-list",
                         activo
                           ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20"
                           : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50"
@@ -1620,7 +1740,7 @@ function SubViewVentas({
               <p className="text-xs text-slate-400 italic py-6 text-center">Seleccione un vehículo para ver el croquis.</p>
             )}
             {!cargandoSillas && sillas && (
-              <div className="grid grid-cols-5 gap-2 border p-4 rounded-xl bg-slate-50 max-h-80 overflow-y-auto">
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 border p-4 rounded-xl bg-slate-50 max-h-80 overflow-y-auto">
                 {sillas.sillas.map((s) => {
                   const seleccionada = sillasSel.includes(s.numero);
                   return (
@@ -1698,13 +1818,13 @@ function SubViewVentas({
             <CardTitle className="text-xs font-bold uppercase text-slate-900">4. Forma de Pago</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 touch-list">
               {formasPago.map((f) => (
                 <button
                   key={f.id}
                   onClick={() => setFormaPago(f.id)}
                   className={cn(
-                    "p-3 rounded-xl border-2 text-center transition-all",
+                    "p-3 rounded-xl border-2 text-center transition-all min-h-[72px]",
                     formaPago === f.id
                       ? "border-emerald-600 bg-emerald-50"
                       : "border-slate-200 bg-white hover:border-slate-300"
@@ -1741,7 +1861,7 @@ function SubViewVentas({
             )}
 
             <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 mt-3 gap-2"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-12 mt-3 gap-2 touch-list"
               disabled={generando}
               onClick={() => void handleGenerar()}
             >
@@ -1824,6 +1944,27 @@ function SubViewVentas({
             {ticket.mensaje && (
               <p className="text-center text-[9px] text-slate-400 border-t border-dashed pt-1.5 mt-1">{ticket.mensaje}</p>
             )}
+            {ticket.resolucion_numero && (
+              <div className="border-t border-dashed pt-1.5 mt-1 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">RESOLUCIÓN</span>
+                  <span className="font-black text-[10px]">{ticket.resolucion_numero}</span>
+                </div>
+                {ticket.numero_factura && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">FACTURA</span>
+                    <span className="font-black text-[10px]">{ticket.numero_factura}</span>
+                  </div>
+                )}
+                {ticket.cufe && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">CUFE</span>
+                    <span className="font-mono text-[9px] text-right break-all max-w-[60%]">{ticket.cufe}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            <hr className="border-t border-dashed border-slate-300 my-2" />
           </div>
         )}
       </div>

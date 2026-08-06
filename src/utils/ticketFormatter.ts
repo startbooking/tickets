@@ -54,6 +54,8 @@ interface TicketData {
   numeroFactura?: string;
   cufe?: string;
   qr?: string;
+  // Mensaje de pie de página configurable desde parametros.mensaje_tiquete
+  mensaje?: string;
 }
 
 /**
@@ -165,23 +167,25 @@ export function generateTicketTXT(data: TicketData): string {
   t += ESC_POS.BOLD_OFF;
   t += data.formaPago ? normalizarImpresion(`Pago: ${data.formaPago}\n`) : '';
   
-  // ─── Bloque DIAN (resolución, numeración, IVA excluido y CUFE) ───
+  // ─── Bloque DIAN (resolución, numeración, IVA excluido) ───
   t += "--------------------------------\n";
   t += ESC_POS.ALIGN_LEFT;
   if (data.resolucion) t += normalizarImpresion(`Res.: ${data.resolucion}\n`);
   if (data.numeroFactura) t += normalizarImpresion(`Factura: ${data.numeroFactura}\n`);
   t += "IVA EXCLUIDO - SERVICIO DE\n";
   t += "TRANSPORTE PUBLICO (ART. 462 E.T.)\n";
-  if (data.cufe) t += normalizarImpresion(`CUFE: ${data.cufe}\n`);
-  
+
+  // ─── Mensaje configurable desde parametros.mensaje_tiquete (sin fallback "¡Buen Viaje!") ───
+  if (data.mensaje) t += normalizarImpresion(`${data.mensaje}\n`);
   // ─── Pie legal SUPERTRANSPORTE ───
   t += ESC_POS.ALIGN_CENTER;
-  t += "¡Buen Viaje!\n".replace('¡', '!');
-  for (const linea of wordWrap("VIGILADO SUPERTRANSPORTE, ingreso por Software propio Flota San Vicente S.A., para términos y condiciones del viaje visita www.flotasanvicente.com/terminos")) {
+  for (const linea of wordWrap("VIGILADO SUPERTRANSPORTE, impreso por Software propio Flota San Vicente S.A., para términos y condiciones del viaje visita www.flotasanvicente.co/terminos")) {
     t += normalizarImpresion(`${linea}\n`);
   }
   t += "\n\n"; // Dos líneas en blanco antes del QR del CUFE
   if (data.qr) t += `${qrEscPos(data.qr)}\n`;
+  // ─── CUFE al final del tiquete (después del QR) ───
+  if (data.cufe) t += normalizarImpresion(`CUFE: ${data.cufe}\n`);
   t += ESC_POS.FEED_6; // Avance de 6 líneas después del tiquete
   t += ESC_POS.CUT;    // Corte
 
