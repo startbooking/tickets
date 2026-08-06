@@ -22,6 +22,7 @@ import {
 } from '@/utils/ticketFormatter';
 import {
   imprimirPdaWs,
+  reiniciarCachePda,
   servicioPdaDisponible,
 } from '@/services/pdaWebSocketService';
 import {
@@ -87,6 +88,7 @@ async function imprimirConRespalado(
   const textoFinal = logoEscPos ? logoEscPos + texto : texto;
 
   // 0. Servicio WebSocket local de la PDA (sin diálogos, prioridad en Android).
+  reiniciarCachePda();
   if (isAndroidDevice() && (await servicioPdaDisponible())) {
     try {
       await imprimirPdaWs(textoFinal);

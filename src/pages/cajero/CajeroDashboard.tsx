@@ -4,7 +4,7 @@ import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnT
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
-import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL } from '@/services/pdaWebSocketService';
+import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,6 +127,7 @@ export default function CajeroDashboard() {
       setTesteandoImpresora(true);
       try {
         // 1) Servicio local WebSocket
+        reiniciarCachePda();
         const pdaOk = await servicioPdaDisponible();
         if (pdaOk) {
           const r = await imprimirTestPdaWs();
