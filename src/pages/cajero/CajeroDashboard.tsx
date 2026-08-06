@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
-import { detectarImpresoraBle, imprimirTestBle, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
-import { esDispositivoSunmi, imprimirTestSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
+import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
+import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,26 +118,39 @@ export default function CajeroDashboard() {
 
   // Validar y testear impresora local de la PDA
   const handleTestImpresora = useCallback(async () => {
-    // En PDA Sunmi con impresora integrada se usa el plugin JS USDK, no Bluetooth.
-    if (esDispositivoSunmi()) {
-      if (!window.confirm(`Imprimir ticket de prueba en la ${IMPRESORA_INTEGRADA_LABEL}?`)) return;
+    // En PDA Android la impresora integrada Sunmi es la vía principal; si el
+    // plugin JS USDK no responde, se usa RawBT (SPP) que alcanza a la
+    // impresora integrada "InnerPrinter" (dispositivo SPP, no alcanzable
+    // por Web Bluetooth).
+    if (esDispositivoSunmi() || isAndroidDevice()) {
       setTesteandoImpresora(true);
       try {
-        const result = await imprimirTestSunmi();
-        if (result.ok) {
-          toast.success(`Ticket de prueba impreso en "${result.dispositivo}".`);
+        const disponible = await validarImpresoraSunmi();
+        if (disponible) {
+          const result = await imprimirTestSunmi();
+          if (result.ok) {
+            setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
+            toast.success(`Ticket de prueba impreso en "${result.dispositivo}".`);
+          }
+        } else {
+          setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
+          imprimirTestRawBt();
+          toast.info(
+            'Prueba enviada por Bluetooth (InnerPrinter). Si se abrió la Play Store, instale la app RawBT y vuelva a probar.',
+            { duration: 7000 }
+          );
         }
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'El plugin JS USDK no responde. Instálelo desde la Sun Store.');
+        toast.error(err instanceof Error ? err.message : 'Error al validar la impresora integrada.');
       } finally {
         setTesteandoImpresora(false);
       }
       return;
     }
 
-    // 1) Verificar que la PDA soporte Bluetooth o sea Android con RawBT
-    if (!soportaBluetoothEscPos() && !isAndroidDevice()) {
-      toast.error('Esta PDA no soporta impresión local (Bluetooth o RawBT).');
+    // Escritorio: validación a través de Web Bluetooth
+    if (!soportaBluetoothEscPos()) {
+      toast.error('Este navegador no soporta impresión en local (Bluetooth).');
       return;
     }
     setTesteandoImpresora(true);
@@ -155,8 +168,6 @@ export default function CajeroDashboard() {
         if (result.ok) {
           toast.success(`Ticket de prueba impreso en "${result.dispositivo ?? 'Impresora Térmica'}".`);
         }
-      } else if (deteccion.bluetoothDisponible && !deteccion.esAndroid) {
-        toast.error('Conecte una impresora Bluetooth e intente nuevamente.');
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al validar impresora.');
@@ -168,6 +179,7 @@ export default function CajeroDashboard() {
   // Limpiar la impresora predeterminada guardada
   const handleLimpiarImpresora = useCallback(() => {
     limpiarImpresoraBlePredeterminada();
+    reiniciarCacheSunmi();
     setImpresoraPredeterminada(null);
     toast.info('Impresora predeterminada eliminada. Se pedirá seleccionar una nueva.');
   }, []);

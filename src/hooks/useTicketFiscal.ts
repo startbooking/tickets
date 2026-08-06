@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { travelsoftService } from '@/services/travelsoftService';
 import { dianService } from '@/services/dianService';
 import {
-  buildRawBtIntent,
+  imprimirRawBtEscPos,
   isAndroidDevice,
   imprimirBleEscPos,
   soportaBluetoothEscPos,
@@ -23,6 +23,7 @@ import {
 import {
   esDispositivoSunmi,
   imprimirSunmi,
+  integradaSunmiDisponible,
 } from '@/services/sunmiPrinter';
 import {
   construirPayloadDian,
@@ -59,11 +60,18 @@ export interface UseTicketFiscalResult {
 /**
  * Cadena de respaldo de impresión unificada.
  *
- * 0) Sunmi integrada (PDA Sunmi) — impresora térmica de 58 mm vía plugin JS USDK.
- * 1) USB (servidor CUPS / pyusb) — impresión silenciosa, sin diálogos.
- * 2) Bluetooth directo (Web Bluetooth) — Android, sin app intermedia.
- * 3) RawBT (intent) — Android con app RawBT emparejada.
- * 4) window.print() — navegador de escritorio o último recurso.
+ * En Android (PDA):
+ *   0) Impresora integrada Sunmi (plugin JS USDK) — impresora térmica 58 mm.
+ *   1) USB (servidor CUPS / pyusb) — impresión silenciosa.
+ *   2) RawBT (intent) — SPP/Bluetooth clásico; es la vía que alcanza a la
+ *      impresora integrada "InnerPrinter" de las Sunmi (no es BLE, por lo que
+ *      Web Bluetooth NO puede alcanzarla).
+ *   3) window.print() — último recurso.
+ *
+ * En escritorio (no Android):
+ *   1) USB.
+ *   2) Web Bluetooth directo.
+ *   3) window.print().
  *
  * Cada salto se registra en el resultado para que el UI muestre el medio usado.
  */
@@ -74,14 +82,19 @@ async function imprimirConRespalado(
 ): Promise<ImpresionResultado> {
   const textoFinal = logoEscPos ? logoEscPos + texto : texto;
 
-  // 0. Impresora integrada de la PDA Sunmi (plugin JS USDK)
-  if (esDispositivoSunmi()) {
+  // 0. Impresora integrada de la PDA Sunmi (plugin JS USDK).
+  //    En PDA Android se intenta esta vía de forma prioritaria (una vez por
+  //    sesión se sonda el servicio y el resultado se cachea, para no retrasar
+  //    los tickets siguientes en equipos donde no está disponible).
+  if (esDispositivoSunmi() || isAndroidDevice()) {
     try {
-      await imprimirSunmi(textoFinal);
-      onResultado?.('sunmi');
-      return 'sunmi';
+      if (await integradaSunmiDisponible()) {
+        await imprimirSunmi(textoFinal);
+        onResultado?.('sunmi');
+        return 'sunmi';
+      }
     } catch (err) {
-      // El plugin no está instalado o el servicio no arrancó; continuamos con la cadena.
+      // El plugin no está instalado o el servicio no arrancó; seguimos con la cadena.
       console.error('Impresión en impresora integrada Sunmi falló:', err);
     }
   }
@@ -95,7 +108,15 @@ async function imprimirConRespalado(
     console.error('Impresión USB falló:', err);
   }
 
-  // 2. Bluetooth directo (Android Chromium)
+  // 2. Android → RawBT (SPP/Bluetooth clásico, incl. InnerPrinter de Sunmi).
+  //    Va ANTES que Web Bluetooth porque los SPP no son alcanzables por BLE.
+  if (isAndroidDevice()) {
+    imprimirRawBtEscPos(textoFinal);
+    onResultado?.('rawbt');
+    return 'rawbt';
+  }
+
+  // 3. Web Bluetooth directo (escritorio Chromium)
   if (soportaBluetoothEscPos()) {
     try {
       await imprimirBleEscPos(textoFinal);
@@ -105,13 +126,6 @@ async function imprimirConRespalado(
       // El usuario canceló el selector o no hay dispositivo emparejado.
       console.warn('Impresión BLE falló:', err);
     }
-  }
-
-  // 3. RawBT (Android con app instalada)
-  if (isAndroidDevice()) {
-    window.location.href = buildRawBtIntent(textoFinal);
-    onResultado?.('rawbt');
-    return 'rawbt';
   }
 
   // 4. Navegador

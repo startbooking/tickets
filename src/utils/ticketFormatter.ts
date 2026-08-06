@@ -211,6 +211,16 @@ export function buildRawBtIntent(escPosText: string): string {
 }
 
 /**
+ * Imprime por la app RawBT (SPP/Bluetooth clásico). Es la vía para la
+ * impresora integrada "InnerPrinter" de las PDA Sunmi (dispositivo SPP,
+ * no BLE, por lo que Web Bluetooth NO puede alcanzarlo).
+ */
+export function imprimirRawBtEscPos(texto: string): void {
+  if (typeof window === 'undefined') return;
+  window.location.href = buildRawBtIntent(texto);
+}
+
+/**
  * Convierte el texto ESC/POS a bytes listos para la impresora térmica
  * (codificación latin1 con acentos normalizados, apta para la impresión USB).
  */
@@ -508,6 +518,22 @@ export async function imprimirTestBle(): Promise<BluetoothEscPosResult> {
     'fecha: ' + new Date().toLocaleString('es-CO') + '\n' +
     '\n\n\n';
   return imprimirBleEscPos(ticketPrueba);
+}
+
+/**
+ * Imprime un ticket de prueba vía RawBT (SPP). Es la vía que alcanza a la
+ * impresora integrada "InnerPrinter" de las PDA Sunmi.
+ */
+export function imprimirTestRawBt(): void {
+  const ticketPrueba =
+    '\x1b\x40' +
+    '\x1b\x61\x01PRUEBA DE IMPRESIÓN\n' +
+    '\x1b\x61\x00---------------------------\n' +
+    'FLOTA SAN VICENTE S.A.\n' +
+    'Impresora Bluetooth OK (InnerPrinter)\n' +
+    'fecha: ' + new Date().toLocaleString('es-CO') + '\n' +
+    '\n\n\n';
+  imprimirRawBtEscPos(ticketPrueba);
 }
 
 /**
