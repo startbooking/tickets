@@ -1,0 +1,94 @@
+================================================================
+INSTALACION DEL APK "PDA PRINT" POR USB DESDE LA PC
+Comandos de instalacion, revision y configuracion
+Fecha: 2026-08-06
+================================================================
+
+El APK es el servicio que imprime los tickets en la impresora
+integrada de la PDA Sunmi sin abrir dialogos.
+
+ARCHIVOS CLAVE
+- APK : /var/www/sactel.lan/rutas/dist/PDA_Print_Service_v1.0.apk
+- adb : /home/sactelcloud/Android/Sdk/platform-tools/adb
+- paquete : com.sactel.pdaprint
+
+----------------------------------------------------------------------------
+1) HABILITAR DEPURACION USB EN LA PDA (una sola vez)
+----------------------------------------------------------------------------
+- Ajustes -> Acerca del telefono -> pulsar 7 veces "Numero de compilacion"
+  (se activa 'Opciones de desarrollador').
+- Ajustes -> Opciones de desarrollador -> Depuracion USB -> Activar.
+- Conecta la PDA a la PC por cable USB.
+- En la PDA, al aparecer "Permitir depuracion USB", toca PERMITIR.
+
+----------------------------------------------------------------------------
+2) VERIFICAR QUE LA PC VE LA PDA
+----------------------------------------------------------------------------
+/home/sactelcloud/Android/Sdk/platform-tools/adb devices
+
+Salida esperada (con el movil en estado "device"):
+    List of devices attached
+    <serial>  device
+
+- Si sale "unauthorized": toca PERMITIR en la pantalla de la PDA.
+- Si sale "offline" o no aparece: cambia el cable USB (uno que transmita
+  datos, no solo carga) y vuelve a habilitar la depuracion.
+
+----------------------------------------------------------------------------
+3) INSTALAR EL APK
+----------------------------------------------------------------------------
+/home/sactelcloud/Android/Sdk/platform-tools/adb install -r \
+    /var/www/sactel.lan/rutas/dist/PDA_Print_Service_v1.0.apk
+
+  -r  = reinstala conservando datos (usar siempre).
+  Salida esperada: Success
+
+Si da INSTALL_FAILED_UPDATE_INCOMPATIBLE (version anterior con otra firma):
+    adb uninstall com.sactel.pdaprint
+    adb install /var/www/sactel.lan/rutas/dist/PDA_Print_Service_v1.0.apk
+
+----------------------------------------------------------------------------
+4) REVISION DE LA INSTALACION
+----------------------------------------------------------------------------
+Listar el paquete (debe aparecer el nuestro):
+    adb shell pm list packages | grep pdaprint
+    -> com.sactel.pdaprint
+
+Ver el camino comprimido de instalacion:
+    adb shell pm path com.sactel.pdaprint
+
+Abrir la app directamente por adb:
+    adb shell am start -n com.sactel.pdaprint/.MainActivity
+
+Ver la version instalada:
+    adb shell dumpsys package com.sactel.pdaprint | grep versionName
+
+----------------------------------------------------------------------------
+5) CONFIGURACION INICIAL EN LA PDA
+----------------------------------------------------------------------------
+1) Permisos Bluetooth:
+   Ajustes > Aplicaciones > "PDA Print" > Permisos > activar BLUETOOTH.
+2) Encender Bluetooth desde la barra superior de la PDA.
+3) Abrir la app "PDA Print".
+4) Pulsar el boton "Iniciar servicio" -> debe estar EN LINEA.
+5) En el sistema web (en LA MISMA PDA) hacer "Test impresora" para comprobar.
+
+----------------------------------------------------------------------------
+6) LOGS Y DIAGNOSTICO
+----------------------------------------------------------------------------
+Ver registros de la app en vivo:
+    adb logcat -s PdaPrint:P
+
+Limpiar/ mirar el log de la app despues de una impresion:
+    adb logcat -d | grep -i pda
+
+----------------------------------------------------------------------------
+7) DESINSTALAR (si hace falta)
+----------------------------------------------------------------------------
+adb uninstall com.sactel.pdaprint
+
+================================================================
+NOTA: el paquete del proyecto es com.sactel.pdaprint. Si instalas otra
+version, confirma el nombre con:
+    adb shell pm list packages | grep pdaprint
+================================================================
