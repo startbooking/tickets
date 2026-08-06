@@ -282,4 +282,4 @@ export function ventaATextoImpresion(v: TurnoSateliteVenta): string {
 }
 
 /** Resultado de una operación de impresión. */
-export type ImpresionResultado = 'usb' | 'ble' | 'rawbt' | 'print' | 'error';
+export type ImpresionResultado = 'sunmi' | 'usb' | 'ble' | 'rawbt' | 'print' | 'error';

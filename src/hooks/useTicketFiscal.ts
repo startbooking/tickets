@@ -5,9 +5,9 @@
  *  - Construcción del payload DIAN (CUFE/QR).
  *  - Emisión fiscal con fallback tolerante (Core DIAN caído → imprime sin CUFE).
  *  - Impilación del tiquete con cadena de respaldo:
- *      USB (pyusb/servidor) → Bluetooth directo (Web Bluetooth) → RawBT (Android) → window.print.
+ *      Sunmi integrada (PDA) → USB (pyusb/servidor) → Bluetooth directo (Web Bluetooth) → RawBT (Android) → window.print.
  *
- * Los componentes ya no duplican ni `imprimirTiquete` ni `construirPayloadDian`.
+ *  Los componentes ya no duplican ni `imprimirTiquete` ni `construirPayloadDian`.
  */
 
 import { useCallback, useMemo } from 'react';
@@ -20,6 +20,10 @@ import {
   imprimirBleEscPos,
   soportaBluetoothEscPos,
 } from '@/utils/ticketFormatter';
+import {
+  esDispositivoSunmi,
+  imprimirSunmi,
+} from '@/services/sunmiPrinter';
 import {
   construirPayloadDian,
   ticketATextoImpresion,
@@ -55,6 +59,7 @@ export interface UseTicketFiscalResult {
 /**
  * Cadena de respaldo de impresión unificada.
  *
+ * 0) Sunmi integrada (PDA Sunmi) — impresora térmica de 58 mm vía plugin JS USDK.
  * 1) USB (servidor CUPS / pyusb) — impresión silenciosa, sin diálogos.
  * 2) Bluetooth directo (Web Bluetooth) — Android, sin app intermedia.
  * 3) RawBT (intent) — Android con app RawBT emparejada.
@@ -68,6 +73,18 @@ async function imprimirConRespalado(
   logoEscPos?: string
 ): Promise<ImpresionResultado> {
   const textoFinal = logoEscPos ? logoEscPos + texto : texto;
+
+  // 0. Impresora integrada de la PDA Sunmi (plugin JS USDK)
+  if (esDispositivoSunmi()) {
+    try {
+      await imprimirSunmi(textoFinal);
+      onResultado?.('sunmi');
+      return 'sunmi';
+    } catch (err) {
+      // El plugin no está instalado o el servicio no arrancó; continuamos con la cadena.
+      console.error('Impresión en impresora integrada Sunmi falló:', err);
+    }
+  }
 
   // 1. USB (backend)
   try {

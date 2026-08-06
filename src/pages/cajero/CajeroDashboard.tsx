@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { detectarImpresoraBle, imprimirTestBle, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
+import { esDispositivoSunmi, imprimirTestSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,9 +36,11 @@ export default function CajeroDashboard() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [testeandoImpresora, setTesteandoImpresora] = useState(false);
   const [impresoraPredeterminada, setImpresoraPredeterminada] = useState<string | null>(() =>
-    isAndroidDevice() || soportaBluetoothEscPos()
-      ? obtenerImpresoraBlePredeterminada()?.nombre ?? null
-      : null
+    esDispositivoSunmi()
+      ? IMPRESORA_INTEGRADA_LABEL
+      : isAndroidDevice() || soportaBluetoothEscPos()
+        ? obtenerImpresoraBlePredeterminada()?.nombre ?? null
+        : null
   );
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
@@ -115,6 +118,23 @@ export default function CajeroDashboard() {
 
   // Validar y testear impresora local de la PDA
   const handleTestImpresora = useCallback(async () => {
+    // En PDA Sunmi con impresora integrada se usa el plugin JS USDK, no Bluetooth.
+    if (esDispositivoSunmi()) {
+      if (!window.confirm(`Imprimir ticket de prueba en la ${IMPRESORA_INTEGRADA_LABEL}?`)) return;
+      setTesteandoImpresora(true);
+      try {
+        const result = await imprimirTestSunmi();
+        if (result.ok) {
+          toast.success(`Ticket de prueba impreso en "${result.dispositivo}".`);
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'El plugin JS USDK no responde. Instálelo desde la Sun Store.');
+      } finally {
+        setTesteandoImpresora(false);
+      }
+      return;
+    }
+
     // 1) Verificar que la PDA soporte Bluetooth o sea Android con RawBT
     if (!soportaBluetoothEscPos() && !isAndroidDevice()) {
       toast.error('Esta PDA no soporta impresión local (Bluetooth o RawBT).');
@@ -319,10 +339,10 @@ export default function CajeroDashboard() {
             </span>
           </div>
           <div className="flex items-center gap-2 border-l pl-4">
-            {/* Botón test impresora: visible solo en PDA/Android */}
-            {(isAndroidDevice() || soportaBluetoothEscPos()) && (
+            {/* Botón test impresora: visible en PDA Sunmi / Android / BLE */}
+            {(esDispositivoSunmi() || isAndroidDevice() || soportaBluetoothEscPos()) && (
               <div className="flex items-center gap-1.5">
-                {impresoraPredeterminada && (
+                {impresoraPredeterminada && !esDispositivoSunmi() && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -335,6 +355,17 @@ export default function CajeroDashboard() {
                       ? impresoraPredeterminada.slice(0, 12) + '…'
                       : impresoraPredeterminada}
                   </Button>
+                )}
+                {impresoraPredeterminada && esDispositivoSunmi() && (
+                  <span
+                    className="h-10 px-2 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 rounded-md"
+                    title={`Impresora integrada activa (${IMPRESORA_INTEGRADA_LABEL})`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {impresoraPredeterminada.length > 12
+                      ? impresoraPredeterminada.slice(0, 12) + '…'
+                      : impresoraPredeterminada}
+                  </span>
                 )}
                 <Button
                   size="sm"

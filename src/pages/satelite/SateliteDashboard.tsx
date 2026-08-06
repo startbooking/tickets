@@ -272,7 +272,7 @@ export default function SateliteDashboard() {
   const reimprimirVenta = useCallback(
     async (v: TurnoSateliteVenta) => {
       const r = await reimprimirRemoto(v);
-      if (r === 'usb' || r === 'ble' || r === 'rawbt' || r === 'print') {
+      if (r === 'sunmi' || r === 'usb' || r === 'ble' || r === 'rawbt' || r === 'print') {
         toast.success(`Tiquete #${v.consecutivo} reimpreso.`);
       }
     },
