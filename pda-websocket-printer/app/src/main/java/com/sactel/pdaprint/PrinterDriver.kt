@@ -19,7 +19,7 @@ object PrinterDriver {
     private const val INNERPRINTER_ADDRESS = "00:11:22:33:44:55"
 
     fun imprimir(bytes: ByteArray) {
-        val ok = imprimirPorSpp()
+        val ok = imprimirPorSpp(bytes)
         if (!ok) {
             Log.w(TAG, "InnerPrinter SPP no disponible; sin vía alternativa.")
         }

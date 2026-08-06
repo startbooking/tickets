@@ -88,7 +88,7 @@ class PrintService : Service() {
                 "PRINT" -> {
                     val data = req.optString("data")
                     val bytes = Base64.getDecoder().decode(data)
-                    PrinterDriver.imprimir(this, bytes)
+                    PrinterDriver.imprimir(bytes)
                     out.put("code", 0).put("message", "ok")
                 }
                 "PING" -> out.put("code", 0).put("message", "pong")
