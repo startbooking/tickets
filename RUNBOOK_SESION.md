@@ -1,0 +1,66 @@
+# Resumen de sesión — Impresión en PDA Sunmi (proyecto tickets SACTel / Flota San Vicente)
+
+Fecha: 2026-08-06. Todo en español.
+
+## Objetivo
+Configurar la impresión del tiquete en la impresora térmica **integrada** de la PDA
+**Sunmi V2 SE** (Android 12 Go / SUNMI OS, impresora 58 mm).
+
+## Estado del proyecto
+- Frontend React/Vite + TS: `/var/www/sactel.lan/rutas`
+- Backend FastAPI: `/var/www/backend.lan/travelsoft` (puerto 8005) — provider alguna.
+- Git remote: `https://github.com/startbooking/tickets.git`, rama `main`. **Sincronizado** (push hecho, HEAD = `b76e720`).
+- Comunicación/código en **español**.
+
+## Hallazgo técnico crucial (impresora integrada)
+- La impresora integrada **"InnerPrinter"** es un dispositivo **Bluetooth Clásico SPP**
+  (UUID `00001101-0000-1000-8000-00805F9B34FB`), NO BLE.
+- **Web Bluetooth (`navigator.bluetooth`) NO alcanza SPP** → por eso falla con
+  `Failed to execute 'requestDevice' on 'Bluetooth'`.
+- Vías que SÍ funcionan desde web en navegador:
+  1. **RawBT** (app, package `ru.a402d.rawbtprinter`) vía intent `rawbt://base64,…`. Play Store: https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter
+  2. **Plugin JS USDK** (Sun Store) → WebSocket `ws://localhost:7070/ws`, imprime directo a la integrada.
+
+## Cadena de impresión actual
+`useTicketFiscal.imprimirConRespalado`:
+- En Android: **Integrada (JS USDK) → USB (servidor CUPS/pyusb) → RawBT (SPP/InnerPrinter) → window.print()**
+- En escritorio: USB → Web Bluetooth → window.print()
+- Resultados (`ImpresionResultado`): `'sunmi' | 'usb' | 'ble' | 'rawbt' | 'print' | 'error'`
+
+## Archivos modificados/creados
+- `src/services/sunmiPrinter.ts`: integración plugin JS USDK. Sonda real al WebSocket 7070
+  (sondear a ws no depende del userAgent), cache de disponibilidad, `imprimirSunmi`,
+  `validarImpresoraSunmi`, `imprimirTestSunmi`, `integradaSunmiDisponible`,
+  `reiniciarCacheSunmi`, `MENSAJE_PLUGIN_AUSENTE`.
+- `src/utils/ticketFormatter.ts`: `imprimirRawBtEscPos()`, `imprimirTestRawBt()`.
+- `src/hooks/useTicketFiscal.ts`: cadena de impresión reordenada (móvil→RawBT).
+- `src/pages/cajero/CajeroDashboard.tsx`: botón "Test Impresora" para Android moderno
+  (integra → RawBT), label impresora.
+- `rawbt_pda.txt`: notas técnicas de impresión RawBT/InnerPrinter.
+- `src/services/ticketFiscalService.ts`: tipo `ImpresionResultado` con `'sunmi'`.
+- `package.json`/`package-lock.json`: añadidos `sunmi-js-sdk` (1.0.53) y `@testing-library/dom` (10.4.1).
+
+## Toolchain restaurado (importante)
+El repo de HEAD tenía package.json inconsistente con el lockfile (Tailwind 3.4/vite8/TS7 vs
+lock Tailwind 3.4, vite 5.4, TS 5.8). ALINEÉ package.json a las versiones del lockfile para
+que build/tsc/eslint vuelvan a funcionar:
+- tailwindcss 3.4.17, vite 5.4.19, TypeScript 5.8.3, eslint 9.32.0, react 18.3.1, vitest 3.2.4.
+- Instalar con `npm install --legacy-peer-deps` (evita conflicto ERESOLVE).
+- Verificación: build OK, `tsc --noEmit` OK, eslint OK (2 warnings pre-existentes), 75 tests OK.
+
+## Build/despliegue
+- `npm run build` → `dist/` (PWA/service worker incluido).
+- ZIP listo para subir: `dist/tickets-version-003.zip` (~1.2 MB).
+
+## Próximos pasos pendientes
+1. **En la PDA**: instalar **RawBT** (Play Store) y, en RawBT, elegir como impresora **InnerPrinter**
+   (la Sunmi ya la tiene emparejada). Alternativa: instalar el plugin **JS USB** en la Sun Store.
+2. Usar el botón "Test Impresora" del cajero para verificar (imprime direct por RawBT o integrada si hay plugin).
+3. Probar venta real y confirmar el tiquete por la integrada.
+4. (Sesión) Puedes preguntar si deseas priorizar solo el plugin JS USB (debe estar instalado) y dejar RawBT
+   solo como fallback, o el estado actual (intenta JS USB y sino RawBT).
+
+## Notas del git
+- Últimos commits (local=billed): `b76e720` (docs rawbt), `e57380b` (cambio formato RawBT),
+  `1a88d75` (Revision Impresion PDA), `60b9eb1`, `dfe5d20`, `1e691fd`.
+- `origin/main` actualizado, sin commits locales pendientes.
