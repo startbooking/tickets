@@ -1,0 +1,214 @@
+========================================================
+MANUAL TECNICO: IMPRESION DE TICKETS (web -> PDA)
+Sistema de Rutas - version para integradores
+Fecha: 2026-08-06
+========================================================
+Nota tecnica sobre el flujo END-TO-END de la impresion de
+tickets: generacion de ESC/POS en la App React, las distintas vias
+de salida hacia la impresora de la PDA Sunmi y la nueva cadena de
+respaldo con el servicio WebSocket local.
+
+INDICE
+1. Vision general / cadena de impresion
+2. Flujo de datos y tipos de resultado
+3. Servicio WebSocket local (PDA Print Service) - NUEVO
+4. Protocolo del servicio local
+5. Plugin JS (Sunmi integrada)
+6. Via USB (servidor pyusb/CUPS)
+7. Via RawBT (Bluetooth SPP)
+8. Via Web Bluetooth (solo escritorio)
+9. Fallback window.print()
+10. Generacion del ESC/POS (ticketFormatter)
+11. Tipos de resultado y manejo de error
+12. Requisitos de red y entorno
+13. Diagrama de decisiones
+
+========================================================
+1. VISION GENERAL Y CADENA DE IMPRESION
+========================================================
+Objetivo: imprimir un ticket en la impresora integrada de la PDA
+Sunmi de forma AUTOMATICA (sin que el usuario elija impresora en
+cada copia y, en lo posible, sin dialogo de seleccion).
+
+El sistema usa una cadena de respaldo (fallback) ordenada por
+prioridad. Cada estrategia se intenta; si sucede, se detiene la
+cadena; si no, se pasa a la siguiente.
+
+Cadena en ANDROID (PDA):
+  0) Servicio WebSocket local (PDA Print Service)   -> NUEVO, sin dialogos
+  1) Plugin integrada (JS USDK, WebSocket 7070)
+  2) USB (servidor pyusb/CUPS en la red)
+  3) RawBT (Bluetooth SPP / InnerPrinter)
+  4) window.print()
+
+Cadena en ESCRITORIO:
+  1) USB (servidor pyusb/CUPS)
+  2) Web Bluetooth (BLE, desktop)
+  3) window.print()
+
+Codigo orquestador: hook useTicketFiscal -> imprimirConRespalado
+(archivo src/hooks/useTicketFiscal.ts).
+
+========================================================
+2. FLUJO DE DATOS Y TIPOS
+========================================================
+1. La UI (CajeroDashboard / SateliteDashboard) invoca el hook
+   useTicketFiscal.
+2. Se genera el texto del ticket y se convierte a bytes ESC/POS con
+   encodarEscPos (src/utils/ticketFormatter.ts).
+3. imprimirConRespalado itera las estrategias segun el dispositivo
+   (detectado por userAgent / capacidades).
+4. Cada via devuelve un tipo de resultado:
+      'pda' | 'sunmi' | 'usb' | 'ble' | 'rawbt' | 'print' | 'error'
+5. Exito (cualquiera menos 'error') corta la cadena y avisa al usuario.
+6. Todas fallan -> 'error' + motivo final en pantalla.
+
+Disponibilidad: cada servicio mantiene un cache de disponibilidad
+(validacion real cuando cambia), invalidable con reiniciarCache* de
+cada servicio.
+
+========================================================
+3. SERVICIO WEBSOCKET LOCAL (PDA PRINT SERVICE) - NUEVO
+========================================================
+QUE ES
+- App Android ligera (Kotlin) que corre en la PDA como un
+  Foreground Service.
+- Abre un servidor WebSocket en ws://127.0.0.1:8080 (solo loopback).
+- Recibe la data base64 de los bytes y los envia a la impresora
+  integrada por Bluetooth SPP "InnerPrinter".
+
+VENTAJAS:
+- Imprime SIN dialogos/selector de dispositivos.
+- No depende del plugin JS USDK (ni del estado de instalacion).
+- No depende de RawBT como aplicacion externa.
+
+LADO WEB - CLIENTE (src/services/pdaWebSocketService.ts)
+- Conecta a ws://127.0.0.1:8080.
+- Envia: { action: "PRINT", data: base64(bytes), copies: 1 }.
+- Lee respuesta { code: 0, message: "ok" }.
+- Expo: servicioPdaDisponible(), reiniciarCachePda(),
+  imprimirPdaWs(texto), imprimirTestPdaWs(), PDA_WS_LABEL.
+
+LADO ANDROID - SERVIDOR (pda-websocket-printer/)
+- PrintService (Foreground) + WebSocketServer en 127.0.0.1:8080.
+- PrinterDriver imprime por Bluetooth SPP a:
+    direccion fija 00:11:22:33:44:55
+    UUID SPP 00001101-0000-1000-8000-00805F9B34FB
+- Si la direccion fija no existe, busca un dispositivo emparejado
+  cuyo nombre contenga "InnerPrinter".
+- Permisos MANIFEST: BLUETOOTH, BLUETOOTH_ADMIN, INTERNET,
+  FOREGROUND_SERVICE, POST_NOTIFICATIONS.
+
+========================================================
+4. PROTOCOLO DEL SERVICIO LOCAL
+========================================================
+Servidor: ws://127.0.0.1:8080  (loopback; la web DEBE correr en la PDA)
+
+Envio  -> { "action": "PRINT", "data": "<base64 del ESC/POS>", "copies": 1 }
+Rta    -> { "code": 0, "message": "ok" }
+
+Envio  -> { "action": "PING" }
+Rta    -> { "code": 0, "message": "pong" }
+
+Reglas:
+- code != 0 indica error; el detalle viene en "duplicate" (message).
+- base64 = bytes ESC/POS generado por encodarEscPos (lado web).
+
+========================================================
+5. PLUGIN JS (SUNMI INTEGRADA)
+========================================================
+Archivo: src/services/sunmiPrinter.ts
+- Usa el plugin nativo Sunmi (JS USDK) que expone un WebSocket en el
+  puerto 7070 de la PDA.
+- Antes de imprimir, sondea el puerto 7070 para asegurar que el
+  plugin esta disponible/levantado.
+- Si no responde, se pasa a la siguiente via de la cadena.
+
+Motivo del respaldo:
+- El plugin JS SDK no siempre viene instalado en todas las variantes
+  de la Sunmi V2 SE.
+
+========================================================
+6. IMPRESION POR USB (SERVICIO pyusb/CUPS)
+========================================================
+Estrategia 'usb'. La App envia el ticket a un servidor de impresion
+de la red (backend que expone la impresora USB por HTTP).
+- URL y credenciales se configuran en .env (variables USB_*).
+- Se usa como via por defecto en escritorio y como respaldo en la PDA.
+
+========================================================
+7. IMPRESION POR RawBT (Bluetooth SPP)
+========================================================
+Estrategia 'rawbt'.
+- Utiliza la aplicacion externa RawBT (via Intent) para mandar el
+  ticket ESC/POS por Bluetooth SPP al dispositivo InnerPrinter de la
+  Sunmi.
+- Ventaja: no requiere plugin del fabricante.
+- Desventaja: delega a una app externa (puede abrir UI/un selector),
+  por eso es una via de respaldo y no la principal.
+
+========================================================
+8. IMPRESION POR WEB BLUETOOTH (SOLO ESCRITORIO)
+========================================================
+- Usa navigator.bluetooth() del navegador.
+- Requiere que el usuario elija un dispositivo en un selector (GATT).
+- NO puede imprimir en InnerPrinter (Bluetooth clasico SPP), solo BLE.
+- Por eso en la PDA NO se usa esta via; se reserva para desktop.
+
+========================================================
+9. FALLBACK window.print()
+========================================================
+- Ultima instancia: window.print() abre el dialogo de impresion del
+  navegador / PDF.
+- Garantiza que siempre se puede imprimir manualmente si las vias
+  automaticas fallan.
+
+========================================================
+10. GENERACION DEL ESC/POS
+========================================================
+Archivo: src/utils/ticketFormatter.ts
+- encodarEscPos(...) genera un ArrayBuffer de codigos ESC/POS a
+  partir del texto con formato del ticketero: negrita, ancho, alto,
+  cortes, init (ESC @), lineas.
+- Esos bytes se convierten a base64 para el servicio local y RawBT.
+- Es importante que el codepage/charset coincida con la impresora para
+  los acentos.
+
+========================================================
+11. TIPOS DE RESULTADO Y MANEJO DE ERROR
+========================================================
+'pda'    -> imprimio por WebSocket local (nuevo)
+'sunmi'  -> plugin integrada JS
+'usb'    -> servidor USB/pyusb
+'ble'    -> Web Bluetooth (desktop)
+'rawbt'  -> RawBT
+'print'  -> window.print()
+'error'  -> falla todas las vias, se muestra el motivo
+
+- UI muestra confirmacion con el tipo resultado.
+- Tests de la cadena en src/hooks/useTicketFiscal.test.ts.
+
+========================================================
+12. CONFIGURACION DE RED Y ENTORNO
+========================================================
+- Servicio local WS: ws://127.0.0.1:8080 (loopback, solo PDA).
+- Plugin JS: puerto 7070 (SDK Sunmi).
+- Servidor USB/pyusb: variables USB_* en .env (.env/.production).
+- Las vias requieren HTTPS o localhost (seguridad navajas).
+
+========================================================
+13. DIAGRAMA DE DECISIONES (RESUMEN)
+========================================================
+              Android ?
+              /        \
+            si          no
+      cadena:         cadena:
+   [local WS]   ->   [USB]
+   [JS USDK]    ->   [Web BT]
+   [USB]        ->   [print()]
+   [RawBT]      ->
+   [print()]
+       \-> si todo 'error': mostrar motivo.
+
+FIN DEL MANUAL TECNICO
+========================================================

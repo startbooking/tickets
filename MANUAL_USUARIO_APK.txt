@@ -1,0 +1,135 @@
+========================================================
+MANUAL DE USUARIO: APP "PDA PRINT SERVICE"
+(impresion de tickets desde la PDA Sunmi)
+Para operadores / personal de boleteria
+Version: 1.0  |  Fecha: 2026-08-06
+========================================================
+Este manual explica, de forma SENCILLA, como usar la app que
+permite imprimir los tickets directamente en la impresora integrada
+de la PDA indicada desde el sistema web de rutas.
+
+Sera de ayuda si eres el operador/a que usa la PDA en la ventanilla.
+
+INDICE
+1. Para que sirve esta app
+2. Lo que necesitas (requisitos)
+3. Primer uso: instalar la app
+4. Como ponerla en funcion (pasos diarios)
+5. Como imprimir un ticket (desde el sistema web)
+6. Como verificar que esta funcionando
+7. Problemas frecuentes y solucion
+8. Avistado de condiciones / recordatorio
+
+========================================================
+1. PARA QUE SIRVE ESTA APP
+========================================================
+La App "PDA Print" es un "servicio pequeno" que se instala en la PDA.
+Mientras esta abierta, le permite al sistema web de rutas mandar los
+tickets a imprimir directamente a la impresora integrada de la PDA,
+sin elegir nada y sin abrir ventanas extra.
+
+Es decir: la app se usa de fondo mientras tú vendes los tiquets;
+solo tenes que tenerla inicida. La impresion se hace automatica.
+
+========================================================
+2. LO QUE NECESITAS (REQUISITOS)
+========================================================
+- Una PDA con impresora integrada (ej. Sunmi) y Bluetooth activado.
+- La app "META Print" instalada y con permisos concedidos.
+- El sistema web de rutas ABIERTO EN LA MISMA PDA (para que ambos se
+  conecten por dentro), no en otra computadora.
+- La red Wi-Fi de la PDA debe tener acceso al servidor del sistema.
+
+========================================================
+3. PRIMER USO: INSTALAR LA APP
+========================================================
+Por lo general, la app TE HA SIDO ENTREGADA (o instalada) por el
+encargado de sistemas. Si la tienes como archivo .apk:
+
+1) Abre el archivo .apk en la PDA (puede venir por descarga, USB o
+   una aplicacion de correo/WhatsApp de archivos).
+2) Si el sistema lo pide, permite instalar con "Origenes desconocidos"
+   (tocando en Permitir cuando aparezca el aviso).
+3) Toca Instalar y despues "Listo" / "Abrir".
+
+Si no te aparece el archivo, pedir ayuda a sistemas.
+
+========================================================
+4. PRIMEROS USOS: PONER EN FUNCION
+========================================================
+Sigue estos pasos cada dia (o cuando enciendas la PDA):
+
+  1. ENCIENDE la PDA y abre el menu de Aplicaciones.
+  2. Toca la app "PDA Print".
+  3. ACTIVA el Bluetooth: bajas la barra superior de la PDA y
+     pulsas el icono de Bluetooth para encenderlo.
+  4. Toca el boton que dice "Iniciar servicio".
+  5. Veras un mensaje de estado que dice "En linea" (o "Activo").
+     Esa palabra te confirma que YA puede imprimir.
+
+IMPORTANTE:
+- Deja la app ABIERTA en primer plano mientras vendes.
+- No la cierres (si la cierras, dejas de imprimir por esta via y el
+  sistema usara otra forma de imprimir).
+
+========================================================
+5. COMO IMPRIMIR UN TICKET (desde el sistema web)
+========================================================
+Para imprimir un boleto no tienes que tocar nada de la app:
+
+1. Abre el sistema web de rutas en la misma PDA.
+2. Ingresa como siempre (Caja / Satelite).
+3. Haz la venta del tiquete SIEMPRE.
+4. La impresion se lanza automaticamente (en la app solo se ve un
+   parpadeo o se enciende el LED de la impresora).
+5. Si el sistema te muestra un aviso con la palabra "PDA", significa
+   que se imprimio por la app correctamente.
+6. Puedes probar en el boton "Test impresora" (si aparece) para
+   verificar que todo funcione.
+
+========================================================
+6. COMO COMPROBAR QUE ESTA FUNCIONANDO
+========================================================
+- La app muestra el estado "En linea" despues de "Iniciar".
+- Si haces un "Test impresora" en el sistema web y sale un ticket
+  de prueba, todo esta bien.
+- Si la impresora no hace nada, revisa el apartado siguiente.
+
+========================================================
+7. PROBLEMAS FRECUENTES (Y SOLUCION)
+========================================================
+P: La app dice que no esta en linea / el servicio no inicia.
+   R: Revisa que el Bluetooth este encendido (paso 4-3). Reinicia
+      la app (cierre y abre de nuevo) y pulsa de nuevo "Iniciar".
+
+P: Tocas "Test impresora" y no sale nada.
+   R: 1) Verifica que la app este abierta y en linea.
+      2) Verifica que el sistema web este abierto en LA MISMA PDA
+         (no en otra computadora).
+      3) Revisa que la impresora tenga papel y la PDA este tranquila.
+
+P: Imprime pero por otra via (el aviso no dice "PDA").
+   R: Es normal como respaldo: el sistema uso otra impresora porque
+      la app no estaba en linea en ese momento. Deja la app abierta
+      para que imprima por la app la proxima vez.
+
+P: La PDA entra en "modo seguro".
+   R: En modo seguro de Android las apps de terceros (como esta) se
+      desactivan. Reinicia la PDA en modo NORMAL para poder usarla.
+
+P: Bluetooth conectado y no detecta nada.
+   R: Puedes pedir a sistemas que re-empareje el "InnerPrinter" o
+      que revise la instalacion; a veces basta reiniciar la PDA.
+
+========================================================
+8. AVISO / CONDICIONES
+========================================================
+- Apagar la app detiene la impresion por esta via (es normal).
+- Prioriza: SIEMPRE ten la app iniciada antes de vender el primer ticket.
+- Si tienes errores continuos, avisa a encargado de sistemas con
+  estos datos:
+    - Modelo de la PDA (ej: Sunmi V2 SE).
+    - Si el boton "Iniciar" queda en linea o no.
+
+FIN DEL MANUAL DE USUARIO
+========================================================

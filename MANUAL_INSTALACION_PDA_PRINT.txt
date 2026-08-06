@@ -1,0 +1,204 @@
+========================================================
+MANUAL DE INSTALACIÓN: PDA PRINT SERVICE (WebSocket local)
+Aplicación: impresión de tickets a la impresora integrada de la PDA Sunmi
+sin diálogos ni aplicaciones intermedias (ni RawBT, ni plugin JS USDK).
+Archivo de consulta -> guárdalo fuera del repo para consultarlo más adelante.
+Fecha: 2026-08-06
+========================================================
+
+ÍNDICE
+  1. Qué es / arquitectura
+  2. Requisitos del entorno de build
+  3. Cómo generar el APK (debug y release)
+  4. Dónde queda el APK generado
+  5. Cómo instalar en la PDA (3 vías)
+  6. Configuración inicial en la PDA
+  7. Prueba desde la web (Test Impresora)
+  8. Protocolo WebSocket (referencia para integradores)
+  9. Estructura del proyecto Android
+  10. Solución de problemas frecuentes
+  11. Documentos relacionados
+
+========================================================
+1. OCI / ARQUITECTURA
+========================================================
+Concepto "app ligera en la PDA":
+
+App Android (PDA Print Service) hostea un servidor WebSocket en:
+      ws://127.0.0.1:8080
+
+La aplicación web React de tickets se conecta a ese WebSocket y le envía
+el ticket en formato base64 ESC/POS. La app Android decodifica y manda los
+bytes a la impresora integrada a través de Bluetooth SPP "InnerPrinter"
+(dirección virtual 00:11:22:33:44:55, UUID SPP 00001101-...-00805F9B34FB).
+
+Resultado: impresión SIN diálogos ni el plugin JS USDK ni RawBT.
+
+Cadena de impresión en la WEB (Android), prioridad:
+   1) Servicio WebSocket local (PDA Print Service)  -> nuevo
+   2) Integrada (plugin JS USDK / WebSocket 7070)
+   3) USB (servidor pyusb/CUPS)
+   4) RawBT (SPP / InnerPrinter)
+   5) window.print()
+
+Resultados posibles (ImpresionResultado):
+   'pda' | 'sunmi' | 'usb' | 'ble' | 'rawbt' | 'print' | 'error'
+
+============================================================
+2. REQUISITOS DEL PROYECTO DE BUILD (máquina para compilar)
+============================================================
+- JDK 17 (recomendado Temurin). Sin sudo se descarga desde Adoptium:
+    https://api.adoptium.net/v3/binary/latest/17/ga/linux/amd64/hotspot/normal/eclipse
+    (ajustar plataforma: x64 para x86_64/aarch64 para ARM)
+- Gradle 8.7 (o usar el wrapper `./gradlew` ya incluido):
+    https://services.gradle.org/distributions/gradle-8.7-bin.zip
+- Android SDK (build-tools 36.0.0, platform android-36.1 OK).
+  Ruta local marcada en: pda-websocket-printer/local.properties  (sdk.dir=...)
+  NOTA: local.properties NO se sube a git (está en .gitignore).
+
+Variables de entorno a usar antes de compilar:
+    export JAVA_HOME=~/tools/jdk-17.0.20+8
+    export PATH=$JAVA_HOME/bin:$PATH
+
+========================================================
+3. CÓMO GENERAR EL APK
+========================================================
+Si no existe el wrapper, generarlo una vez:
+    gradle wrapper --gradle-version 8.7        (en pda-websocket-printer/)
+
+Compilar el APK de DEBUG (para probar e instalar en las PDAs):
+    cd /var/www/sactel.lan/rutas/pda-websocket-printer
+    export JAVA_HOME=~/tools/jdk-17.0.20+8
+    export PATH=$JAVA_HOME/bin:$PATH
+    ./gradlew :app:assembleDebug
+
+Resultado:
+    BUILD SUCCESSFUL in ...s
+
+Si quieres un APK de RELEASE firmado (producción) - requiere keystore:
+    ./gradlew :app:assembleRelease
+
+========================================================
+4. DÓNDE QUEDA EL APK GENERADO
+========================================================
+DEBUG (apto para instalar y probar):
+    pda-websocket-printer/app/build/outputs/apk/debug/app-debug.apk
+
+RELEASE (si se firma):
+    pda-websocket-printer/app/build/outputs/apk/release/app-release-unsigned.apk
+
+Datos del APK actual (build que ya compiló y quedó validado):
+    package: com.sactel.pdaprint
+    versionCode: 1 / versionName: 1.0
+    compileSdk/targetSdk: 34 (Android 14)
+    permiso: BLUETOOTH, BLUETOOTH_ADMIN, INTERNET, FOREGROUND_SERVICE, POST_NOTIFICATIONS
+    (~894 KB)
+
+========================================================
+5. CÓMO INSTALAR EN LA PDA (3 VÍAS)
+========================================================
+VÍA A - Poner el APK por USB (recomendada desde PC):
+ 1) Conecta la Sunmi a la PC por USB con depuración USB activada
+    (Ajustes -> Opciones de desarrollador -> Depuración USB).
+ 2) Comprueba que la PC ve la PDA:
+        /home/sactelcloud/Android/Sdk/platform-tools/adb devices
+ 3) Instala:
+        /home/sactelcloud/Android/Sdk/platform-tools/adb install -r \
+            pda-websocket-printer/app/build/outputs/apk/debug/app-debug.apk
+
+VÍA B - Copiar el APK y abrir en la PDA:
+ 1) Copia app-debug.apk a la Sunmi (USB/descarga/pen drive).
+ 2) En la PDA: permite "orígenes desconocidos" (Ajustes -> Seguridad).
+ 3) Toca el archivo .apk y Confirma instalar.
+
+VÍA C - ADB por red (si ya tienes la PDA en la red local):
+    adb connect <ip-de-la-pda>:5555
+    adb install -r pda-websocket-printer/app/build/outputs/apk/debug/app-debug.apk
+
+========================================================
+6. CONFIGURACIÓN EN LA PDA (una vez instalada la app)
+========================================================
+ 1) CONCEDE PERMISOS DE BLUETOOTH:
+     Ajustes -> Aplicaciones -> PDA Print Service -> Permisos ->
+     activa BLUETOOTH (y "Ubicación" si aplica / Bluetooth clásico).
+ 2) ACTIVA BLUETOOTH del sistema (y empareja InnerPrinter si aparece).
+ 3) ABRE la app "PDA Print Service".
+4) Pulsa el botón "Iniciar servicio"; debe verse el estado EN LÍNEA
+     (servidor ws://127.0.0.1:8080 activo).
+  5) Deja la app en primer plano (o el servicio en foreground
+    con notificación persistente para que siga funcionando).
+
+IMPORTANTE: el MODO SEGURO de Android DESACTIVA las apps de terceros.
+            La prueba debe hacerse con Android NORMAL (no en modo seguro).
+
+========================================================
+7. PRUEBA DESDE LA WEB (TICKETS)
+========================================================
+ 1) Abre la app web de tickets en un navegador de la PDA (misma red).
+ 2) Ve al dashboard (Cajero o Satélite) -> botón "Test impresora".
+ 3) En la cadena de impresión el servicio local WS es PRIMERA OPCIÓN,
+    así que si el servicio está iniciado, imprimirá por ahí (tipo 'pda').
+ 4) Verás confirmación de empuje/imprésión realizada en pantalla.
+
+Para la app web, el cliente WS ya está implementado en:
+    src/services/pdaWebSocketService.ts   (puerto 8080, PDA_WS_LABEL)
+
+========================================================
+8. PROTOCOLO WEBSOCKET DEL SERVICIO LOCAL (referencia)
+========================================================
+Servidor: ws://127.0.0.1:8080  (solo loopback local a la PDA)
+
+ENVÍO ->  { "action": "PRINT", "data": "<base64 del ESC/POS>", "copies": 1 }
+RESP <-  { "code": 0, "message": "ok" }
+
+ENVÍO ->  { "action": "PING" }
+RESP <-  { "code": 0, "message": "pong" }
+
+- Si el código != 0 -> error (mensaje en "message").
+- El base64 corresponde a los bytes ESC/POS generados por la web
+  (función encodarEscPos en src/utils/ticketFormatter.ts).
+
+========================================================
+9. ESTRUCTURA DEL PROYECTO ANDROID
+========================================================
+pda-websocket-printer/
+ ├─ build.gradle            # plugins del proyecto (AGP 8.5.2 + Kotlin 1.9.24)
+ ├─ settings.gradle         # rootProject "PdaPrintService", include ':app'
+ ├─ gradle.properties
+ ├─ gradlew / gradlew.bat   # wrapper Gradle 8.7
+ ├─ gradle/wrapper/*        # jar + properties del wrapper
+ └─ app/
+    ├─ build.gradle         # com.android.application, SDKs, deps (Java-WebSocket)
+    └─ src/main/
+       ├─ AndroidManifest.xml
+       └─ java/com/sactel/pdaprint/
+          ├─ MainActivity.kt   # botón "Iniciar servicio" + estado
+          ├─ PrintService.kt   # foreground service + servidor WebSocket 127.0.0.1:8080
+          └─ PrinterDriver.kt  # impresión por Bluetooth SPP a InnerPrinter
+
+========================================================
+10. SOLUCIÓN DE PROBLEMAS FRECUENTES
+========================================================
+- "No se encontró InnerPrinter":
+  El dispositivo virtual usa dirección 00:11:22:33:44:55. Si no funciona en
+  tu modelo, la app busca entre los emparejados un dispositivo que se llame
+  "InnerPrinter". Si tu PDA no lo expone por BT, habrá que ir por AIDL (pendiente).
+- La impresión sale siempre por otra vía (no 'pda'):
+  Revisa que el servicio esté iniciado (paso 6) antes de probar.
+- "ws://127.0.0.1:8080 no conecta":
+  Confirma que la app esté en línea; el servicio escucha solo en loopback,
+  y es OBLIGATORIO que la web corre EN LA MISMA PDA.
+- Permiso de Bluetooth denegado: concede manualmente desde Ajustes.
+- Error de tipo "Failed to execute requestDevice" (Web Bluetooth):
+  Normal: InnerPrinter es Bluetooth CLASICO (SPP), no BLE.
+
+========================================================
+11. DOCUMENTACIÓN RÁPIDA (archivos de apoyo)
+========================================================
+- rawbt_pda.txt            -> nota técnica sobre RawBT/InnerPrinter.
+- RUNBOOK_SESION.md        -> bitácora completa de la sesión de desarrollo.
+- src/services/pdaWebSocketService.ts -> cliente WS del lado web.
+- src/utils/ticketFormatter.ts          -> generación de ESC/POS + encodarEscPos.
+
+FIN DEL MANUAL
+========================================================
