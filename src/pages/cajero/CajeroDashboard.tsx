@@ -4,6 +4,7 @@ import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnT
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
+import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL } from '@/services/pdaWebSocketService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,13 +119,25 @@ export default function CajeroDashboard() {
 
   // Validar y testear impresora local de la PDA
   const handleTestImpresora = useCallback(async () => {
-    // En PDA Android la impresora integrada Sunmi es la vía principal; si el
-    // plugin JS USDK no responde, se usa RawBT (SPP) que alcanza a la
-    // impresora integrada "InnerPrinter" (dispositivo SPP, no alcanzable
-    // por Web Bluetooth).
+    // En la PDA Android la impresión directa (sin diálogos) se intenta así:
+    //   1) Servicio Web Socket local (app "PDA Print Service") — prioridad.
+    //   2) Impresora integrada Sun (plugin JS USDK).
+    //   3) RawBT (SPP) — alcanza a "InnerPrinter" (SPP, no alcanzable por BLE).
     if (esDispositivoSunmi() || isAndroidDevice()) {
       setTesteandoImpresora(true);
       try {
+        // 1) Servicio local WebSocket
+        const pdaOk = await servicioPdaDisponible();
+        if (pdaOk) {
+          const r = await imprimirTestPdaWs();
+          if (r.ok) {
+            setImpresoraPredeterminada(PDA_WS_LABEL);
+            toast.success(`Ticket de prueba impreso en "${r.dispositivo}".`);
+          }
+          return;
+        }
+
+        // 2) Impresora integrada (plugin JS USDK)
         const disponible = await validarImpresoraSunmi();
         if (disponible) {
           const result = await imprimirTestSunmi();
@@ -132,16 +145,18 @@ export default function CajeroDashboard() {
             setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
             toast.success(`Ticket de prueba impreso en "${result.dispositivo}".`);
           }
-        } else {
-          setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
-          imprimirTestRawBt();
-          toast.info(
-            'Prueba enviada por Bluetooth (InnerPrinter). Si se abrió la Play Store, instale la app RawBT y vuelva a probar.',
-            { duration: 7000 }
-          );
+          return;
         }
+
+        // 3) RawBT (SPP/InnerPrinter)
+        setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
+        imprimirTestRawBt();
+        toast.info(
+          'Prueba enviada por Bluetooth (InnerPrinter). Si se abrió la Play Store, instale la app RawBT y vuelva a probar.',
+          { duration: 7000 }
+        );
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Error al validar la impresora integrada.');
+        toast.error(err instanceof Error ? err.message : 'Error al validar la impresora local.');
       } finally {
         setTesteandoImpresora(false);
       }
