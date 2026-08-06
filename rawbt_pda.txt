@@ -1,0 +1,42 @@
+=== IMPRESIÓN EN PDA (RAWBT / InnerPrinter) ===
+
+RAZÓN PRINCIPAL
+- La impresora integrada de las PDA Sunmi (V2 SE) es "InnerPrinter",
+  un dispositivo de Bluetooth CLÁSICO (SPP, UUID 00001101-0000-1000-8000-00805F9B34FB).
+- Web Bluetooth (navigator.bluetooth) solo soporta BLE (Low Energy), NO SPP,
+  por eso falla con "Failed to execute 'requestDevice' on 'Bluetooth'".
+- La vía que FUNCIONA para imprimir a InnerPrinter desde una web en el navegador
+  es la app RawBT (SPP).
+
+=== APLICACIÓN RAWBT (imprescindible en la PDA) ===
+- Nombre: RawBT (impresora térmica por Bluetooth), de 402D/TOO.
+- Play Store:
+  https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter
+- Paquete Android: ru.a402d.rawbtprinter
+- Requisito en la PDA: estar vinculada/emparejada con "InnerPrinter"
+  (ya aparece por defecto en las Sunmi y siempre está presente).
+
+CONFIGURACIÓN INICIAL EN LA PDA (una sola vez)
+1. Instalar RawBT desde Play Store.
+2. Abrir RawBT y, en Ajustes (Settings), elegir como impresora el dispositivo
+   vinculado "InnerPrinter".
+3. En la app, cabina "Test Impresora" → imprime ticket de prueba en la integrada.
+
+FORMATO DEL INTENT RAWBT (base64 ESC/POS)
+- text URI (navegador):
+  intent://base64,<BASE64>#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;
+
+ALTERNATIVA SIN RawBT: PLUGIN JS USDK
+- Plugin "JS USDK" (Sun Store) abre un servicio WebSocket en ws://localhost:7070/ws.
+- Integración ya contemplada en src/services/sunmiPrinter.ts (sendEscCommand).
+- Se usa automáticamente si el plugin responde; si no, cae a RawBT.
+
+CÓDIGO RELACIONADO
+- src/utils/ticketFormatter.ts
+  - buildRawBtIntent(escPosText)  -> genera el intent rawbt://base64,...
+  - imprimirRawBtEscPos(texto)    -> window.location.href = intent
+  - imprimirTestRawBt()           -> ticket de prueba por RawBT
+- src/hooks/useTicketFiscal.ts
+  - Cadena en Android: Integrada (JS USDK) -> USB -> RawBT (SPP) -> window.print()
+- src/services/sunmiPrinter.ts     -> integración impresora integrada (JS USDK)
+- src/pages/cajero/CajeroDashboard.tsx -> botón "Test Impresora"
