@@ -94,16 +94,16 @@ describe('useTicketFiscal (con auth mockeada)', () => {
     const { result } = renderHook(() => useTicketFiscal());
     const payload = result.current.construirPayload(ticketBase());
     expect(payload.datos_emisor?.id_agencia).toBe(1);
-    expect(payload.datos_pasajero?.nombres).toBe('JUAN');
-    expect(payload.datos_pasajero?.apellidos).toBe('PEREZ RODRIGUEZ');
-    expect(payload.forma_pago).toBe('EFECTIVO');
-    expect(payload.impuestos[0]).toEqual({ codigo: '01', porcentaje: 0, base_imponible: 34000, valor_impuesto: 0 });
+    expect(payload.adquirente?.nombres).toBe('JUAN');
+    expect(payload.adquirente?.apellidos).toBe('PEREZ RODRIGUEZ');
+    expect(payload.formaPago).toBe('1');
+    expect(payload.totales?.totalImpuestos).toBe(0);
   });
 
   it('construirPayload marca tipo 14 para consumidor final', () => {
     const { result } = renderHook(() => useTicketFiscal());
     const t = ticketBase({ pasajero: { nombre: 'CONSUMIDOR', documento: '222222222222' } });
-    expect(result.current.construirPayload(t).datos_pasajero?.tipo_documento).toBe('14');
+    expect(result.current.construirPayload(t).adquirente?.tipoIdentificacion).toBe('14');
   });
 
   it('emitirConDian enriquece el ticket con CUFE/QR/factura cuando el Core autoriza', async () => {

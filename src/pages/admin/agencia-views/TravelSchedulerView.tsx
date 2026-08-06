@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CalendarDays, Plus, Clock, Bus, MapPin, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, Plus, Clock, Bus, MapPin, SlidersHorizontal, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { travelsoftService, VehiculoSACTel } from "@/services/travelsoftService";
 
 interface ProgramacionViaje {
   id: number;
@@ -25,6 +26,37 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
   const [interno, setInterno] = useState('');
   const [ruta, setRuta] = useState('');
   const [hora, setHora] = useState('');
+
+  // 🚌 Vehículos operativos disponibles en la agencia (origen_siguiente === idAgencia)
+  const [vehiculosDisponibles, setVehiculosDisponibles] = useState<VehiculoSACTel[]>([]);
+  const [cargandoVehiculos, setCargandoVehiculos] = useState(true);
+
+  const cargarVehiculos = useCallback(async () => {
+    setCargandoVehiculos(true);
+    try {
+      setVehiculosDisponibles(await travelsoftService.getVehiculosDisponiblesAgencia(idAgencia));
+    } catch (err) {
+      setVehiculosDisponibles([]);
+      toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los vehículos disponibles.');
+    } finally {
+      setCargandoVehiculos(false);
+    }
+  }, [idAgencia]);
+
+  useEffect(() => {
+    void cargarVehiculos();
+  }, [cargarVehiculos]);
+
+  const vehiculoSeleccionado = useMemo(
+    () => vehiculosDisponibles.find((v) => v.placa_vehi === placa) || null,
+    [vehiculosDisponibles, placa]
+  );
+
+  const handleCambiarPlaca = (nuevaPlaca: string) => {
+    setPlaca(nuevaPlaca);
+    const v = vehiculosDisponibles.find((x) => x.placa_vehi === nuevaPlaca);
+    setInterno(v?.orden_vehi?.trim() ?? '');
+  };
 
   // Mock de datos iniciales programados para el día de hoy
   const [cronograma, setCronograma] = useState<ProgramacionViaje[]>([
@@ -53,12 +85,12 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
       interno,
       ruta,
       horaSalida: horaFormateada,
-      capacidad: 40 // Capacidad estándar por defecto
+      capacidad: vehiculoSeleccionado?.pasajeros_vehi ?? 40,
     };
 
     setCronograma([...cronograma, nuevoViaje].sort((a, b) => a.horaSalida.localeCompare(b.horaSalida)));
     toast.success(`Viaje programado con éxito para el Interno ${interno}`);
-    
+
     // Limpiar campos
     setPlaca('');
     setInterno('');
@@ -70,14 +102,14 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
   const viajesFiltrados = cronograma.filter(viaje => {
     if (enfoqueFiltro === 'DIA') return true;
     return (
-      viaje.placa.toLowerCase().includes(busFiltrado.toLowerCase()) || 
+      viaje.placa.toLowerCase().includes(busFiltrado.toLowerCase()) ||
       viaje.interno.includes(busFiltrado)
     );
   });
 
   return (
     <div className="space-y-6">
-      
+
       {/* ─── SECCIÓN 1: FORMULARIO DE ASIGNACIÓN RÁPIDA ─── */}
       <Card className="bg-white border-slate-200 shadow-sm">
         <CardHeader className="border-b pb-4 bg-slate-50/50">
@@ -93,26 +125,39 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
           <form onSubmit={handleProgramarViaje} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600 uppercase">Placa Vehículo</Label>
-              <Input 
-                placeholder="Ej: SXT-432" 
-                value={placa} 
-                onChange={(e) => setPlaca(e.target.value)} 
-                className="uppercase"
-              />
+              <select
+                className="w-full h-10 px-3 border border-slate-200 bg-white rounded-md text-sm text-slate-800"
+                value={placa}
+                onChange={(e) => handleCambiarPlaca(e.target.value)}
+                disabled={cargandoVehiculos}
+              >
+                <option value="">
+                  {cargandoVehiculos ? 'Cargando vehículos...' : '-- Seleccione Placa --'}
+                </option>
+                {vehiculosDisponibles.map((v) => (
+                  <option key={v.placa_vehi} value={v.placa_vehi}>
+                    {v.placa_vehi}
+                    {v.marca_vehi || v.tipo_vehi ? ` · ${[v.marca_vehi, v.tipo_vehi].filter(Boolean).join(' ')}` : ''}
+                    {v.pasajeros_vehi ? ` · ${v.pasajeros_vehi} sillas` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
-            
+
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600 uppercase">Número Interno</Label>
-              <Input 
-                placeholder="Ej: 102" 
-                value={interno} 
-                onChange={(e) => setInterno(e.target.value)} 
+              <Input
+                placeholder="Se completa al elegir placa"
+                value={interno}
+                onChange={(e) => setInterno(e.target.value)}
+                readOnly={!!vehiculoSeleccionado}
+                className={vehiculoSeleccionado ? 'bg-slate-50' : ''}
               />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600 uppercase">Ruta Autorizada</Label>
-              <select 
+              <select
                 className="w-full h-10 px-3 border border-slate-200 bg-white rounded-md text-sm text-slate-800"
                 value={ruta}
                 onChange={(e) => setRuta(e.target.value)}
@@ -128,10 +173,10 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-600 uppercase">Hora de Salida</Label>
               <div className="relative">
-                <Input 
-                  type="time" 
-                  value={hora} 
-                  onChange={(e) => setHora(e.target.value)} 
+                <Input
+                  type="time"
+                  value={hora}
+                  onChange={(e) => setHora(e.target.value)}
                   className="pl-9"
                 />
                 <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -142,6 +187,20 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
               <Plus className="w-4 h-4" /> Programar
             </Button>
           </form>
+
+          {/* Estado de disponibilidad de vehículos en la agencia */}
+          {!cargandoVehiculos && vehiculosDisponibles.length === 0 && (
+            <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              No hay vehículos operativos disponibles en esta agencia para programar.
+            </div>
+          )}
+          {!cargandoVehiculos && vehiculosDisponibles.length > 0 && (
+            <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              <Bus className="w-4 h-4 shrink-0" />
+              {vehiculosDisponibles.length} vehículo{vehiculosDisponibles.length !== 1 ? 's' : ''} operativo{vehiculosDisponibles.length !== 1 ? 's' : ''} disponible{vehiculosDisponibles.length !== 1 ? 's' : ''} en esta agencia.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -180,8 +239,8 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
             <div className="mb-4 max-w-sm space-y-1.5 animate-in fade-in duration-200">
               <Label className="text-xs text-slate-500 font-semibold">Escribe la Placa o el Número Interno del Bus</Label>
               <div className="relative">
-                <Input 
-                  placeholder="Ej: SXT-432 o 102..." 
+                <Input
+                  placeholder="Ej: SXT-432 o 102..."
                   value={busFiltrado}
                   onChange={(e) => setBusFiltrado(e.target.value)}
                   className="pl-9"
@@ -200,7 +259,7 @@ export function TravelSchedulerView({ idAgencia }: { idAgencia: number }) {
             <div className="border rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
               {viajesFiltrados.map((viaje) => (
                 <div key={viaje.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
-                  
+
                   {/* Info izquierda: Vehículo y Hora */}
                   <div className="flex items-center gap-4">
                     <div className="p-2.5 bg-blue-50 text-blue-700 rounded-lg flex flex-col items-center font-mono font-bold min-w-16 border border-blue-100">

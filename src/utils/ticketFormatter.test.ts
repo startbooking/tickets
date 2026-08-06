@@ -104,11 +104,11 @@ describe('generateTicketTXT', () => {
     expect(txt).not.toContain('CUFE:');
   });
 
-  it('el texto imprimible se normaliza (tildes eliminadas, ¡/¿ reemplazados)', () => {
+  it('el texto imprimible se normaliza y el pasajero se imprime en MAYÚSCULA', () => {
     const txt = generateTicketTXT({ ...base, pasajero: 'JOSÉ ¡HOLA! ¿Vamos?' });
     expect(txt).toContain('JOSE'); // José -> tildes eliminadas
     expect(txt).not.toContain('José');
-    expect(txt).toContain('JOSE !HOLA! ?Vamos?');
+    expect(txt).toContain('JOSE !HOLA! ?VAMOS?');
   });
 });
 

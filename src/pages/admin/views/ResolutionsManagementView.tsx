@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from 'sonner';
 import {
-  FileText, Plus, Pencil, Trash2, Loader2, AlertTriangle, CheckCircle2, Landmark, CalendarDays
+  FileText, Plus, Pencil, Trash2, Loader2, AlertTriangle, CheckCircle2, Landmark, CalendarDays, MapPin
 } from "lucide-react";
 import { travelsoftService, Resolucion, ResolucionInput, OridesOption } from "@/services/travelsoftService";
 import { ResolucionFormDialog } from "@/components/resoluciones/ResolucionFormDialog";
@@ -162,6 +162,18 @@ export function ResolutionsManagementView() {
                       {r.rango_inicial != null && r.rango_final != null && (
                         <p className="text-xs text-slate-500 mt-0.5">
                           Rango autorizado: {r.rango_inicial.toLocaleString('es-CO')} – {r.rango_final.toLocaleString('es-CO')}
+                        </p>
+                      )}
+                      {r.fecha_resolucion && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          <CalendarDays className="w-3.5 h-3.5 inline mr-1" />
+                          Fecha resolución: {r.fecha_resolucion}
+                        </p>
+                      )}
+                      {r.municipio && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5 inline mr-1" />
+                          Municipio autorizado: {r.municipio}
                         </p>
                       )}
                       {r.notas && <p className="text-xs text-slate-400 italic mt-0.5">“{r.notas}”</p>}

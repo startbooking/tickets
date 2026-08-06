@@ -17,6 +17,12 @@ export const ESC_POS = {
 
 interface TicketData {
   empresa: string;
+  // Datos de la empresa en el encabezado
+  nit?: string;
+  direccion?: string;
+  telefono?: string;
+  web?: string;
+  regimen?: string;
   consecutivo: string;
   fecha: string;
   hora: string;
@@ -25,11 +31,25 @@ interface TicketData {
   pasajero: string;
   valor: number;
   asiento: string;
+  // Compra de varias sillas en un mismo tiquete
+  asientos?: string[];
+  cantidad?: number;
+  total?: number;
+  fechaVenta?: string;
+  municipio?: string;
   documento?: string;
   placa?: string;
+  tipoVehi?: string;
+  marcaVehi?: string;
+  tipoServicio?: string;
   formaPago?: string;
+  // Nueva sección del tiquete: agencia / operación / tipo de venta y transporte / elaboró
+  agencia?: string;
+  operacion?: string | number;
+  tipoVenta?: string;
+  tipoTransporte?: string;
+  elaboro?: string;
   // Campos DIAN (facturación electrónica de tiquetes de transporte)
-  nit?: string;
   resolucion?: string;
   numeroFactura?: string;
   cufe?: string;
@@ -67,6 +87,27 @@ export function normalizarImpresion(s: string): string {
     .replace(/¿/g, '?');
 }
 
+/**
+ * Parte un texto en varias líneas de a lo sumo `width` caracteres respetando
+ * espacios (útiles para la dirección en tiquetes de 58mm/32 caracteres).
+ */
+export function wordWrap(texto: string, width = 32): string[] {
+  const palabras = (texto || '').split(/\s+/).filter(Boolean);
+  const lineas: string[] = [];
+  let linea = '';
+  for (const palabra of palabras) {
+    const salto = linea ? `${linea} ${palabra}` : palabra;
+    if (salto.length > width && linea) {
+      lineas.push(linea);
+      linea = palabra;
+    } else {
+      linea = salto;
+    }
+  }
+  if (linea) lineas.push(linea);
+  return lineas;
+}
+
 export function generateTicketTXT(data: TicketData): string {
   let t = "";
   
@@ -74,40 +115,72 @@ export function generateTicketTXT(data: TicketData): string {
   t += ESC_POS.ALIGN_CENTER;
   t += ESC_POS.BOLD_ON;
   t += normalizarImpresion(`${data.empresa}\n`);
+  t += ESC_POS.BOLD_OFF;
+  if (data.nit) t += normalizarImpresion(`NIT: ${data.nit}\n`);
+  if (data.direccion) {
+    for (const linea of wordWrap(data.direccion)) t += normalizarImpresion(`${linea}\n`);
+  }
+  if (data.telefono) t += normalizarImpresion(`Tel: ${data.telefono}\n`);
+  if (data.web) t += normalizarImpresion(`Web: ${data.web}\n`);
+  if (data.regimen) t += normalizarImpresion(`Regimen: ${data.regimen.toUpperCase()}\n`);
   t += ESC_POS.DOUBLE_SIZE;
   t += normalizarImpresion(`TIQUETE: ${data.consecutivo}\n`);
   t += ESC_POS.NORMAL_SIZE;
-  t += ESC_POS.BOLD_OFF;
   t += "--------------------------------\n"; // 32 caracteres (estándar 58mm)
   
   t += ESC_POS.ALIGN_LEFT;
-  t += normalizarImpresion(`Fecha: ${data.fecha}   Hora: ${data.hora}\n`);
+  t += normalizarImpresion(`Salida: ${data.fecha} ${data.hora}\n`);
+  if (data.fechaVenta) t += normalizarImpresion(`Venta: ${data.fechaVenta}\n`);
   t += normalizarImpresion(`Origen:  ${data.origen.toUpperCase()}\n`);
   t += normalizarImpresion(`Destino: ${data.destino.toUpperCase()}\n`);
-  t += normalizarImpresion(`Asiento: ${data.asiento}\n`);
-  t += data.placa ? normalizarImpresion(`Vehiculo: ${data.placa.toUpperCase()}\n`) : '';
-  t += normalizarImpresion(`Pasajero: ${data.pasajero}\n`);
+  if (data.municipio) t += normalizarImpresion(`Municipio: ${data.municipio.toUpperCase()}\n`);
+  if (data.placa) t += normalizarImpresion(`Vehiculo: ${data.placa.toUpperCase()}\n`);
+  const tipoVehi = [data.tipoVehi, data.marcaVehi].filter(Boolean).join(' ');
+  if (tipoVehi) t += normalizarImpresion(`Tipo Veh.: ${tipoVehi.toUpperCase()}\n`);
+  t += normalizarImpresion(`Tipo de servicio (básico/premium/etc): ${(data.tipoServicio || '').toUpperCase()}\n`);
+  if (data.asientos && data.asientos.length) {
+    t += normalizarImpresion(`Sillas: ${data.asientos.join(', ')}\n`);
+  } else {
+    t += normalizarImpresion(`Silla: ${data.asiento}\n`);
+  }
+  t += normalizarImpresion(`Pasajero: ${data.pasajero.toUpperCase()}\n`);
   t += data.documento ? normalizarImpresion(`Documento: ${data.documento}\n`) : '';
+  // ─── Nueva sección del tiquete ───
+  t += "--------------------------------\n";
+  t += ESC_POS.ALIGN_LEFT;
+  if (data.agencia) t += normalizarImpresion(`Agencia: ${data.agencia.toUpperCase()}\n`);
+  if (data.operacion != null && data.operacion !== '') t += normalizarImpresion(`N° Operación: ${data.operacion}\n`);
+  if (data.tipoVenta) t += normalizarImpresion(`Tipo venta: ${data.tipoVenta.toUpperCase()}\n`);
+  if (data.tipoTransporte) t += normalizarImpresion(`Tipo transporte: ${data.tipoTransporte.toUpperCase()}\n`);
+  if (data.elaboro) t += normalizarImpresion(`Elaboro: ${data.elaboro.toUpperCase()}\n`);
   t += "--------------------------------\n";
   
   t += ESC_POS.ALIGN_RIGHT;
   t += ESC_POS.BOLD_ON;
-  t += normalizarImpresion(`TOTAL: $${data.valor.toLocaleString('es-CO')}\n`);
+  if (data.cantidad && data.cantidad > 1) {
+    t += normalizarImpresion(`Cantidad: ${data.cantidad}\n`);
+    t += normalizarImpresion(`Valor: $${data.valor.toLocaleString('es-CO')}\n`);
+  }
+  t += normalizarImpresion(`TOTAL: $${(data.total ?? data.valor).toLocaleString('es-CO')}\n`);
   t += ESC_POS.BOLD_OFF;
   t += data.formaPago ? normalizarImpresion(`Pago: ${data.formaPago}\n`) : '';
   
-  // ─── Bloque DIAN (resolución, numeración, IVA excluido y CUFE/QR) ───
+  // ─── Bloque DIAN (resolución, numeración, IVA excluido y CUFE) ───
   t += "--------------------------------\n";
   t += ESC_POS.ALIGN_LEFT;
-  if (data.nit) t += normalizarImpresion(`NIT: ${data.nit}\n`);
   if (data.resolucion) t += normalizarImpresion(`Res.: ${data.resolucion}\n`);
   if (data.numeroFactura) t += normalizarImpresion(`Factura: ${data.numeroFactura}\n`);
   t += "IVA EXCLUIDO - SERVICIO DE\n";
   t += "TRANSPORTE PUBLICO (ART. 462 E.T.)\n";
   if (data.cufe) t += normalizarImpresion(`CUFE: ${data.cufe}\n`);
   
+  // ─── Pie legal SUPERTRANSPORTE ───
   t += ESC_POS.ALIGN_CENTER;
   t += "¡Buen Viaje!\n".replace('¡', '!');
+  for (const linea of wordWrap("VIGILADO SUPERTRANSPORTE, ingreso por Software propio Flota San Vicente S.A., para términos y condiciones del viaje visita www.flotasanvicente.com/terminos")) {
+    t += normalizarImpresion(`${linea}\n`);
+  }
+  t += "\n\n"; // Dos líneas en blanco antes del QR del CUFE
   if (data.qr) t += `${qrEscPos(data.qr)}\n`;
   t += ESC_POS.FEED_6; // Avance de 6 líneas después del tiquete
   t += ESC_POS.CUT;    // Corte

@@ -24,6 +24,8 @@ export function ResolucionFormDialog({ open, onOpenChange, inicial, onGuardar }:
   const [consecutivo, setConsecutivo] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [fechaResolucion, setFechaResolucion] = useState('');
+  const [municipio, setMunicipio] = useState('');
   const [activa, setActiva] = useState(true);
   const [notas, setNotas] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -37,6 +39,8 @@ export function ResolucionFormDialog({ open, onOpenChange, inicial, onGuardar }:
     setConsecutivo(String(inicial?.consecutivo_actual ?? 0));
     setDesde(inicial?.vigencia_desde ?? '');
     setHasta(inicial?.vigencia_hasta ?? '');
+    setFechaResolucion(inicial?.fecha_resolucion ?? '');
+    setMunicipio(inicial?.municipio ?? '');
     setActiva(Boolean(inicial?.activa));
     setNotas(inicial?.notas ?? '');
   }, [open, inicial]);
@@ -51,6 +55,8 @@ export function ResolucionFormDialog({ open, onOpenChange, inicial, onGuardar }:
         rango_inicial: rangoInicial ? Number(rangoInicial) : undefined,
         rango_final: rangoFinal ? Number(rangoFinal) : undefined,
         consecutivo_actual: Number(consecutivo) || 0,
+        fecha_resolucion: fechaResolucion || undefined,
+        municipio: municipio.trim() || undefined,
         vigencia_desde: desde || undefined,
         vigencia_hasta: hasta || undefined,
         activa: activa ? 1 : 0,
@@ -100,6 +106,16 @@ export function ResolucionFormDialog({ open, onOpenChange, inicial, onGuardar }:
             <div className="grid gap-2">
               <Label htmlFor="res-final">Rango final</Label>
               <Input id="res-final" type="number" value={rangoFinal} onChange={(e) => setRangoFinal(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="res-fecha-resolucion">Fecha de resolución</Label>
+              <Input id="res-fecha-resolucion" type="date" value={fechaResolucion} onChange={(e) => setFechaResolucion(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="res-municipio">Municipio autorizado</Label>
+              <Input id="res-municipio" value={municipio} onChange={(e) => setMunicipio(e.target.value)} placeholder="BOGOTA D.C." />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

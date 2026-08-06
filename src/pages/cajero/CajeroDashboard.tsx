@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -607,13 +607,16 @@ function NuevaRutaDialog({
   const [orides, setOrides] = useState<OridesOption[]>([]);
   const [conductores, setConductores] = useState<ConductorOption[]>([]);
   const [vehiculos, setVehiculos] = useState<VehiculoOption[]>([]);
+  const [tiposServicio, setTiposServicio] = useState<RutaTipoOption[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
   const [destino, setDestino] = useState('');
   const [horaSalida, setHoraSalida] = useState('');
   const [placa, setPlaca] = useState('');
+  const [tipoServicio, setTipoServicio] = useState('');
   const [conductor, setConductor] = useState('');
+  const [mostrarErrores, setMostrarErrores] = useState(false);
   const [conductorAux, setConductorAux] = useState('');
   const [auxiliarViaje, setAuxiliarViaje] = useState('');
   const [conduce, setConduce] = useState('');
@@ -629,6 +632,7 @@ function NuevaRutaDialog({
       setOrides(o);
       setConductores(c.filter((x) => (x.estado_conduc ?? '1') === '1'));
       setVehiculos(v.filter((x) => (x.estado_vehi ?? '1') === '1'));
+      setTiposServicio(await travelsoftService.getRutasTipos());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
     } finally {
@@ -637,7 +641,10 @@ function NuevaRutaDialog({
   }, []);
 
   useEffect(() => {
-    if (open) void cargarCatalogos();
+    if (open) {
+      setMostrarErrores(false);
+      void cargarCatalogos();
+    }
   }, [open, cargarCatalogos]);
 
   const destinoOptions = useMemo(
@@ -662,10 +669,22 @@ function NuevaRutaDialog({
     return h * 60 + m;
   };
 
+  const erroresRuta = useMemo<string[]>(() => {
+    const e: string[] = [];
+    if (!destino) e.push('Seleccione el destino.');
+    if (!horaSalida) e.push('Ingrese la hora de salida.');
+    if (!placa) e.push('Seleccione el vehículo.');
+    if (!conduce.trim()) e.push('Debe asignar el número de conduce.');
+    return e;
+  }, [destino, horaSalida, placa, conduce]);
+
   const handleGuardar = async () => {
-    if (!destino) return toast.error('Seleccione el destino.');
-    if (!horaSalida) return toast.error('Ingrese la hora de salida.');
-    if (!placa) return toast.error('Seleccione el vehículo.');
+    if (erroresRuta.length > 0) {
+      setMostrarErrores(true);
+      toast.error(erroresRuta[0]);
+      return;
+    }
+    setMostrarErrores(false);
 
     setGuardando(true);
     try {
@@ -674,6 +693,7 @@ function NuevaRutaDialog({
         hora_ruta: horaAMinutos(horaSalida),
         hora_programada: horaSalida || undefined,
         placa_vehi: placa,
+        id_ruta_tipo: tipoServicio ? Number(tipoServicio) : undefined,
         cedula_conduc: conductor || undefined,
         cedula_conduc2: conductorAux || undefined,
         cedula_auxi: auxiliarViaje || undefined,
@@ -707,6 +727,19 @@ function NuevaRutaDialog({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {mostrarErrores && erroresRuta.length > 0 && (
+              <div className="md:col-span-2 p-3 bg-red-50 border border-red-300 rounded-lg text-[11px] font-semibold text-red-700 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  Complete la siguiente información:
+                </div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {erroresRuta.map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Origen (fijo)</Label>
               <Input value={nombreOrigen} disabled readOnly />
@@ -714,7 +747,9 @@ function NuevaRutaDialog({
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Destino</Label>
               <Select value={destino} onValueChange={setDestino}>
-                <SelectTrigger><SelectValue placeholder="Seleccione el destino" /></SelectTrigger>
+                <SelectTrigger className={cn(mostrarErrores && !destino && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+                  <SelectValue placeholder="Seleccione el destino" />
+                </SelectTrigger>
                 <SelectContent>
                   {destinoOptions.map((o) => (
                     <SelectItem key={o.id_orides} value={String(o.id_orides)}>{o.desc_orides}</SelectItem>
@@ -724,12 +759,19 @@ function NuevaRutaDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
-              <Input type="time" value={horaSalida} onChange={(e) => setHoraSalida(e.target.value)} />
+              <Input
+                type="time"
+                value={horaSalida}
+                onChange={(e) => setHoraSalida(e.target.value)}
+                className={cn(mostrarErrores && !horaSalida && "border-red-400 ring-1 ring-red-300 bg-red-50")}
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Vehículo</Label>
               <Select value={placa} onValueChange={setPlaca}>
-                <SelectTrigger><SelectValue placeholder="Seleccione el vehículo" /></SelectTrigger>
+                <SelectTrigger className={cn(mostrarErrores && !placa && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+                  <SelectValue placeholder="Seleccione el vehículo" />
+                </SelectTrigger>
                 <SelectContent>
                   {vehiculosDisponibles.length === 0 && (
                     <div className="px-3 py-2 text-xs text-slate-400 italic">Todos los vehículos ya tienen ruta hoy.</div>
@@ -744,6 +786,17 @@ function NuevaRutaDialog({
               {placasConRutaHoy.size > 0 && (
                 <p className="text-[10px] text-slate-400">Se ocultan los vehículos que ya tienen ruta creada hoy.</p>
               )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Tipo de servicio <span className="text-slate-400 font-normal">(básico, premium, etc.)</span></Label>
+              <Select value={tipoServicio} onValueChange={setTipoServicio}>
+                <SelectTrigger><SelectValue placeholder="Seleccione el tipo de servicio" /></SelectTrigger>
+                <SelectContent>
+                  {tiposServicio.map((t) => (
+                    <SelectItem key={t.id_ruta_tipo} value={String(t.id_ruta_tipo)}>{t.desc_ruta_tipo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Conductor</Label>
@@ -787,8 +840,13 @@ function NuevaRutaDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold text-slate-600">N° Conduce <span className="text-slate-400 font-normal">(documento de tránsito exigido al conductor)</span></Label>
-              <Input value={conduce} onChange={(e) => setConduce(e.target.value)} placeholder="Ej: 120000345" />
+              <Label className="text-[11px] font-bold text-slate-600">N° Conduce <span className="text-red-500">*</span> <span className="text-slate-400 font-normal">(documento de tránsito exigido al conductor)</span></Label>
+              <Input
+                value={conduce}
+                onChange={(e) => setConduce(e.target.value)}
+                placeholder="Ej: 120000345"
+                className={cn(mostrarErrores && !conduce.trim() && "border-red-400 ring-1 ring-red-300 bg-red-50")}
+              />
             </div>
           </div>
         )}
@@ -1134,7 +1192,7 @@ function SubViewVentas({
   const [vehiculoSel, setVehiculoSel] = useState<VehiculoEstado | null>(null);
   const [sillas, setSillas] = useState<SillasData | null>(null);
   const [cargandoSillas, setCargandoSillas] = useState(false);
-  const [puesto, setPuesto] = useState<number | null>(null);
+  const [sillasSel, setSillasSel] = useState<number[]>([]);
 
   const [documento, setDocumento] = useState('');
   const [nombres, setNombres] = useState('');
@@ -1147,6 +1205,7 @@ function SubViewVentas({
   const [formaPago, setFormaPago] = useState<FormaPago>('EFECTIVO');
   const [ticket, setTicket] = useState<TicketVenta | null>(null);
   const [generando, setGenerando] = useState(false);
+  const [mostrarErrores, setMostrarErrores] = useState(false);
   const impresoRef = useRef(false);
 
   const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
@@ -1202,7 +1261,7 @@ function SubViewVentas({
 
   const cargarSillas = useCallback(async (ruta: VehiculoEstado) => {
     setCargandoSillas(true);
-    setPuesto(null);
+    setSillasSel([]);
     setTicket(null);
     impresoRef.current = false;
     try {
@@ -1227,7 +1286,7 @@ function SubViewVentas({
     setTicket(null);
     setVehiculoSel(null);
     setSillas(null);
-    setPuesto(null);
+    setSillasSel([]);
     setDocumento('');
     setNombres('');
     setApellidos('');
@@ -1264,12 +1323,13 @@ function SubViewVentas({
     { id: 'QR', label: 'Código QR', desc: 'Pago por QR', icon: <QrCode className="w-5 h-5" /> },
   ];
 
-  const errorValidacion = (): string | null => {
-    if (!vehiculoSel) return 'Seleccione un vehículo por despachar.';
-    if (!puesto) return 'Seleccione una silla desocupada.';
-    if (documento.trim() && !nombres.trim()) return 'Ingrese los nombres del pasajero.';
-    return null;
-  };
+  const errores = useMemo<string[]>(() => {
+    const e: string[] = [];
+    if (!vehiculoSel) e.push('Seleccione un vehículo por despachar.');
+    if (sillasSel.length === 0) e.push('Seleccione al menos una silla desocupada.');
+    if (documento.trim() && !nombres.trim()) e.push('Ingrese los nombres del pasajero.');
+    return e;
+  }, [vehiculoSel, sillasSel.length, documento, nombres]);
 
   const buscarPasajero = async () => {
     const doc = documento.trim();
@@ -1296,11 +1356,12 @@ function SubViewVentas({
   };
 
   const handleGenerar = async () => {
-    const err = errorValidacion();
-    if (err) {
-      toast.error(err);
+    if (errores.length > 0) {
+      setMostrarErrores(true);
+      toast.error(errores[0]);
       return;
     }
+    setMostrarErrores(false);
 
     // Sin número de identificación: pasajero por defecto "CONSUMIDOR FINAL"
     const sinDocumento = !documento.trim();
@@ -1317,9 +1378,10 @@ function SubViewVentas({
 
     setGenerando(true);
     try {
-      const t = await travelsoftService.venderTiquete({
+      const venta = await travelsoftService.venderTiquete({
         cod_ruta: vehiculoSel!.cod_ruta,
-        puesto: puesto!,
+        puesto: sillasSel[0],
+        puestos: sillasSel,
         numero_documento: docFinal,
         nombres: nombresFinal,
         apellidos: apellidosFinal,
@@ -1329,13 +1391,26 @@ function SubViewVentas({
         fecha: vehiculoSel.fecha_ruta ?? undefined,
       });
 
-      // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core SACTel no responde,
-      // el tiquete se imprime igualmente con la numeración de la resolución local.
-      const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
-
-      setTicket(ticketFinal);
-      if (ticketFinal.valor) setTotalCaja((p) => p + ticketFinal.valor);
-      toast.success(`Tiquete ${ticketFinal.consecutivo_pasajero} generado, imprimiendo...`);
+      // Modo de impresión según parámetro de la compañía:
+      //  - "un tiquete por silla" (por defecto): cada silla se imprime por separado.
+      //  - "tiquete consolidado": un solo tiquete con todas las sillas.
+      if (venta.consolidado) {
+        // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core no responde,
+        // el tiquete se imprime igualmente con la numeración de la resolución local.
+        const ticketFinal = await emitirConDian(venta.data, (msg) => toast.warning(msg));
+        setTicket(ticketFinal);
+        if (venta.total) setTotalCaja((p) => p + venta.total);
+        toast.success(`${venta.cantidad} tiquete(s) generados, imprimiendo...`);
+      } else {
+        // Un tiquete por cada silla vendida.
+        for (const t of venta.tiquetes) {
+          const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
+          void imprimirTicket(ticketFinal);
+        }
+        setTicket(venta.tiquetes[0] ?? venta.data);
+        if (venta.total) setTotalCaja((p) => p + venta.total);
+        toast.success(`${venta.cantidad} tiquete(s) generados, imprimiendo...`);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo generar el tiquete.');
     } finally {
@@ -1377,7 +1452,7 @@ function SubViewVentas({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
       <div className="lg:col-span-2 space-y-4">
         {/* 1. Vehículo por despachar */}
-        <Card className="bg-white border-slate-200 shadow-sm">
+        <Card className={cn("bg-white shadow-sm", mostrarErrores && !vehiculoSel ? "border-red-400 ring-1 ring-red-300" : "border-slate-200")}>
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-xs font-bold uppercase text-emerald-600">1. Vehículo por Despachar</CardTitle>
             <CardDescription className="text-[11px]">Seleccione el vehículo en plataforma o programado.</CardDescription>
@@ -1496,7 +1571,16 @@ function SubViewVentas({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nombres" className="text-[11px] font-bold text-slate-600">Nombres</Label>
-              <Input id="nombres" value={nombres} onChange={(e) => setNombres(e.target.value)} placeholder="Ej: Fredy Alberto" />
+              <Input
+                id="nombres"
+                value={nombres}
+                onChange={(e) => setNombres(e.target.value)}
+                placeholder="Ej: Fredy Alberto"
+                className={cn(mostrarErrores && documento.trim() && !nombres.trim() && "border-red-400 ring-1 ring-red-300 bg-red-50")}
+              />
+              {mostrarErrores && documento.trim() && !nombres.trim() && (
+                <p className="text-[10px] text-red-600 font-medium">Los nombres son obligatorios cuando ingresa una identificación.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="apellidos" className="text-[11px] font-bold text-slate-600">Apellidos</Label>
@@ -1514,7 +1598,7 @@ function SubViewVentas({
         </Card>
 
         {/* 3. Croquis de Sillas */}
-        <Card className="bg-white border-slate-200 shadow-sm">
+        <Card className={cn("bg-white shadow-sm", mostrarErrores && sillasSel.length === 0 ? "border-red-400 ring-1 ring-red-300" : "border-slate-200")}>
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-xs font-bold uppercase text-emerald-600 flex items-center justify-between">
               3. Sillas del Vehículo
@@ -1537,24 +1621,40 @@ function SubViewVentas({
             )}
             {!cargandoSillas && sillas && (
               <div className="grid grid-cols-5 gap-2 border p-4 rounded-xl bg-slate-50 max-h-80 overflow-y-auto">
-                {sillas.sillas.map((s) => (
-                  <button
-                    key={s.numero}
-                    disabled={s.estado === 'ocupada'}
-                    onClick={() => setPuesto(s.numero)}
-                    className={cn(
-                      "h-12 rounded-lg text-xs font-bold border transition-all flex flex-col items-center justify-center gap-0.5",
-                      s.estado === 'ocupada'
-                        ? "bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed"
-                        : puesto === s.numero
-                          ? "bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-600/30"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300"
-                    )}
-                  >
-                    <Armchair className="w-3.5 h-3.5" />
-                    {s.numero}
-                  </button>
-                ))}
+                {sillas.sillas.map((s) => {
+                  const seleccionada = sillasSel.includes(s.numero);
+                  return (
+                    <button
+                      key={s.numero}
+                      disabled={s.estado === 'ocupada'}
+                      onClick={() =>
+                        setSillasSel((prev) =>
+                          seleccionada ? prev.filter((n) => n !== s.numero) : [...prev, s.numero]
+                        )
+                      }
+                      className={cn(
+                        "h-12 rounded-lg text-xs font-bold border transition-all flex flex-col items-center justify-center gap-0.5",
+                        s.estado === 'ocupada'
+                          ? "bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed"
+                          : seleccionada
+                            ? "bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-600/30"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300"
+                      )}
+                    >
+                      <Armchair className="w-3.5 h-3.5" />
+                      {s.numero}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {sillasSel.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                <span>Sillas: {[...sillasSel].sort((a, b) => a - b).join(', ')}</span>
+                <span>Cantidad: {sillasSel.length}</span>
+                <span className="text-emerald-700">
+                  Total: ${(Number(sillas?.valor ?? 0) * sillasSel.length).toLocaleString('es-CO')}
+                </span>
               </div>
             )}
           </CardContent>
@@ -1625,6 +1725,20 @@ function SubViewVentas({
                 ${(sillas?.valor ?? 0).toLocaleString('es-CO')}
               </span>
             </div>
+
+            {mostrarErrores && errores.length > 0 && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg text-[11px] font-semibold text-red-700 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  Complete la siguiente información para generar el tiquete:
+                </div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {errores.map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 mt-3 gap-2"

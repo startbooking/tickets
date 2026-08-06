@@ -83,15 +83,20 @@ describe('constantes operativas', () => {
 describe('construirPayloadDian', () => {
   it('divide nombres y apellidos (últimos 2 tokens = apellidos)', () => {
     const payload = construirPayloadDian(ticketBase, { id_orides: 1 });
-    expect(payload.datos_pasajero?.nombres).toBe('JUAN');
-    expect(payload.datos_pasajero?.apellidos).toBe('PEREZ RODRIGUEZ');
+    expect(payload.adquirente?.nombres).toBe('JUAN');
+    expect(payload.adquirente?.apellidos).toBe('PEREZ RODRIGUEZ');
   });
 
-  it('construye los datos obligatorios del viaje y emisor', () => {
+  it('emite un documento equivalente (tipo 21) con encabezado y datos del emisor', () => {
     const payload = construirPayloadDian(ticketBase, { id_orides: 1, id: 79, rol: 'CAJERO' });
-    expect(payload.operacion).toBe('Emision_Tiquete_Transporte');
-    expect(payload.fecha_emision).toBe('2026-07-31');
-    expect(payload.hora_emision).toBe('20:46');
+    expect(payload.tipoDocumento).toBe('21');
+    expect(payload.versionEstructura).toBe('1.0');
+    expect(payload.fechaEmision).toBe('2026-07-31');
+    expect(payload.horaEmision).toBe('20:46-05:00');
+    expect(payload.numeroConsecutivo).toBe(3);
+    expect(payload.emisor?.nit).toBe('860022105');
+    expect(payload.emisor?.dv).toBe('1');
+    expect(payload.emisor?.razonSocial).toBe(EMPRESA_NOMBRE);
     expect(payload.datos_emisor?.id_agencia).toBe(1);
     expect(payload.datos_viaje?.id_interno_viaje).toBe(45470142);
     expect(payload.datos_viaje?.placa_vehiculo).toBe('DMW-900');
@@ -102,13 +107,13 @@ describe('construirPayloadDian', () => {
   it('marca tipo_documento=14 (consumidor) cuando el documento es el placeholder', () => {
     const consumidor: TicketVenta = { ...ticketBase, pasajero: { nombre: 'CONSUMIDOR', documento: DOCUMENTO_CONSUMIDOR } };
     const payload = construirPayloadDian(consumidor, { id_orides: 1 });
-    expect(payload.datos_pasajero?.tipo_documento).toBe('14');
-    expect(payload.datos_pasajero?.numero_documento).toBe('222222222222');
+    expect(payload.adquirente?.tipoIdentificacion).toBe('14');
+    expect(payload.adquirente?.numeroIdentificacion).toBe('222222222222');
   });
 
   it('marca tipo_documento=13 para un pasajero con documento real', () => {
     const payload = construirPayloadDian(ticketBase, { id_orides: 1 });
-    expect(payload.datos_pasajero?.tipo_documento).toBe('13');
+    expect(payload.adquirente?.tipoIdentificacion).toBe('13');
   });
 
   it('usa el token de empresa del contexto si se provee', () => {
@@ -129,19 +134,29 @@ describe('construirPayloadDian', () => {
     }
   });
 
-  it('propaga la numeración DIAN y la forma de pago del ticket', () => {
+  it('propaga numeración, forma de pago y totales', () => {
     const payload = construirPayloadDian(ticketBase, { id_orides: 1 });
-    expect(payload.numero_factura).toBe('FSV3');
-    expect(payload.forma_pago).toBe('EFECTIVO');
-    expect(payload.numero_asiento).toBe('2');
-    expect(payload.total).toBe(34000);
+    expect(payload.cufe).toBe('7CBC8F46A05C96A491A61565DD8648FEEA35C834');
+    expect(payload.formaPago).toBe('1');
+    expect(payload.totales?.totalPagar).toBe(34000);
+    expect((payload.lineasDetalle as Array<{ totalLinea: number }>).length).toBe(1);
   });
 
-  it('modela el IVA excluido de transporte público (art. 462 E.T.)', () => {
+  it('modela el IVA excluido de transporte público (subtotal sin impuestos)', () => {
     const payload = construirPayloadDian(ticketBase, { id_orides: 1 });
-    expect(payload.impuestos).toEqual([
-      { codigo: '01', porcentaje: 0, base_imponible: 34000, valor_impuesto: 0 },
-    ]);
+    expect(payload.totales?.totalImpuestos).toBe(0);
+    const linea = (payload.lineasDetalle as Array<{ impuestos: number[] }>)[0];
+    expect(linea.impuestos).toEqual([]);
+  });
+
+  it('incluye la sección operativa del ticket (agencia, operación, tipo venta/transporte, elaboró)', () => {
+    const cajero = { ...ticketBase, numero_operacion: 7, cajero_nombre: 'ANA GARCIA' };
+    const payload = construirPayloadDian(cajero, { id_orides: 1 });
+    expect(payload.agencia).toBe('BOGOTA');
+    expect(payload.numero_operacion).toBe(7);
+    expect(payload.tipo_venta).toBe('PARA HOY');
+    expect(payload.tipo_transporte).toBe('Terrestre');
+    expect(payload.elaborado).toBe('ANA GARCIA');
   });
 });
 
@@ -174,7 +189,7 @@ describe('ticketATextoImpresion', () => {
 
   it('formatea la hora con formatHora cuando no hay hora_tiquete', () => {
     const sinHoraTiquete = { ...ticketBase, hora_tiquete: undefined, hora_ruta: 1246 };
-    expect(ticketATextoImpresion(sinHoraTiquete)).toContain(`Hora: ${formatHora(1246)}`);
+    expect(ticketATextoImpresion(sinHoraTiquete)).toContain(`Salida: 2026-07-31 ${formatHora(1246)}`);
   });
 });
 

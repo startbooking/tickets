@@ -276,6 +276,8 @@ export interface VehiculoSACTel {
   tipo_vehi?: string | null;
   estado_vehi?: string | null;
   bloqueo_vehi?: string | null;
+  fuera_servicio?: string | null;
+  origen_siguiente?: number | null;
   observacion_bloqueo?: string | null;
   numero_chasis_vehi?: string | null;
   numero_motor_vehi?: string | null;
@@ -320,11 +322,17 @@ export interface RutaCreateInput {
   hora_ruta: number;
   hora_programada?: string;
   placa_vehi: string;
+  id_ruta_tipo?: number;
   cedula_conduc?: string;
   cedula_conduc2?: string;
   cedula_auxi?: string;
   conduce_ruta?: string;
   fecha_ruta?: string;
+}
+
+export interface RutaTipoOption {
+  id_ruta_tipo: number;
+  desc_ruta_tipo: string;
 }
 
 export interface SillaItem {
@@ -354,6 +362,7 @@ export type FormaPago = "EFECTIVO" | "TARJETA" | "QR";
 export interface VentaTiqueteInput {
   cod_ruta: number;
   puesto: number;
+  puestos?: number[];
   numero_documento: string;
   nombres: string;
   apellidos: string;
@@ -389,15 +398,42 @@ export interface TicketVenta {
   forma_pago: FormaPago;
   mensaje?: string | null;
   cajero?: string | null;
+  cajero_nombre?: string | null;
+  numero_operacion?: number | null;
   // Campos DIAN (numeración por resolución de facturación)
   consecutivo_factura?: number;
   numero_factura?: string;
   resolucion_numero?: string;
   nit_emisor?: string;
+  // Datos del vehículo y del servicio
+  tipo_vehi?: string | null;
+  marca_vehi?: string | null;
+  tipo_servicio?: string | null;
+  municipio?: string | null;
+  fecha_venta?: string;
+  // Campos de venta multi-silla (compra de varias sillas en un mismo tiquete)
+  cantidad?: number;
+  puestos?: number[];
+  sillas?: number[];
+  total?: number;
+  consolidado?: boolean;
   // Campos DIAN (firma electrónica del Core SACTel)
   cufe?: string;
   qr_dian?: string;
   qr_code_url?: string;
+}
+
+export interface ParametrosTickets {
+  tiquete_consolidado: string;
+}
+
+export interface VentaTiqueteResult {
+  data: TicketVenta;
+  tiquetes: TicketVenta[];
+  cantidad: number;
+  total: number;
+  puestos: number[];
+  consolidado: boolean;
 }
 
 export interface Resolucion {
@@ -408,6 +444,8 @@ export interface Resolucion {
   rango_inicial?: number | null;
   rango_final?: number | null;
   consecutivo_actual: number;
+  fecha_resolucion?: string | null;
+  municipio?: string | null;
   vigencia_desde?: string | null;
   vigencia_hasta?: string | null;
   activa: number;
@@ -421,6 +459,8 @@ export interface ResolucionInput {
   rango_inicial?: number;
   rango_final?: number;
   consecutivo_actual: number;
+  fecha_resolucion?: string;
+  municipio?: string;
   vigencia_desde?: string;
   vigencia_hasta?: string;
   activa: number;
@@ -833,13 +873,27 @@ export const travelsoftService = {
    * Genera la venta de un tiquete y devuelve los datos para su impresión.
    * POST /ventas/tiquete
    */
-  venderTiquete: async (input: VentaTiqueteInput): Promise<TicketVenta> => {
-    const response = await apiClient.post<{ success: boolean; data: TicketVenta }>("/ventas/tiquete", input);
+  venderTiquete: async (input: VentaTiqueteInput): Promise<VentaTiqueteResult> => {
+    const response = await apiClient.post<{ success: boolean; data: TicketVenta; tiquetes?: TicketVenta[] }>(
+      "/ventas/tiquete",
+      input
+    );
     const payload = response.data;
     if (!payload || payload.success !== true || !payload.data) {
       throw new Error("No se pudo generar el tiquete.");
     }
-    return payload.data;
+    const data = payload.data;
+    const tiquetes = payload.tiquetes ?? [data];
+    const cantidad = data.cantidad ?? tiquetes.length;
+    const total = data.total ?? (Number(data.valor || 0) * tiquetes.length);
+    return {
+      data,
+      tiquetes,
+      cantidad,
+      total,
+      puestos: data.puestos ?? (data.puesto ? [data.puesto] : []),
+      consolidado: data.consolidado === true,
+    };
   },
 
   /**
@@ -976,10 +1030,57 @@ export const travelsoftService = {
 
   // ── CRUD de vehículos (tabla `vehiculo` vía router genérico /api/v1/vehiculo/) ──
 
+  /** Lista los tipos de servicio disponibles para programar una ruta (GET /rutas/tipos). */
+  getRutasTipos: async (): Promise<RutaTipoOption[]> => {
+    const response = await apiClient.get<RutaTipoOption[]>("/rutas/tipos");
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  /** Lee la configuración de impresión de tiquetes de los parámetros del sistema (GET /parametros/tickets). */
+  getParametrosTickets: async (): Promise<ParametrosTickets> => {
+    const response = await apiClient.get<{ success: boolean; data: ParametrosTickets }>("/parametros/tickets");
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudo leer la configuración de tiquetes.");
+    }
+    return payload.data;
+  },
+
+  /** Guarda la configuración de impresión de tiquetes (PUT /parametros/tickets). */
+  setParametrosTickets: async (tiquete_consolidado: string): Promise<ParametrosTickets> => {
+    const response = await apiClient.put<{ success: boolean; data: ParametrosTickets }>(
+      "/parametros/tickets",
+      { tiquete_consolidado }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudo guardar la configuración de tiquetes.");
+    }
+    return payload.data;
+  },
+
   /** Lista todos los vehículos de la flota SACTel (GET /vehiculo/). */
   getFlotaVehiculos: async (limit = 500): Promise<VehiculoSACTel[]> => {
     const response = await apiClient.get<VehiculoSACTel[]>("/vehiculo/", { params: { limit } });
     return Array.isArray(response.data) ? response.data : [];
+  },
+
+  /**
+   * Vehículos que pueden programarse en la agencia dada: están en estado
+   * operativo (no inactivo, no bloqueado, no fuera de servicio) y disponibles
+   * en esa agencia (origen_siguiente = agencia).
+   */
+  getVehiculosDisponiblesAgencia: async (agenciaId: number): Promise<VehiculoSACTel[]> => {
+    const flota = await travelsoftService.getFlotaVehiculos(500);
+    const idAgencia = Number(agenciaId);
+    return flota.filter((v) => {
+      const operativoOk =
+        (v.estado_vehi ?? '1') === '1' &&
+        (v.bloqueo_vehi ?? '0') !== '1' &&
+        (v.fuera_servicio ?? '0') !== '1';
+      const disponibleEnAgencia = v.origen_siguiente !== null && v.origen_siguiente !== undefined && Number(v.origen_siguiente) === idAgencia;
+      return operativoOk && disponibleEnAgencia;
+    }).sort((a, b) => (a.placa_vehi || '').localeCompare(b.placa_vehi || ''));
   },
 
   /** Obtiene un vehículo por placa (GET /vehiculo/{placa}). */

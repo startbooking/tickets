@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { toast } from 'sonner';
 import {
-  AlertCircle, CheckCircle2, FileText, Loader2, Pencil, Plus, Trash2, CalendarDays
+  AlertCircle, CheckCircle2, FileText, Loader2, Pencil, Plus, Trash2, CalendarDays, MapPin
 } from "lucide-react";
 import { travelsoftService, Resolucion, ResolucionInput } from "@/services/travelsoftService";
 import { ResolucionFormDialog } from "@/components/resoluciones/ResolucionFormDialog";
@@ -127,6 +127,18 @@ export function LocalResolutionsView({ idAgencia }: { idAgencia: number }) {
                       {r.rango_inicial != null && r.rango_final != null && (
                         <p className="text-xs text-slate-500 mt-0.5">
                           Rango: {r.rango_inicial.toLocaleString('es-CO')} al {r.rango_final.toLocaleString('es-CO')} · Consecutivo: {r.consecutivo_actual.toLocaleString('es-CO')}
+                        </p>
+                      )}
+                      {r.fecha_resolucion && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          <CalendarDays className="w-3.5 h-3.5 inline mr-1" />
+                          Fecha resolución: {r.fecha_resolucion}
+                        </p>
+                      )}
+                      {r.municipio && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5 inline mr-1" />
+                          Municipio autorizado: {r.municipio}
                         </p>
                       )}
                     </div>
