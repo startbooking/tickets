@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
+import { detectarImpresoraBle, imprimirTestBle, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ import {
   TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
   Send, MapPin, Plus, Banknote, CreditCard, QrCode,
   User, Phone, Mail, Armchair, CheckCircle2, Clock,
-  Menu, X,
+  Menu, X, Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,6 +33,12 @@ export default function CajeroDashboard() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState<CajeroSection>('inicio');
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [testeandoImpresora, setTesteandoImpresora] = useState(false);
+  const [impresoraPredeterminada, setImpresoraPredeterminada] = useState<string | null>(() =>
+    isAndroidDevice() || soportaBluetoothEscPos()
+      ? obtenerImpresoraBlePredeterminada()?.nombre ?? null
+      : null
+  );
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
   const [totalCajaTurno, setTotalCajaTurno] = useState<number>(145000);
@@ -105,6 +112,45 @@ export default function CajeroDashboard() {
       document.body.style.overflow = '';
     };
   }, [menuAbierto]);
+
+  // Validar y testear impresora local de la PDA
+  const handleTestImpresora = useCallback(async () => {
+    // 1) Verificar que la PDA soporte Bluetooth o sea Android con RawBT
+    if (!soportaBluetoothEscPos() && !isAndroidDevice()) {
+      toast.error('Esta PDA no soporta impresión local (Bluetooth o RawBT).');
+      return;
+    }
+    setTesteandoImpresora(true);
+    try {
+      // 2) Detectar impresora emparejada
+      const deteccion = await detectarImpresoraBle();
+      toast(deteccion.mensaje);
+      // 3) Actualizar estado de predeterminada
+      setImpresoraPredeterminada(deteccion.impresoraConectada && deteccion.dispositivo
+        ? deteccion.dispositivo
+        : (obtenerImpresoraBlePredeterminada()?.nombre ?? null));
+      // 4) Si está conectada, imprimir ticket de prueba
+      if (deteccion.impresoraConectada) {
+        const result = await imprimirTestBle();
+        if (result.ok) {
+          toast.success(`Ticket de prueba impreso en "${result.dispositivo ?? 'Impresora Térmica'}".`);
+        }
+      } else if (deteccion.bluetoothDisponible && !deteccion.esAndroid) {
+        toast.error('Conecte una impresora Bluetooth e intente nuevamente.');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al validar impresora.');
+    } finally {
+      setTesteandoImpresora(false);
+    }
+  }, []);
+
+  // Limpiar la impresora predeterminada guardada
+  const handleLimpiarImpresora = useCallback(() => {
+    limpiarImpresoraBlePredeterminada();
+    setImpresoraPredeterminada(null);
+    toast.info('Impresora predeterminada eliminada. Se pedirá seleccionar una nueva.');
+  }, []);
 
   return (
     <div className="flex h-screen-dyn bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
@@ -273,6 +319,36 @@ export default function CajeroDashboard() {
             </span>
           </div>
           <div className="flex items-center gap-2 border-l pl-4">
+            {/* Botón test impresora: visible solo en PDA/Android */}
+            {(isAndroidDevice() || soportaBluetoothEscPos()) && (
+              <div className="flex items-center gap-1.5">
+                {impresoraPredeterminada && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-10 px-2 gap-1 text-[9px] font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 touch-list"
+                    onClick={() => void handleLimpiarImpresora()}
+                    title="Quitar impresora predeterminada"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {impresoraPredeterminada.length > 12
+                      ? impresoraPredeterminada.slice(0, 12) + '…'
+                      : impresoraPredeterminada}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-10 px-2 gap-1 text-[9px] font-bold text-slate-600 border-slate-300 hover:bg-slate-100 touch-list"
+                  onClick={() => void handleTestImpresora()}
+                  disabled={testeandoImpresora}
+                  title="Validar impresora local de la PDA"
+                >
+                  {testeandoImpresora ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                  Test Impresora
+                </Button>
+              </div>
+            )}
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
             <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-600">
               Caja: ${totalCajaTurno.toLocaleString('es-CO')}

@@ -241,6 +241,8 @@ export function encodarEscPos(texto: string): Uint8Array {
 export const BLE_PRINTER = {
   SERVICE_UUID: 'ffe0',
   CHARACTERISTIC_UUID: 'ffe1',
+  /** Tamaño de chunk BLE (bytes por paquete). 20 es el estándar BLE MTU mínimo. */
+  chunk_size_bytes: 20,
   /** Fabricantes/aliases para filtrar dispositivos en el selector del navegador. */
   DISPOSITIVO_LABEL: 'Impresora Térmica',
 };
@@ -250,19 +252,76 @@ export interface BluetoothEscPosResult {
   dispositivo?: string;
 }
 
-/**
- * Imprime en silencio un texto ESC/POS directamente sobre una impresora Bluetooth
- * emparejada por el usuario. No requiere app intermedia ni RawBT.
- * Lanza si Web Bluetooth no está disponible o el usuario rechaza el emparejamiento.
- */
-export async function imprimirBleEscPos(texto: string): Promise<BluetoothEscPosResult> {
-  if (typeof navigator === 'undefined' || !('bluetooth' in navigator)) {
-    throw new Error('Web Bluetooth no disponible en este navegador/dispositivo.');
+// ─────────────────────────────────────────────────────────────────────────────
+// CACHÉ DE IMPRESORA PREDETERMINADA (localStorage)
+// ─────────────────────────────────────────────────────────────────────────────
+// Después de seleccionar la impresora una vez, la PDA recuerda el dispositivo
+// emparejado. En impresiones posteriores se reconecta SIN volver a mostrar el
+// selector, usando navigator.bluetooth.getDevices() (Chrome 85+).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CACHE_KEY = 'impresora_ble_predeterminada';
+
+interface ImpresoraBleCache {
+  deviceId: string;
+  nombre: string;
+  fecha: string;
+}
+
+export function guardarImpresoraBlePredeterminada(deviceId: string, nombre: string): void {
+  try {
+    const cache: ImpresoraBleCache = { deviceId, nombre, fecha: new Date().toISOString() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // localStorage puede no estar disponible (modo incógnito / almacenamiento bloqueado)
   }
-  const device = await navigator.bluetooth!.requestDevice({
-    filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
-    optionalServices: [BLE_PRINTER.SERVICE_UUID],
-  });
+}
+
+export function obtenerImpresoraBlePredeterminada(): ImpresoraBleCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw) as ImpresoraBleCache;
+    return cache?.deviceId ? cache : null;
+  } catch {
+    return null;
+  }
+}
+
+export function limpiarImpresoraBlePredeterminada(): void {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** ¿Existe una impresora BLE guardada como predeterminada? */
+export function tieneImpresoraBlePredeterminada(): boolean {
+  return obtenerImpresoraBlePredeterminada() !== null;
+}
+
+/**
+ * Conecta a una impresora Bluetooth ya emparejada (sin selector) usando el
+ * deviceId guardado. Retorna el dispositivo listo para GATT o null.
+ */
+async function conectarImpresoraGuardada(): Promise<BluetoothDevice | null> {
+  const cache = obtenerImpresoraBlePredeterminada();
+  if (!cache || !('getDevices' in navigator.bluetooth!)) return null;
+  try {
+    const devices = await navigator.bluetooth!.getDevices();
+    const dev = devices.find((d) => d.id === cache.deviceId);
+    return dev ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Envía el texto ESC/POS a un dispositivo Bluetooth (GATT + service 0xFFE0).
+ * Cierra la conexión al finalizar. Devuelve el nombre del dispositivo.
+ */
+async function enviarEscPosBle(device: BluetoothDevice, texto: string): Promise<string> {
   if (!device?.gatt) {
     throw new Error('El dispositivo Bluetooth no expone GATT.');
   }
@@ -304,8 +363,151 @@ export async function imprimirBleEscPos(texto: string): Promise<BluetoothEscPosR
   }
 
   server.disconnect();
-  const nombre = device.name ?? BLE_PRINTER.DISPOSITIVO_LABEL;
+  return device.name ?? BLE_PRINTER.DISPOSITIVO_LABEL;
+}
+
+/**
+ * Imprime en silencio un texto ESC/POS directamente sobre una impresora Bluetooth.
+ * Primero intenta reconectar la impresora predeterminada (guardada en localStorage);
+ * si no existe o falla, abre el selector de dispositivos. La impresora elegida se
+ * guarda como predeterminada para futuras impresiones.
+ * Lanza si Web Bluetooth no está disponible o el usuario rechaza el emparejamiento.
+ */
+export async function imprimirBleEscPos(texto: string): Promise<BluetoothEscPosResult> {
+  if (typeof navigator === 'undefined' || !('bluetooth' in navigator)) {
+    throw new Error('Web Bluetooth no disponible en este navegador/dispositivo.');
+  }
+
+  // 1) Intentar con la impresora guardada (sin selector)
+  let device: BluetoothDevice | null = null;
+  try {
+    device = await conectarImpresoraGuardada();
+  } catch {
+    device = null;
+  }
+
+  // 2) Si no hay guardada/falló, abrir el selector
+  if (!device) {
+    device = await navigator.bluetooth!.requestDevice({
+      filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
+      optionalServices: [BLE_PRINTER.SERVICE_UUID],
+    });
+  }
+
+  const nombre = await enviarEscPosBle(device, texto);
+
+  // 3) Guardar como predeterminada para la próxima impresión
+  if (device.id) {
+    guardarImpresoraBlePredeterminada(device.id, nombre);
+  }
+
   return { ok: true, dispositivo: nombre };
+}
+
+/**
+ * Resultado de la detección de impresora en la PDA.
+ */
+export interface DeteccionImpresoraResult {
+  /** Web Bluetooth disponible en el navegador. */
+  bluetoothDisponible: boolean;
+  /** El usuario es Android (soporta RawBT). */
+  esAndroid: boolean;
+  /** La PDA está emparejada con alguna impresora BLE (verificado con conexión). */
+  impresoraConectada: boolean;
+  /** Nombre del dispositivo emparejado (si aplica). */
+  dispositivo?: string;
+  /** Mensaje descriptivo para el usuario. */
+  mensaje: string;
+}
+
+/**
+ * Valida si la PDA tiene una impresora local conectada (Bluetooth emparejado).
+ * Intenta una conexión BLE de prueba y la cierra inmediatamente.
+ */
+export async function detectarImpresoraBle(): Promise<DeteccionImpresoraResult> {
+  // 1) Verificar Web Bluetooth disponible
+  if (typeof navigator === 'undefined' || !('bluetooth' in navigator)) {
+    return {
+      bluetoothDisponible: false,
+      esAndroid: isAndroidDevice(),
+      impresoraConectada: false,
+      mensaje: isAndroidDevice()
+        ? 'PDA Android detectado. Instale RawBT o use Bluetooth.'
+        : 'Web Bluetooth no disponible en este navegador.',
+    };
+  }
+
+  // 2) Verificar Bluetooth activado (API de disponibilidad)
+  try {
+    const disponible = await navigator.bluetooth.getAvailability();
+    if (!disponible) {
+      return {
+        bluetoothDisponible: false,
+        esAndroid: isAndroidDevice(),
+        impresoraConectada: false,
+        mensaje: 'Bluetooth desactivado en la PDA. Actívelo e intente nuevamente.',
+      };
+    }
+  } catch {
+    // getAvailability lanzó (p. ej. HTTPS requerido); asumimos disponible
+  }
+
+  // 3) Intentar solicitar un dispositivo BLE (abre el selector de emparejamiento)
+  try {
+    const device = await navigator.bluetooth!.requestDevice({
+      filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
+      optionalServices: [BLE_PRINTER.SERVICE_UUID],
+    });
+
+    if (!device?.gatt) {
+      return {
+        bluetoothDisponible: true,
+        esAndroid: isAndroidDevice(),
+        impresoraConectada: false,
+        mensaje: 'Seleccionó un dispositivo que no expone GATT.',
+      };
+    }
+
+    // Conexión de prueba y cierre inmediato
+    const server = await device.gatt.connect();
+    server.disconnect();
+
+    // Guardar como predeterminada para no volver a pedir el selector
+    if (device.id) {
+      guardarImpresoraBlePredeterminada(device.id, device.name ?? BLE_PRINTER.DISPOSITIVO_LABEL);
+    }
+
+    return {
+      bluetoothDisponible: true,
+      esAndroid: isAndroidDevice(),
+      impresoraConectada: true,
+      dispositivo: device.name ?? BLE_PRINTER.DISPOSITIVO_LABEL,
+      mensaje: `Impresora "${device.name ?? 'Térmica'}" guardada como predeterminada.`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      bluetoothDisponible: true,
+      esAndroid: isAndroidDevice(),
+      impresoraConectada: false,
+      mensaje: `No se seleccionó impresora: ${msg}`,
+    };
+  }
+}
+
+/**
+ * Imprime un ticket de prueba en la impresora BLE emparejada de la PDA.
+ */
+export async function imprimirTestBle(): Promise<BluetoothEscPosResult> {
+  const ticketPrueba =
+    '\x1b\x40' +
+    '\x1b\x61\x01PRUEBA DE IMPRESIÓN\n' +
+    '\x1b\x61\x00---------------------------\n' +
+    'FLOTA SAN VICENTE S.A.\n' +
+    'Impresora Bluetooth OK\n' +
+    'fecha: ' + new Date().toLocaleString('es-CO') + '\n' +
+    '\n\n\n';
+  return imprimirBleEscPos(ticketPrueba);
 }
 
 /**
