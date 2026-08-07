@@ -128,6 +128,21 @@ VÍA C - ADB por red (si ya tienes la PDA en la red local):
   5) Deja la app en primer plano (o el servicio en foreground
     con notificación persistente para que siga funcionando).
 
+AUTOINICIO AL ENCENDER LA PDA (NUEVO)
+ - La app se activa sola al prender la PDA (BOOT_COMPLETED + encendido
+   rápido Sunmi/SunOS).
+ - En ROMs Sun/Milk con gestor de autoarranque (Ajustes -> Apps /
+   "Autoarranque"), añade "PDA Print" a la lista permitida y que la
+   optimización de batería esté desactivada para la app.
+
+PROTECCIÓN "NO ELIMINAR LA IMPRESORA" (NUEVO)
+ - En la app toca "Activar protección (no eliminar)".
+ - Activa la app como administrador de dispositivo: Android NO permite
+   desinstalarla ni desactivarla, y con ello la impresora InnerPrinter
+   no se borra.
+ - Se retira de forma consciente en:
+   Ajustes -> Seguridad -> Administradores de dispositivo -> desmarcar.
+
 IMPORTANTE: el MODO SEGURO de Android DESACTIVA las apps de terceros.
             La prueba debe hacerse con Android NORMAL (no en modo seguro).
 
