@@ -437,6 +437,59 @@ export interface VentaTiqueteResult {
   consolidado: boolean;
 }
 
+/** Un tiquete vendido por el cajero, para el informe de cierre de caja. */
+export interface VentaCajero {
+  id_planilla: number;
+  consecutivo_pasajero: number;
+  cod_ruta: number;
+  fecha_ruta: string;
+  hora_tiquete?: string | null;
+  placa_vehi: string | null;
+  marca_vehi?: string | null;
+  tipo_vehi?: string | null;
+  origen?: string | null;
+  destino?: string | null;
+  puesto: number;
+  valor: number | null;
+  forma_pago: FormaPago;
+  pasajero?: {
+    nombre?: string | null;
+    documento?: string | null;
+  };
+}
+
+export interface ManifiestoPasajero {
+  puesto: number | null;
+  consecutivo_pasajero: number | null;
+  nombre?: string | null;
+  documento?: string | null;
+  valor: number | null;
+  forma_pago?: string | null;
+  hora_tiquete?: string | null;
+}
+
+export interface ManifiestoDespacho {
+  cod_ruta: number;
+  origen_ruta: number;
+  destino_ruta: number | null;
+  fecha_ruta: string;
+  placa_vehi: string | null;
+  origen?: string | null;
+  destino?: string | null;
+  hora_ruta: number | null;
+  hora_despacho?: string | null;
+  vehiculo: {
+    marca?: string | null;
+    tipo?: string | null;
+    modelo?: number | null;
+    capacidad?: number | null;
+  };
+  conductores: { cedula: string; nombre?: string | null }[];
+  auxiliar?: { cedula: string; nombre?: string | null } | null;
+  pasajeros: ManifiestoPasajero[];
+  totales: { pasajeros: number; total_venta_cajero: number };
+}
+
 export interface Resolucion {
   id_resolucion: number;
   id_orides: number;
@@ -744,6 +797,22 @@ export const travelsoftService = {
   },
 
   /**
+   * Informe de cierre de cajero: tiquetes vendidos por el cajero autenticado.
+   * GET /ventas/cajero?fecha=YYYY-MM-DD
+   */
+  getVentasCajero: async (fecha?: string): Promise<VentaCajero[]> => {
+    const response = await apiClient.get<{ success: boolean; data: VentaCajero[] }>(
+      "/ventas/cajero",
+      { params: fecha ? { fecha } : {} }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true) {
+      throw new Error("No se pudieron cargar las ventas del cajero.");
+    }
+    return payload.data ?? [];
+  },
+
+  /**
    * Persiste el cierre de turno de la agencia satélite.
    * POST /turnos/satelite/cierre
    */
@@ -773,6 +842,26 @@ export const travelsoftService = {
       throw new Error("No se pudo despachar el vehículo.");
     }
     return payload.data;
+  },
+
+  /**
+   * Manifiesto de despacho: lista de pasajeros (por silla) + datos de vehículo,
+   * conductores, auxiliar, origen/destino y totales del cajero.
+   * GET /despacho/manifiesto
+   */
+  getManifiestoDespacho: async (
+    cod_ruta: number,
+    fecha?: string
+  ): Promise<ManifiestoDespacho | null> => {
+    const response = await apiClient.get<{ success: boolean; data: ManifiestoDespacho }>(
+      "/despacho/manifiesto",
+      { params: { cod_ruta, ...(fecha ? { fecha } : {}) } }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true) {
+      throw new Error("No se pudo cargar el manifiesto de despacho.");
+    }
+    return payload.data ?? null;
   },
 
   /**

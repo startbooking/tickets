@@ -60,9 +60,40 @@ que build/tsc/eslint vuelvan a funcionar:
 - Instalar con `npm install --legacy-peer-deps` (evita conflicto ERESOLVE).
 - Verificación: build OK, `tsc --noEmit` OK, eslint OK (2 warnings pre-existentes), 75 tests OK.
 
+## Versión 005 (2026-08-07) — Responsive + manifiesto de despacho + informe cajero
+### Cambios frontend
+- **Dashboards responsivos**: los 4 dashboards (`CajeroDashboard`, `SuperAdminDashboard`,
+  `AgenciaAdminDashboard`, `DespachadorDashboard`) ahora tienen sidebar colapsable en móvil
+  con botón hamburguesa, backdrop y drawer deslizante. Altura usa `h-screen-dyn` (100dvh).
+- **Fix parpadeo mobile**: se quitó `motion-safe:delay-75` del drawer en los 4 dashboards.
+  El delay hacía que el drawer apareciera completo 75ms y luego la animación lo "reiniciara"
+  a opacity 0/translateX(-100%), generando un flash visible al abrir. Ahora la animación
+  arranca de inmediato desde el estado inicial (`fade-in` + `slide-in-from-left`, sin delay).
+- **Informe de cierre de cajero**: `getVentasCajero(fecha)` (GET `/ventas/cajero`) + UI en
+  `SubViewCierre`. Nuevo tipo `VentaCajero`.
+- **Manifiesto de despacho** (requisito legal de despachador):
+  - Backend (TravelSoft): `getManifiestoDespacho(cod_ruta, fecha)` → GET `/despacho/manifiesto`.
+  - Nuevos tipos `ManifiestoPasajero`, `ManifiestoDespacho`.
+  - Construcción de 2 documentos ESC/POS en `ticketFiscalService.ts`:
+    - A) `manifiestoListadoTexto` → listado de pasajeros ordenado por silla.
+    - B) `manifiestoTotalesTexto` → documento de despacho (vehículo, conductores, auxiliar, totales).
+  - Impresión vía `useTicketFiscal.imprimirTexto(texto)` (nuevo), que reusa la cadena de respaldo
+    `imprimirConRespalado`. Botón "Despachar" en `DespachadorDashboard`.
+- **APK SACTel WebView**: se renombró la app (`label` = "SACTel Sistema de Tickets on Line")
+  y se añadió `android:icon`/`roundIcon`. El APK carga `https://tickets.sactel.cloud` en WebView,
+  por lo que NO embebe el dist y no requiere rebuild para los cambios de frontend. Solo se
+  reconstruye si cambia el manifest/código Kotlin. Retirado el APK viejo de `dist/`.
+
+### Verificación (versión 005)
+- `tsc --noEmit` OK (0 errores), `npm run build` OK, `npm test` (78 tests) OK.
+- ZIP generado: `dist/tickets-version-005.zip` (~1.2 MB).
+- Despliegue web de referencia: `index-C7PcZwck.js`. El APK en vivo apunta a la web, así que la
+  corrección del parpadeo llega a la PDA al subir el dist y recargar la app.
+
 ## Build/despliegue
 - `npm run build` → `dist/` (PWA/service worker incluido).
-- ZIP listo para subir: `dist/tickets-version-003.zip` (~1.2 MB).
+- ZIP más reciente: `dist/tickets-version-005.zip` (~1.2 MB). Subir descomprimiendo el
+  contenido en la raíz del servidor (`assets/`, `index.html`, `sw.js`), limpiando JS viejos.
 
 ## Próximos pasos pendientes
 1. **En la PDA**: instalar **RawBT** (Play Store) y, en RawBT, elegir como impresora **InnerPrinter**
@@ -73,6 +104,6 @@ que build/tsc/eslint vuelvan a funcionar:
    solo como fallback, o el estado actual (intenta JS USB y sino RawBT).
 
 ## Notas del git
-- Últimos commits (local=billed): `b76e720` (docs rawbt), `e57380b` (cambio formato RawBT),
-  `1a88d75` (Revision Impresion PDA), `60b9eb1`, `dfe5d20`, `1e691fd`.
-- `origin/main` actualizado, sin commits locales pendientes.
+- Último commit documentado: `d508ccc` (venta multi-silla + lazy-loading dashboards).
+- Este commit pendiente incluye: manifiesto de despacho, informe de cajero, dashboards
+  responsivos, fix parpadeo drawer, manifest/icono del APK de WebView.

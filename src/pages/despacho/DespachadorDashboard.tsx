@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,15 +8,22 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from '@/lib/utils';
 import { 
   Bus, FileText, ShieldCheck, ClipboardCheck, LogOut, 
-  Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin
+  Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin, Menu, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 type DespachadorSection = 'programacion' | 'alistamiento' | 'manifiestos';
 
+const menuItems = [
+  { id: 'programacion' as const, label: 'Vehículos en Andén', icon: <Clock className="w-4 h-4" /> },
+  { id: 'alistamiento' as const, label: 'Seguridad y Alcoholimetría', icon: <ShieldCheck className="w-4 h-4" /> },
+  { id: 'manifiestos' as const, label: 'Historial de Despachos', icon: <FileText className="w-4 h-4" /> },
+];
+
 export default function DespachadorDashboard() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState<DespachadorSection>('programacion');
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   const nombreUsuario = user?.name || "Néstor Fabián Chaux";
   const correoUsuario = user?.email || "despacho.salitre@tickets.com";
@@ -25,11 +32,34 @@ export default function DespachadorDashboard() {
     return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
   };
 
+  const toggleMenu = (close = false) => {
+    setMenuAbierto(close === undefined ? !menuAbierto : close);
+  };
+
+  const SeleccionarSeccion = (id: DespachadorSection) => {
+    setActiveSection(id);
+    setMenuAbierto(false);
+  };
+
+  // Cerrar menú con Escape y bloquear scroll del body cuando está abierto (móvil)
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuAbierto(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [menuAbierto]);
+
   return (
-    <div className="flex h-screen bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
+    <div className="flex h-screen-dyn bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
       
-      {/* ─── BARRA LATERAL IZQUIERDA (IDENTIDAD MORADA LOGÍSTICA) ─── */}
-      <aside className="w-72 bg-slate-950 text-slate-200 flex flex-col justify-between border-r border-slate-900 shadow-xl z-20 shrink-0">
+      {/* ─── BARRA LATERAL IZQUIERDA (IDENTIDAD MORADA LOGÍSTICA) · desktop ≥768px ─── */}
+      <aside className="hidden md:flex w-72 bg-slate-950 text-slate-200 flex-col justify-between border-r border-slate-900 shadow-xl z-20 shrink-0">
         <div>
           {/* Encabezado Corporativo */}
           <div className="p-5 flex items-center gap-4 bg-slate-950">
@@ -61,14 +91,10 @@ export default function DespachadorDashboard() {
 
           {/* Menú Operativo */}
           <nav className="p-4 space-y-1">
-            {[
-              { id: 'programacion', label: 'Vehículos en Andén', icon: <Clock className="w-4 h-4" /> },
-              { id: 'alistamiento', label: 'Seguridad y Alcoholimetría', icon: <ShieldCheck className="w-4 h-4" /> },
-              { id: 'manifiestos', label: 'Historial de Despachos', icon: <FileText className="w-4 h-4" /> },
-            ].map((item) => (
+            {menuItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id as DespachadorSection)}
+                onClick={() => SeleccionarSeccion(item.id)}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold tracking-wide transition-all",
                   activeSection === item.id 
@@ -94,18 +120,107 @@ export default function DespachadorDashboard() {
         </div>
       </aside>
 
+      {/* ─── DRAWER MENÚ MÓVIL (hamburguesa, <768px) ─── */}
+      {menuAbierto && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+            onClick={() => toggleMenu(false)}
+            aria-hidden="true"
+          />
+          <aside
+            className={cn(
+              "fixed top-0 left-0 h-screen-dyn w-72 max-w-[80vw] bg-slate-950 text-slate-200 flex flex-col justify-between shadow-2xl z-50 md:hidden overflow-y-auto",
+              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left motion-safe:duration-300 motion-safe:ease-out"
+            )}
+          >
+            <div>
+              {/* Header del drawer con botón de cerrar */}
+              <div className="p-5 flex items-center justify-between bg-slate-950 border-b border-slate-900">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-md">
+                    <Bus className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h1 className="font-black text-lg tracking-wide text-white">SACTel.Cloud</h1>
+                    <span className="text-[10px] font-bold text-purple-400 tracking-widest uppercase block">CONTROL DE ANDÉN</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleMenu(false)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 touch-list min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Cerrar menú"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Perfil del Despachador */}
+              <div className="p-5 flex items-center gap-3 bg-slate-950/40 border-b border-slate-900">
+                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center font-bold text-sm text-slate-200 tracking-wider shrink-0">
+                  {getIniciales(nombreUsuario)}
+                </div>
+                <div className="overflow-hidden">
+                  <h4 className="font-bold text-sm text-slate-100 truncate">{nombreUsuario}</h4>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">{correoUsuario}</p>
+                </div>
+              </div>
+              <div className="border-b border-slate-900 mb-2" />
+
+              {/* Menú Operativo */}
+              <nav className="p-3 space-y-1">
+                {menuItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => SeleccionarSeccion(item.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold tracking-wide transition-all touch-list min-h-[48px]",
+                      activeSection === item.id 
+                        ? "bg-purple-600 text-white shadow-md shadow-purple-950/50" 
+                        : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                    )}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="p-4 bg-slate-950/60 border-t border-slate-900">
+              <Button 
+                variant="ghost" 
+                onClick={logout}
+                className="w-full justify-start text-xs text-slate-400 hover:bg-red-950/30 hover:text-red-400 gap-2 h-10 font-bold"
+              >
+                <LogOut className="w-4 h-4" /> Finalizar Turno
+              </Button>
+            </div>
+          </aside>
+        </>
+      )}
+
       {/* ─── ÁREA DE CONTENIDO DINÁMICO (DERECHA) ─── */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10 shrink-0">
-          <div className="text-xs text-slate-400 font-bold tracking-wider uppercase">
-            Módulo Logístico / <span className="text-purple-600 font-black">{activeSection}</span>
+        <header className="h-14 md:h-16 bg-white border-b border-slate-200 flex items-center justify-between px-3 md:px-8 shadow-sm z-10 shrink-0">
+          <div className="flex items-center gap-2 text-[10px] md:text-xs text-slate-400 font-bold tracking-wider uppercase">
+            <button
+              type="button"
+              className="md:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 touch-list min-h-[44px] min-w-[44px] flex items-center justify-center"
+              onClick={() => toggleMenu(true)}
+              aria-label="Abrir menú"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <span className="truncate">Módulo Logístico / <span className="text-purple-600 font-black">{activeSection}</span></span>
           </div>
-          <Badge className="bg-purple-50 text-purple-700 border border-purple-200 font-mono font-bold">
+          <Badge className="bg-purple-50 text-purple-700 border border-purple-200 font-mono font-bold hidden sm:inline-flex">
             Pista 02 Activa
           </Badge>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 bg-slate-50/50">
           {(() => {
             switch (activeSection) {
               case 'programacion':

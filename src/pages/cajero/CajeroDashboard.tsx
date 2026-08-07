@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
+import { manifiestoListadoTexto, manifiestoTotalesTexto } from '@/services/ticketFiscalService';
+import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
@@ -292,7 +294,7 @@ export default function CajeroDashboard() {
           <aside
             className={cn(
               "fixed top-0 left-0 h-screen-dyn w-72 max-w-[80vw] bg-slate-950 text-slate-200 flex flex-col justify-between shadow-2xl z-50 sm:hidden overflow-y-auto",
-              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left motion-safe:duration-[300ms] motion-safe:ease-out motion-safe:delay-75"
+              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left motion-safe:duration-300 motion-safe:ease-out"
             )}
           >
             <div>
@@ -668,7 +670,9 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
   const [dashboard, setDashboard] = useState<DashboardCajeroData | null>(null);
   const [loading, setLoading] = useState(true);
   const [despachando, setDespachando] = useState<number | null>(null);
+  const [imprimiendo, setImprimiendo] = useState<number | null>(null);
   const [dialogoNuevaRuta, setDialogoNuevaRuta] = useState(false);
+  const { imprimirTexto } = useTicketFiscal();
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -710,10 +714,33 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
       const res = await travelsoftService.despacharVehiculo(v.cod_ruta, v.fecha_ruta ?? undefined);
       toast.success(`Vehículo ${v.placa_vehi || v.cod_ruta} despachado${res?.hora_despacho ? ` a las ${res.hora_despacho}` : ""}.`);
       await cargar();
+      void imprimirManifiesto(v);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al despachar el vehículo.");
     } finally {
       setDespachando(null);
+    }
+  };
+
+  const imprimirManifiesto = async (v: VehiculoEstado) => {
+    setImprimiendo(v.cod_ruta);
+    try {
+      const manifiesto = await travelsoftService.getManifiestoDespacho(v.cod_ruta, v.fecha_ruta ?? undefined);
+      if (!manifiesto) {
+        toast.error("No se pudo obtener el manifiesto de despacho.");
+        return;
+      }
+      toast.loading("Imprimiendo listado de pasajeros...", { id: `mani-${v.cod_ruta}` });
+      const r1 = await imprimirTexto(manifiestoListadoTexto(manifiesto));
+      toast.dismiss(`mani-${v.cod_ruta}`);
+      toast.loading("Imprimiendo documento de despacho...", { id: `mani2-${v.cod_ruta}` });
+      await imprimirTexto(manifiestoTotalesTexto(manifiesto));
+      toast.dismiss(`mani2-${v.cod_ruta}`);
+      toast.success(`Manifiesto impreso${r1 ? ` (${r1})` : ""}.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo imprimir el manifiesto.");
+    } finally {
+      setImprimiendo(null);
     }
   };
 
@@ -827,11 +854,11 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
                     <Button
                       size="sm"
                       className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
-                      disabled={despachando === v.cod_ruta}
+                      disabled={despachando === v.cod_ruta || imprimiendo === v.cod_ruta}
                       onClick={() => confirmarDespacho(v)}
                     >
-                      {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                      Despachar
+                      {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : imprimiendo === v.cod_ruta ? <Printer className="w-3.5 h-3.5 animate-pulse" /> : <Send className="w-3.5 h-3.5" />}
+                      {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Despachar"}
                     </Button>
                     <Button
                       size="sm"
@@ -2194,6 +2221,87 @@ function SubViewInformes() {
 // ─────────────────────────────────────────────────────────────────────────────
 function SubViewCierre({ total }: { total: number }) {
   const [cierreProcesado, setCierreProcesado] = useState(false);
+  const [fecha, setFecha] = useState<string>(hoyISO());
+  const [ventas, setVentas] = useState<VentaCajero[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargarVentas = useCallback(async (fechaSel?: string) => {
+    setCargando(true);
+    setError(null);
+    try {
+      setVentas(await travelsoftService.getVentasCajero(fechaSel || undefined));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron cargar las ventas.');
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarVentas(fecha);
+  }, [fecha, cargarVentas]);
+
+  // Agrupación por vehículo (placa)
+  const porVehiculo = useMemo(() => {
+    const mapa = new Map<string, VentaCajero[]>();
+    for (const v of ventas) {
+      const key = v.placa_vehi || 'SIN PLACA';
+      const arr = mapa.get(key) ?? [];
+      arr.push(v);
+      mapa.set(key, arr);
+    }
+    return Array.from(mapa.entries()).map(([placa, tiquetes]) => {
+      const totalVehiculo = tiquetes.reduce((s, t) => s + (t.valor ?? 0), 0);
+      return {
+        placa,
+        marca: tiquetes[0]?.marca_vehi ?? null,
+        origen: tiquetes[0]?.origen ?? null,
+        destino: tiquetes[0]?.destino ?? null,
+        cod_ruta: tiquetes[0]?.cod_ruta ?? 0,
+        cantidad: tiquetes.length,
+        total: totalVehiculo,
+        tiquetes: [...tiquetes].sort(
+          (a, b) => (a.hora_tiquete ?? '').localeCompare(b.hora_tiquete ?? '')
+        ),
+      };
+    });
+  }, [ventas]);
+
+  // Resumen por forma de pago, desglosado por vehículo
+  const porFormaPago = useMemo(() => {
+    const formas: FormaPago[] = ['EFECTIVO', 'TARJETA', 'QR'];
+    return formas.map((forma) => {
+      const tiquetes = ventas.filter((v) => (v.forma_pago || 'EFECTIVO').toUpperCase() === forma);
+      const total = tiquetes.reduce((s, t) => s + (t.valor ?? 0), 0);
+      // Desglose por vehículo
+      const porVehiculoArr = Array.from(
+        tiquetes.reduce((m, t) => {
+          const key = t.placa_vehi || 'SIN PLACA';
+          const arr = m.get(key) ?? [];
+          arr.push(t);
+          m.set(key, arr);
+          return m;
+        }, new Map<string, VentaCajero[]>()).entries()
+      ).map(([placa, arr]) => ({
+        placa,
+        cantidad: arr.length,
+        total: arr.reduce((s, t) => s + (t.valor ?? 0), 0),
+      }));
+      return { forma, cantidad: tiquetes.length, total, porVehiculo: porVehiculoArr };
+    });
+  }, [ventas]);
+
+  // Total general por forma de pago
+  const totalGeneral = useMemo(
+    () => porFormaPago.reduce((s, f) => s + f.total, 0),
+    [porFormaPago]
+  );
+
+  const totalVentas = useMemo(
+    () => ventas.reduce((s, t) => s + (t.valor ?? 0), 0),
+    [ventas]
+  );
 
   const ejecutarArqueo = () => {
     setCierreProcesado(true);
@@ -2201,29 +2309,275 @@ function SubViewCierre({ total }: { total: number }) {
   };
 
   return (
-    <Card className="bg-white border-slate-200 shadow-sm max-w-xl mx-auto text-center p-6 space-y-4 animate-in fade-in duration-200">
-      <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
-        <Coins className="w-6 h-6" />
-      </div>
-      <div>
-        <h3 className="font-black text-slate-900 text-base">Arqueo y Bloqueo de Terminal</h3>
-        <p className="text-xs text-slate-400 mt-1">Al realizar el cierre, se inhabilitará la venta de tiquetes hasta el siguiente bloque.</p>
-      </div>
-
-      <div className="p-4 bg-slate-50 rounded-xl border space-y-2 text-sm font-mono text-left">
-        <div className="flex justify-between border-b pb-1 text-slate-500">
-          <span>Monto Registrado:</span> 
-          <span className="font-bold text-slate-900">${total.toLocaleString('es-CO')}</span>
+    <div className="max-w-3xl mx-auto space-y-4">
+      <Card className="bg-white border-slate-200 shadow-sm p-6 space-y-4 animate-in fade-in duration-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
+              <Coins className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-900 text-base">Arqueo y Bloqueo de Terminal</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Balance de cajero · lista tiquetes y resumen por vehículo y forma de pago.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              value={fecha}
+              onChange={(e) => { if (e.target.value) setFecha(e.target.value); }}
+              className="h-9 w-40 text-xs font-bold"
+            />
+            <Button variant="outline" size="sm" className="h-9 px-2" onClick={() => void cargarVentas(fecha)} title="Actualizar">
+              <RefreshCcw className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
-        <div className="flex justify-between text-slate-500">
-          <span>Estado Fiscal:</span> 
-          <span className="text-emerald-600 font-bold">CUADRADO (100%)</span>
-        </div>
-      </div>
 
-      <Button className="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs h-10 shadow" disabled={cierreProcesado} onClick={ejecutarArqueo}>
-        {cierreProcesado ? "TURNO CLAUSURADO" : "CONFIRMAR ARQUEO & IMPRIMIR TIRILLA Z"}
-      </Button>
-    </Card>
+        <div className="p-4 bg-slate-50 rounded-xl border space-y-2 text-sm font-mono text-left">
+          <div className="flex justify-between border-b pb-1 text-slate-500">
+            <span>Monto Registrado:</span>
+            <span className="font-bold text-slate-900">${total.toLocaleString('es-CO')}</span>
+          </div>
+          <div className="flex justify-between text-slate-500">
+            <span>Tiquetes del cajero ({fecha}):</span>
+            <span className="font-bold text-slate-900">{ventas.length}</span>
+          </div>
+          <div className="flex justify-between text-slate-500">
+            <span>Total ventas del cajero:</span>
+            <span className="font-bold text-emerald-600">${totalVentas.toLocaleString('es-CO')}</span>
+          </div>
+          <div className="flex justify-between text-slate-500">
+            <span>Estado Fiscal:</span>
+            <span className="text-emerald-600 font-bold">CUADRADO (100%)</span>
+          </div>
+        </div>
+
+        <Button className="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs h-10 shadow" disabled={cierreProcesado} onClick={ejecutarArqueo}>
+          {cierreProcesado ? "TURNO CLAUSURADO" : "CONFIRMAR ARQUEO & IMPRIMIR TIRILLA Z"}
+        </Button>
+      </Card>
+
+      {/* ── Informe ─────────────────────────────────────────────── */}
+      {cargando ? (
+        <Card className="bg-white border-slate-200 shadow-sm p-10 flex flex-col items-center gap-2 text-slate-400">
+          <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+          <span className="text-xs font-bold">Cargando ventas del cajero...</span>
+        </Card>
+      ) : error ? (
+        <Card className="bg-white border-red-200 shadow-sm p-6 text-center">
+          <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-2" />
+          <p className="text-xs text-red-600 font-semibold">{error}</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void cargarVentas(fecha)}>
+            <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
+          </Button>
+        </Card>
+      ) : ventas.length === 0 ? (
+        <Card className="bg-white border-slate-200 shadow-sm p-10 text-center">
+          <BarChart3 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm font-bold text-slate-600">No hay tiquetes vendidos en esta fecha</p>
+          <p className="text-xs text-slate-400 mt-1">Selecciona otra fecha o espera nuevas ventas.</p>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {/* 1. Listado detallado de tiquetes */}
+          <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-emerald-600" /> Tiquetes generados ({ventas.length})
+              </CardTitle>
+              <CardDescription className="text-[11px]">Detalle por tiquete del cajero actual</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto p-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-500 bg-slate-50 border-y border-slate-200">
+                    <th className="px-3 py-2 font-bold">#</th>
+                    <th className="px-3 py-2 font-bold">Hora</th>
+                    <th className="px-3 py-2 font-bold">Vehículo</th>
+                    <th className="px-3 py-2 font-bold">Origen → Destino</th>
+                    <th className="px-3 py-2 font-bold">Silla</th>
+                    <th className="px-3 py-2 font-bold">Pasajero</th>
+                    <th className="px-3 py-2 font-bold">Pago</th>
+                    <th className="px-3 py-2 font-bold text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {ventas.map((t, i) => (
+                    <tr key={t.id_planilla} className="hover:bg-slate-50">
+                      <td className="px-3 py-1.5 font-mono text-slate-500">{t.consecutivo_pasajero}</td>
+                      <td className="px-3 py-1.5 font-mono">{t.hora_tiquete ?? '—'}</td>
+                      <td className="px-3 py-1.5 font-bold">{t.placa_vehi ?? '—'}</td>
+                      <td className="px-3 py-1.5">{t.origen ?? '—'} → {t.destino ?? '—'}</td>
+                      <td className="px-3 py-1.5">{t.puesto}</td>
+                      <td className="px-3 py-1.5">{t.pasajero?.nombre ?? '—'}</td>
+                      <td className="px-3 py-1.5">
+                        <Badge className={cn(
+                          "text-[9px] font-bold border",
+                          t.forma_pago === 'EFECTIVO' && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                          t.forma_pago === 'TARJETA' && "bg-blue-50 text-blue-700 border-blue-200",
+                          t.forma_pago === 'QR' && "bg-purple-50 text-purple-700 border-purple-200"
+                        )}>
+                          {t.forma_pago}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono font-bold">${(t.valor ?? 0).toLocaleString('es-CO')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 border-t border-slate-200 font-black">
+                    <td className="px-3 py-2" colSpan={7}>TOTAL</td>
+                    <td className="px-3 py-2 text-right">${totalVentas.toLocaleString('es-CO')}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* 2. Resumen consolidado por vehículo */}
+          <Card className="bg-white border-slate-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Bus className="w-4 h-4 text-emerald-600" /> Resumen por vehículo
+              </CardTitle>
+              <CardDescription className="text-[11px]">Consolidado de tiquetes vendidos por vehículo</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto p-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-500 bg-slate-50 border-y border-slate-200">
+                    <th className="px-3 py-2 font-bold">Vehículo</th>
+                    <th className="px-3 py-2 font-bold">Ruta</th>
+                    <th className="px-3 py-2 font-bold">Tramo</th>
+                    <th className="px-3 py-2 font-bold text-center">Tiquetes</th>
+                    <th className="px-3 py-2 font-bold text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {porVehiculo.map((g) => (
+                    <tr key={g.placa} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 font-bold">
+                        {g.placa}
+                        {g.marca ? <span className="font-normal text-slate-500"> · {g.marca}</span> : null}
+                      </td>
+                      <td className="px-3 py-2">Ruta {g.cod_ruta}</td>
+                      <td className="px-3 py-2">{g.origen ?? '—'} → {g.destino ?? '—'}</td>
+                      <td className="px-3 py-2 text-center font-black">{g.cantidad}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold">${g.total.toLocaleString('es-CO')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 border-t border-slate-200 font-black">
+                    <td className="px-3 py-2" colSpan={3}>TOTAL GENERAL</td>
+                    <td className="px-3 py-2 text-center">{porVehiculo.reduce((s, g) => s + g.cantidad, 0)}</td>
+                    <td className="px-3 py-2 text-right">${totalGeneral.toLocaleString('es-CO')}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* 3. Informe por forma de pago (resumido por vehículo) */}
+          <Card className="bg-white border-slate-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-emerald-600" /> Informe por forma de pago
+              </CardTitle>
+              <CardDescription className="text-[11px]">Resumen de cada forma de pago desglosado por vehículo</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto p-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-500 bg-slate-50 border-y border-slate-200">
+                    <th className="px-3 py-2 font-bold">Forma de pago</th>
+                    <th className="px-3 py-2 font-bold">Vehículo</th>
+                    <th className="px-3 py-2 font-bold text-center">Tiquetes</th>
+                    <th className="px-3 py-2 font-bold text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {porFormaPago.filter((f) => f.cantidad > 0).map((f) =>
+                    f.porVehiculo.map((pv, idx) => (
+                      <tr key={`${f.forma}-${pv.placa}`} className="hover:bg-slate-50">
+                        {idx === 0 && (
+                          <td className="px-3 py-2 align-top font-black" rowSpan={f.porVehiculo.length}>
+                            {FORMA_PAGO_LABEL[f.forma]}
+                          </td>
+                        )}
+                        <td className="px-3 py-2 font-bold">{pv.placa}</td>
+                        <td className="px-3 py-2 text-center font-black">{pv.cantidad}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold">${pv.total.toLocaleString('es-CO')}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 border-t border-slate-200 font-black">
+                    <td className="px-3 py-2" colSpan={3}>TOTAL GENERAL POR FORMA DE PAGO</td>
+                    <td className="px-3 py-2 text-right">${totalGeneral.toLocaleString('es-CO')}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* 4. Informe general: cantidad de pasajes por vehículo */}
+          <Card className="bg-white border-slate-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-600" /> Cantidad de pasajes por vehículo
+              </CardTitle>
+              <CardDescription className="text-[11px]">Pasajes vendidos (cantidad) por vehículo</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                {porVehiculo.map((g) => (
+                  <div key={g.placa} className="flex items-center justify-between px-3 py-2 text-xs">
+                    <span className="font-bold">{g.placa}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-slate-500">{g.cantidad} pasaje(s)</span>
+                      <Progress value={porVehiculo.length ? (g.cantidad / Math.max(...porVehiculo.map((x) => x.cantidad))) * 100 : 0} className="w-24 h-1.5" />
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 text-xs font-black">
+                  <span>TOTAL</span>
+                  <span>{porVehiculo.reduce((s, g) => s + g.cantidad, 0)} pasaje(s)</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 5. Total general por forma de pago */}
+          <Card className="bg-white border-emerald-200 shadow-sm">
+            <CardContent className="p-4">
+              <h4 className="text-xs font-black text-slate-700 mb-2">TOTAL GENERAL POR FORMA DE PAGO</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {porFormaPago.filter((f) => f.cantidad > 0).map((f) => (
+                  <div key={f.forma} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {f.forma === 'EFECTIVO' && <Banknote className="w-4 h-4 text-emerald-600" />}
+                      {f.forma === 'TARJETA' && <CreditCard className="w-4 h-4 text-blue-600" />}
+                      {f.forma === 'QR' && <QrCode className="w-4 h-4 text-purple-600" />}
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">{FORMA_PAGO_LABEL[f.forma]}</p>
+                        <p className="text-[10px] text-slate-400">{f.cantidad} tiquete(s)</p>
+                      </div>
+                    </div>
+                    <span className="font-mono font-black text-slate-900">${f.total.toLocaleString('es-CO')}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                <span className="text-xs font-black text-emerald-800">TOTAL GENERAL</span>
+                <span className="font-mono font-black text-emerald-700">${totalGeneral.toLocaleString('es-CO')}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
   );
 }

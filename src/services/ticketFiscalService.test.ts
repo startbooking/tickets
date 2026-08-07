@@ -3,6 +3,8 @@ import {
   construirPayloadDian,
   ticketATextoImpresion,
   ventaATextoImpresion,
+  manifiestoListadoTexto,
+  manifiestoTotalesTexto,
   EMPRESA_NIT,
   EMPRESA_NOMBRE,
   DOCUMENTO_CONSUMIDOR,
@@ -11,7 +13,7 @@ import {
   CUFE_MOCK,
 } from './ticketFiscalService';
 import { splitNombreCompleto, formatHora } from '@/services/travelsoftService';
-import type { TicketVenta, TurnoSateliteVenta } from '@/services/travelsoftService';
+import type { TicketVenta, TurnoSateliteVenta, ManifiestoDespacho } from '@/services/travelsoftService';
 import { ESC_POS } from '@/utils/ticketFormatter';
 
 // Silenciado del env en tests (no se toca el backend).
@@ -230,5 +232,70 @@ describe('ventaATextoImpresion', () => {
   it('usa el NIT de respaldo cuando la venta no lo declara', () => {
     const ventaSinNit = { ...ventaBase, nit_emisor: undefined };
     expect(ventaATextoImpresion(ventaSinNit)).toContain(`NIT: ${EMPRESA_NIT}`);
+  });
+});
+
+describe('manifiestos de despacho', () => {
+  const maniBase: ManifiestoDespacho = {
+    cod_ruta: 1,
+    origen_ruta: 1,
+    destino_ruta: 7,
+    fecha_ruta: '2026-08-06',
+    placa_vehi: 'ETK-728',
+    origen: 'BOGOTA',
+    destino: 'GIRARDOT',
+    hora_ruta: 900,
+    vehiculo: { marca: 'CHEVROLET', tipo: 'BUS', modelo: 2023, capacidad: 40 },
+    conductores: [{ cedula: '1.023.369.442', nombre: 'MIRQUEZ MENDOZA JUAN DIEGO' }],
+    auxiliar: null,
+    pasajeros: [
+      { puesto: 1, consecutivo_pasajero: 1, nombre: 'GUSTAVO RICO', documento: '79900001', valor: 36000, forma_pago: 'EFECTIVO' },
+      { puesto: 2, consecutivo_pasajero: 2, nombre: 'CONSUMIDOR FINAL', documento: null, valor: 36000, forma_pago: 'QR' },
+    ],
+    totales: { pasajeros: 2, total_venta_cajero: 1080000 },
+  };
+
+  it('genera el listado de pasajeros ordenado por silla', () => {
+    const txt = manifiestoListadoTexto(maniBase);
+    expect(txt.startsWith(ESC_POS.RESET)).toBe(true);
+    expect(txt.endsWith(ESC_POS.FEED_6 + ESC_POS.CUT)).toBe(true);
+    expect(txt).toContain('MANIFIESTO DE DESPACHO');
+    expect(txt).toContain('LISTADO DE PASAJEROS');
+    expect(txt).toContain('SILLA  1');
+    expect(txt).toContain('GUSTAVO RICO');
+    expect(txt).toContain('TOTAL PASAJEROS: 2');
+    expect(txt).toContain('TOTAL VENTA CAJERO:');
+  });
+
+  it('genera el documento de despacho con datos del vehículo, conductores y auxiliar', () => {
+    const conAuxiliar: ManifiestoDespacho = {
+      ...maniBase,
+      conductores: [
+        { cedula: '1.023.369.442', nombre: 'MIRQUEZ MENDOZA JUAN DIEGO' },
+        { cedula: '99', nombre: 'CONDUCTOR RELEVO' },
+      ],
+      auxiliar: { cedula: '1.000.350.227', nombre: 'PENA HERNANDEZ OSCAR CAMILO' },
+    };
+    const txt = manifiestoTotalesTexto(conAuxiliar);
+    expect(txt).toContain('DOCUMENTO DE DESPACHO');
+    expect(txt).toContain('PLACA VEHICULO: ETK-728');
+    expect(txt).toContain('MARCA: CHEVROLET   TIPO: BUS');
+    expect(txt).toContain('CONDUCTOR(ES):');
+    expect(txt).toContain('1. MIRQUEZ MENDOZA JUAN DIEGO');
+    expect(txt).toContain('2. CONDUCTOR RELEVO');
+    expect(txt).toContain('AUXILIAR:');
+    expect(txt).toContain('PENA HERNANDEZ OSCAR CAMILO');
+    expect(txt).toContain('TOTAL PASAJEROS: 2');
+    expect(txt).toContain('TOTAL VENTA CAJERO:');
+  });
+
+  it('no incluye conductores ni auxiliar cuando no están registrados', () => {
+    const sinPersonal: ManifiestoDespacho = {
+      ...maniBase,
+      conductores: [],
+      auxiliar: null,
+    };
+    const txt = manifiestoTotalesTexto(sinPersonal);
+    expect(txt).toContain('(no registrado)');
   });
 });

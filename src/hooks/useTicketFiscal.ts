@@ -51,6 +51,8 @@ export interface UseTicketFiscalResult {
   ) => Promise<TicketVenta>;
   /** Imprime un tiquete recién vendido (USB → BLE → RawBT → print). */
   imprimirTicket: (t: TicketVenta) => Promise<ImpresionResultado>;
+  /** Imprime un documento ESC/POS ya formateado (manifiestos, informes, etc.). */
+  imprimirTexto: (texto: string) => Promise<ImpresionResultado>;
   /** Reimprime un ticket persistido en el turno satélite. */
   reimprimirVenta: (v: TurnoSateliteVenta) => Promise<ImpresionResultado>;
   /** Construye el payload DIAN para testing o uso externo. */
@@ -201,6 +203,14 @@ export function useTicketFiscal(): UseTicketFiscalResult {
     []
   );
 
+  // ── Impresión de un documento genérico ya formateado en ESC/POS ─────────────
+  const imprimirTexto = useCallback(
+    async (texto: string): Promise<ImpresionResultado> => {
+      return imprimirConRespalado(texto);
+    },
+    []
+  );
+
   // ── Reimpresión de un ticket del turno satélite ──────────────────────────────
   const reimprimirVenta = useCallback(
     async (v: TurnoSateliteVenta) => {
@@ -218,6 +228,7 @@ export function useTicketFiscal(): UseTicketFiscalResult {
   return {
     emitirConDian,
     imprimirTicket,
+    imprimirTexto,
     reimprimirVenta,
     construirPayload,
     puedeImprimirBle: soportaBluetoothEscPos(),

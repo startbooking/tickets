@@ -12,8 +12,9 @@
  */
 
 import { generateTicketTXT } from '@/utils/ticketFormatter';
+import { ESC_POS, normalizarImpresion } from '@/utils/ticketFormatter';
 import { formatHora, splitNombreCompleto } from '@/services/travelsoftService';
-import type { TicketVenta, TurnoSateliteVenta } from '@/services/travelsoftService';
+import type { TicketVenta, TurnoSateliteVenta, ManifiestoDespacho } from '@/services/travelsoftService';
 import type { TiqueteTransporteDTO } from '@/types';
 
 // ─── Constantes fiscales operativas ───────────────────────────────────────────
@@ -279,6 +280,135 @@ export function ventaATextoImpresion(v: TurnoSateliteVenta): string {
     qr: v.qr_dian,
     mensaje: v.mensaje || undefined,
   });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Manifiesto de despacho
+// Genera 2 documentos ESC/POS:
+//   A. LISTADO DE PASAJEROS ordenado por número de silla.
+//   B. DOCUMENTO DE DESPACHO: total de pasajeros, datos del vehículo,
+//      conductores, auxiliar, origen/destino y total de la venta del cajero.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Dato mínimo requerido para imprimir la cabecera común de los manifiestos. */
+export interface ManifiestoCabecera {
+  placa_vehi?: string | null;
+  origen?: string | null;
+  destino?: string | null;
+  hora_ruta?: number | null;
+  hora_despacho?: string | null;
+  cod_ruta?: number | null;
+  fecha_ruta?: string | null;
+}
+
+function manifiestoEncabezado(m: ManifiestoCabecera): string {
+  let t = ESC_POS.RESET;
+  t += ESC_POS.ALIGN_CENTER;
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion(`${EMPRESA_NOMBRE}\n`);
+  t += ESC_POS.BOLD_OFF;
+  t += normalizarImpresion(`NIT: ${EMPRESA_NIT}\n`);
+  t += ESC_POS.DOUBLE_SIZE;
+  t += normalizarImpresion('MANIFIESTO DE DESPACHO\n');
+  t += ESC_POS.NORMAL_SIZE;
+  t += normalizarImpresion(`${separadorDoble()}\n`);
+  t += ESC_POS.ALIGN_LEFT;
+  if (m.cod_ruta) t += normalizarImpresion(`Ruta: ${m.cod_ruta}\n`);
+  if (m.fecha_ruta) t += normalizarImpresion(`Fecha: ${m.fecha_ruta}\n`);
+  if (m.hora_ruta != null) t += normalizarImpresion(`Hora Ruta: ${formatHora(m.hora_ruta)}\n`);
+  if (m.hora_despacho) t += normalizarImpresion(`Hora Despacho: ${m.hora_despacho}\n`);
+  t += normalizarImpresion(`Origen: ${m.origen || '-'}\n`);
+  t += normalizarImpresion(`Destino: ${m.destino || '-'}\n`);
+  return t;
+}
+
+function separadorDoble(): string {
+  return '════════════════════════════';
+}
+
+/**
+ * Documento A — Listado de pasajeros ordenado por número de silla.
+ */
+export function manifiestoListadoTexto(m: ManifiestoDespacho): string {
+  let t = manifiestoEncabezado(m);
+  t += ESC_POS.ALIGN_LEFT;
+  t += normalizarImpresion('────────────────────────────\n');
+  t += ESC_POS.ALIGN_CENTER;
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion('LISTADO DE PASAJEROS\n');
+  t += ESC_POS.BOLD_OFF;
+  t += ESC_POS.ALIGN_LEFT;
+  t += normalizarImpresion(`${separadorDoble()}\n`);
+  for (const p of m.pasajeros) {
+    const silla = p.puesto != null ? String(p.puesto).padStart(2, ' ') : '--';
+    const nombre = (p.nombre || '').trim() || 'SIN NOMBRE';
+    const valor = p.valor != null ? `$${(p.valor).toLocaleString('es-CO')}` : '$0';
+    const pago = p.forma_pago || '';
+    t += normalizarImpresion(`SILLA ${silla}   ${nombre}\n`);
+    t += normalizarImpresion(`   ${valor} ${pago}\n`);
+  }
+  t += normalizarImpresion(`${separadorDoble()}\n`);
+  t += ESC_POS.ALIGN_CENTER;
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion(`TOTAL PASAJEROS: ${m.totales.pasajeros}\n`);
+  t += ESC_POS.BOLD_OFF;
+  t += ESC_POS.ALIGN_LEFT;
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion(`TOTAL VENTA CAJERO: $${m.totales.total_venta_cajero.toLocaleString('es-CO')}\n`);
+  t += ESC_POS.BOLD_OFF;
+  t += ESC_POS.FEED_6;
+  t += ESC_POS.CUT;
+  return t;
+}
+
+/**
+ * Documento B — Documento de despacho: total de pasajeros, datos del vehículo,
+ * conductores, auxiliar, origen/destino y total de la venta del cajero.
+ */
+export function manifiestoTotalesTexto(m: ManifiestoDespacho): string {
+  let t = manifiestoEncabezado(m);
+  t += ESC_POS.ALIGN_LEFT;
+  t += normalizarImpresion(`${separadorDoble()}\n`);
+  t += ESC_POS.BOLD_ON;
+  t += ESC_POS.ALIGN_CENTER;
+  t += normalizarImpresion('DOCUMENTO DE DESPACHO\n');
+  t += ESC_POS.BOLD_OFF;
+  t += ESC_POS.ALIGN_LEFT;
+
+  // Vehículo
+  t += normalizarImpresion(`PLACA VEHICULO: ${m.placa_vehi || '-'}\n`);
+  const marca = m.vehiculo?.marca || '-';
+  const tipo = m.vehiculo?.tipo || '-';
+  const modelo = m.vehiculo?.modelo || '-';
+  t += normalizarImpresion(`MARCA: ${marca}   TIPO: ${tipo}\n`);
+  t += normalizarImpresion(`MODELO: ${modelo}`);
+  if (m.vehiculo?.capacidad) t += normalizarImpresion(`   CAPACIDAD: ${m.vehiculo.capacidad}`);
+  t += normalizarImpresion('\n');
+
+  // Conductores
+  t += normalizarImpresion('CONDUCTOR(ES):\n');
+  if (m.conductores.length) {
+    m.conductores.forEach((c, i) => {
+      t += normalizarImpresion(`  ${i + 1}. ${c.nombre || c.cedula || '-'}\n`);
+    });
+  } else {
+    t += normalizarImpresion('  (no registrado)\n');
+  }
+
+  // Auxiliar
+  t += normalizarImpresion('AUXILIAR:\n');
+  t += normalizarImpresion(`  ${m.auxiliar?.nombre || m.auxiliar?.cedula || '(no registrado)'}\n`);
+
+  // Origen/Destino ya impresos en cabecera; totales
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion(`${separadorDoble()}\n`);
+  t += normalizarImpresion(`TOTAL PASAJEROS: ${m.totales.pasajeros}\n`);
+  t += normalizarImpresion(`TOTAL VENTA CAJERO: $${m.totales.total_venta_cajero.toLocaleString('es-CO')}\n`);
+  t += ESC_POS.BOLD_OFF;
+  t += normalizarImpresion(`${separadorDoble()}\n`);
+  t += ESC_POS.FEED_6;
+  t += ESC_POS.CUT;
+  return t;
 }
 
 /** Resultado de una operación de impresión. */
