@@ -1,7 +1,7 @@
 {
-  "name": "Tickets Transporte Intermunicipal",
-  "short_name": "AppTicket",
-  "description": "Plataforma integral para la gestión de tickets, control de rutas, administración de flota y validación de despachos en tiempo real.",
+  "name": "SACTel Sistema de Tickets on Line",
+  "short_name": "SACTel",
+  "description": "SACTel Sistema de Tickets on Line - Plataforma integral para la gestión de tickets, control de rutas, administración de flota y validación de despachos en tiempo real.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

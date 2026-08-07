@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => ({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Tickets Transporte Intermunicipal',
-        short_name: 'AppTicket',
-        description: 'Plataforma integral para la gestión de tickets, control de rutas, administración de flota y validación de despachos en tiempo real.',
+        name: 'SACTel Sistema de Tickets on Line',
+        short_name: 'SACTel',
+        description: 'SACTel Sistema de Tickets on Line - Plataforma integral para la gestión de tickets, control de rutas, administración de flota y validación de despachos en tiempo real.',
          lang: 'es',
          theme_color: '#ffffff',
         icons: [
