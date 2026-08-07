@@ -1,16 +1,19 @@
 ================================================================
-INSTALACION DEL APK "PDA PRINT" POR USB DESDE LA PC
+INSTALACION DEL APK "SACTEL TICKETS" POR USB DESDE LA PC
 Comandos de instalacion, revision y configuracion
-Fecha: 2026-08-06
+Fecha: 2026-08-07
 ================================================================
 
-El APK es el servicio que imprime los tickets en la impresora
-integrada de la PDA Sunmi sin abrir dialogos.
+El APK unifica en una sola app instalable: la plataforma web de tickets
+(PWA) en un WebView + el servicio de impresion a la impresora integrada
+de la PDA Sunmi (WebSocket local, sin dialogos, sin RawBT ni plugin JS
+USDK). Al abrir la app, ademas de cargar la web, arranca en segundo plano
+el servicio de impresion en ws://127.0.0.1:8080.
 
 ARCHIVOS CLAVE
-- APK : /var/www/sactel.lan/rutas/dist/PDA_Print_Service_v1.0.apk
+- APK : /var/www/sactel.lan/rutas/dist/SACTel_Tickets_v1.0.apk
 - adb : /home/sactelcloud/Android/Sdk/platform-tools/adb
-- paquete : com.sactel.pdaprint
+- paquete : com.sactel.tickets
 
 ----------------------------------------------------------------------------
 1) HABILITAR DEPURACION USB EN LA PDA (una sola vez)
@@ -38,40 +41,43 @@ Salida esperada (con el movil en estado "device"):
 3) INSTALAR EL APK
 ----------------------------------------------------------------------------
 /home/sactelcloud/Android/Sdk/platform-tools/adb install -r \
-    /var/www/sactel.lan/rutas/dist/PDA_Print_Service_v1.0.apk
+    /var/www/sactel.lan/rutas/dist/SACTel_Tickets_v1.0.apk
 
   -r  = reinstala conservando datos (usar siempre).
   Salida esperada: Success
 
 Si da INSTALL_FAILED_UPDATE_INCOMPATIBLE (version anterior con otra firma):
-    adb uninstall com.sactel.pdaprint
-    adb install /var/www/sactel.lan/rutas/dist/PDA_Print_Service_v1.0.apk
+    adb uninstall com.sactel.tickets
+    adb install /var/www/sactel.lan/rutas/dist/SACTel_Tickets_v1.0.apk
 
 ----------------------------------------------------------------------------
 4) REVISION DE LA INSTALACION
 ----------------------------------------------------------------------------
 Listar el paquete (debe aparecer el nuestro):
-    adb shell pm list packages | grep pdaprint
-    -> com.sactel.pdaprint
+    adb shell pm list packages | grep sactel.tickets
+    -> com.sactel.tickets
 
 Ver el camino comprimido de instalacion:
-    adb shell pm path com.sactel.pdaprint
+    adb shell pm path com.sactel.tickets
 
 Abrir la app directamente por adb:
-    adb shell am start -n com.sactel.pdaprint/.MainActivity
+    adb shell am start -n com.sactel.tickets/.MainActivity
 
 Ver la version instalada:
-    adb shell dumpsys package com.sactel.pdaprint | grep versionName
+    adb shell dumpsys package com.sactel.tickets | grep versionName
 
 ----------------------------------------------------------------------------
 5) CONFIGURACION INICIAL EN LA PDA
 ----------------------------------------------------------------------------
-1) Permisos Bluetooth:
-   Ajustes > Aplicaciones > "PDA Print" > Permisos > activar BLUETOOTH.
+1) Permisos (se solicitan al abrir la app la primera vez):
+   BLUETOOTH_SCAN, BLUETOOTH_CONNECT (Android 12+) y POST_NOTIFICATIONS
+   (Android 13+). Concederlos todos.
 2) Encender Bluetooth desde la barra superior de la PDA.
-3) Abrir la app "PDA Print".
-4) Pulsar el boton "Iniciar servicio" -> debe estar EN LINEA.
-5) En el sistema web (en LA MISMA PDA) hacer "Test impresora" para comprobar.
+3) Abrir la app "SACTel Tickets": carga la web (tickets.sactel.cloud) y
+   arranca solo el servicio de impresion (notificacion "PDA Print Service").
+4) En la web, dentro de la app, hacer "Test impresora" para comprobar.
+   (Si no arranco el servicio, la web tambien intenta otras vias:
+   integrada JS USDK, USB, RawBT, window.print).
 
 ----------------------------------------------------------------------------
 6) LOGS Y DIAGNOSTICO
@@ -83,12 +89,25 @@ Limpiar/ mirar el log de la app despues de una impresion:
     adb logcat -d | grep -i pda
 
 ----------------------------------------------------------------------------
-7) DESINSTALAR (si hace falta)
+7) AUTOINICIO AL ENCENDER + PROTECCION (no eliminar)
 ----------------------------------------------------------------------------
-adb uninstall com.sactel.pdaprint
+- Autoarranque: la app arranca el servicio solo al prender la PDA
+  (BOOT_COMPLETED + encendido rapido Sunmi/SunOS). En ROM con gestor de
+  autoarranque, anade "SACTel Tickets" a la lista permitida y desactiva la
+  optimizacion de bateria para la app.
+- Proteccion "no eliminar": si se activa como administrador de dispositivo,
+  Android no permite desinstalarla/desactivarla, preservando la impresora.
+  Retirar de forma consciente en:
+  Ajustes -> Seguridad -> Administradores de dispositivo -> desmarcar.
+
+----------------------------------------------------------------------------
+8) DESINSTALAR (si hace falta)
+----------------------------------------------------------------------------
+adb uninstall com.sactel.tickets
+(Primero desmarcar como administrador de dispositivo, ver punto 7.)
 
 ================================================================
-NOTA: el paquete del proyecto es com.sactel.pdaprint. Si instalas otra
-version, confirma el nombre con:
-    adb shell pm list packages | grep pdaprint
+NOTA: el paquete del proyecto es com.sactel.tickets. Si instalas
+otra version, confirma el nombre con:
+    adb shell pm list packages | grep sactel.tickets
 ================================================================

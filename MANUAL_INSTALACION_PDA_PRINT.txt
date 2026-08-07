@@ -1,9 +1,10 @@
 ========================================================
-MANUAL DE INSTALACIÓN: PDA PRINT SERVICE (WebSocket local)
-Aplicación: impresión de tickets a la impresora integrada de la PDA Sunmi
-sin diálogos ni aplicaciones intermedias (ni RawBT, ni plugin JS USDK).
+MANUAL DE INSTALACIÓN: SACTEL TICKETS (APK WebView + impresión)
+Aplicación instalable que carga la plataforma web de tickets en un WebView
+y hostea el servicio local de impresión a la impresora integrada de la PDA
+Sunmi (WebSocket, sin diálogos ni aplicaciones intermedias).
 Archivo de consulta -> guárdalo fuera del repo para consultarlo más adelante.
-Fecha: 2026-08-06
+Fecha: 2026-08-07
 ========================================================
 
 ÍNDICE
@@ -20,22 +21,22 @@ Fecha: 2026-08-06
   11. Documentos relacionados
 
 ========================================================
-1. OCI / ARQUITECTURA
+1. QUÉ ES / ARQUITECTURA
 ========================================================
-Concepto "app ligera en la PDA":
+Una sola app Android ("SACTel Sistema de Tickets on Line", paquete
+com.sactel.tickets) que combina:
 
-App Android (PDA Print Service) hostea un servidor WebSocket en:
-      ws://127.0.0.1:8080
-
-La aplicación web React de tickets se conecta a ese WebSocket y le envía
-el ticket en formato base64 ESC/POS. La app Android decodifica y manda los
-bytes a la impresora integrada a través de Bluetooth SPP "InnerPrinter"
-(dirección virtual 00:11:22:33:44:55, UUID SPP 00001101-...-00805F9B34FB).
+  a) Un WebView que carga la PWA de tickets: https://tickets.sactel.cloud
+  b) Un servicio en primer plano (PrintService) que hostea un servidor
+     WebSocket en ws://127.0.0.1:8080 y, al recibir el ticket en base64
+     ESC/POS, imprime en la impresora integrada por Bluetooth SPP
+     "InnerPrinter" (dirección virtual 00:11:22:33:44:55, UUID SPP
+     00001101-...-00805F9B34FB).
 
 Resultado: impresión SIN diálogos ni el plugin JS USDK ni RawBT.
 
 Cadena de impresión en la WEB (Android), prioridad:
-   1) Servicio WebSocket local (PDA Print Service)  -> nuevo
+   1) Servicio WebSocket local (SACTel PrintService) -> nuevo
    2) Integrada (plugin JS USDK / WebSocket 7070)
    3) USB (servidor pyusb/CUPS)
    4) RawBT (SPP / InnerPrinter)
@@ -53,7 +54,7 @@ Resultados posibles (ImpresionResultado):
 - Gradle 8.7 (o usar el wrapper `./gradlew` ya incluido):
     https://services.gradle.org/distributions/gradle-8.7-bin.zip
 - Android SDK (build-tools 36.0.0, platform android-36.1 OK).
-  Ruta local marcada en: pda-websocket-printer/local.properties  (sdk.dir=...)
+  Ruta local marcada en: sactel-pda-web/local.properties  (sdk.dir=...)
   NOTA: local.properties NO se sube a git (está en .gitignore).
 
 Variables de entorno a usar antes de compilar:
@@ -64,10 +65,10 @@ Variables de entorno a usar antes de compilar:
 3. CÓMO GENERAR EL APK
 ========================================================
 Si no existe el wrapper, generarlo una vez:
-    gradle wrapper --gradle-version 8.7        (en pda-websocket-printer/)
+    gradle wrapper --gradle-version 8.7        (en sactel-pda-web/)
 
 Compilar el APK de DEBUG (para probar e instalar en las PDAs):
-    cd /var/www/sactel.lan/rutas/pda-websocket-printer
+    cd /var/www/sactel.lan/rutas/sactel-pda-web
     export JAVA_HOME=~/tools/jdk-17.0.20+8
     export PATH=$JAVA_HOME/bin:$PATH
     ./gradlew :app:assembleDebug
@@ -82,17 +83,23 @@ Si quieres un APK de RELEASE firmado (producción) - requiere keystore:
 4. DÓNDE QUEDA EL APK GENERADO
 ========================================================
 DEBUG (apto para instalar y probar):
-    pda-websocket-printer/app/build/outputs/apk/debug/app-debug.apk
+    sactel-pda-web/app/build/outputs/apk/debug/app-debug.apk
 
 RELEASE (si se firma):
-    pda-websocket-printer/app/build/outputs/apk/release/app-release-unsigned.apk
+    sactel-pda-web/app/build/outputs/apk/release/app-release-unsigned.apk
 
-Datos del APK actual (build que ya compiló y quedó validado):
-    package: com.sactel.pdaprint
+Versión distribuida (ya compilada y validada):
+    dist/SACTel_Tickets_v1.0.apk
+
+Datos del APK actual:
+    package: com.sactel.tickets
     versionCode: 1 / versionName: 1.0
-    compileSdk/targetSdk: 34 (Android 14)
-    permiso: BLUETOOTH, BLUETOOTH_ADMIN, INTERNET, FOREGROUND_SERVICE, POST_NOTIFICATIONS
-    (~894 KB)
+    compileSdk/targetSdk: 34 (Android 14), minSdk 21
+    URL cargada en WebView: https://tickets.sactel.cloud
+    permisos: BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT,
+              ACCESS_FINE_LOCATION, INTERNET, FOREGROUND_SERVICE,
+              POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, BIND_DEVICE_ADMIN
+    (~898 KB)
 
 ========================================================
 5. CÓMO INSTALAR EN LA PDA (3 VÍAS)
@@ -104,44 +111,43 @@ VÍA A - Poner el APK por USB (recomendada desde PC):
         /home/sactelcloud/Android/Sdk/platform-tools/adb devices
  3) Instala:
         /home/sactelcloud/Android/Sdk/platform-tools/adb install -r \
-            pda-websocket-printer/app/build/outputs/apk/debug/app-debug.apk
+            /var/www/sactel.lan/rutas/dist/SACTel_Tickets_v1.0.apk
 
 VÍA B - Copiar el APK y abrir en la PDA:
- 1) Copia app-debug.apk a la Sunmi (USB/descarga/pen drive).
+ 1) Copia SACTel_Tickets_v1.0.apk a la Sunmi (USB/descarga/pen drive).
  2) En la PDA: permite "orígenes desconocidos" (Ajustes -> Seguridad).
  3) Toca el archivo .apk y Confirma instalar.
 
 VÍA C - ADB por red (si ya tienes la PDA en la red local):
     adb connect <ip-de-la-pda>:5555
-    adb install -r pda-websocket-printer/app/build/outputs/apk/debug/app-debug.apk
+    adb install -r /var/www/sactel.lan/rutas/dist/SACTel_Tickets_v1.0.apk
 
 ========================================================
 6. CONFIGURACIÓN EN LA PDA (una vez instalada la app)
 ========================================================
- 1) CONCEDE PERMISOS DE BLUETOOTH:
-     Ajustes -> Aplicaciones -> PDA Print Service -> Permisos ->
-     activa BLUETOOTH (y "Ubicación" si aplica / Bluetooth clásico).
+ 1) CONCEDE PERMISOS (la app los pide al abrirse la primera vez):
+     - BLUETOOTH_SCAN y BLUETOOTH_CONNECT (Android 12+)
+     - POST_NOTIFICATIONS (Android 13+)
+     Si se denegaron, ir a: Ajustes -> Aplicaciones -> SACTel Tickets -> Permisos.
  2) ACTIVA BLUETOOTH del sistema (y empareja InnerPrinter si aparece).
- 3) ABRE la app "PDA Print Service".
-4) Pulsa el botón "Iniciar servicio"; debe verse el estado EN LÍNEA
-     (servidor ws://127.0.0.1:8080 activo).
-  5) Deja la app en primer plano (o el servicio en foreground
-    con notificación persistente para que siga funcionando).
+ 3) ABRE la app "SACTel Tickets": carga la web de tickets y arranca el
+     servicio de impresión en segundo plano (notificación "PDA Print Service",
+     escuchando en ws://127.0.0.1:8080).
+ 4) Usa la web DENTRO de la app para operar (cajero/satélite).
 
 AUTOINICIO AL ENCENDER LA PDA (NUEVO)
- - La app se activa sola al prender la PDA (BOOT_COMPLETED + encendido
-   rápido Sunmi/SunOS).
- - En ROMs Sun/Milk con gestor de autoarranque (Ajustes -> Apps /
-   "Autoarranque"), añade "PDA Print" a la lista permitida y que la
-   optimización de batería esté desactivada para la app.
+  - La app arranca el servicio solo al prender la PDA (BOOT_COMPLETED +
+    encendido rápido Sunmi/SunOS).
+  - En ROMs Sun/Milk con gestor de autoarranque (Ajustes -> Apps /
+    "Autoarranque"), añade "SACTel Tickets" a la lista permitida y que la
+    optimización de batería esté desactivada para la app.
 
 PROTECCIÓN "NO ELIMINAR LA IMPRESORA" (NUEVO)
- - En la app toca "Activar protección (no eliminar)".
- - Activa la app como administrador de dispositivo: Android NO permite
-   desinstalarla ni desactivarla, y con ello la impresora InnerPrinter
-   no se borra.
- - Se retira de forma consciente en:
-   Ajustes -> Seguridad -> Administradores de dispositivo -> desmarcar.
+  - Activa la app como administrador de dispositivo: Android NO permite
+    desinstalarla ni desactivarla, y con ello la impresora InnerPrinter
+    no se borra.
+  - Se retira de forma consciente en:
+    Ajustes -> Seguridad -> Administradores de dispositivo -> desmarcar.
 
 IMPORTANTE: el MODO SEGURO de Android DESACTIVA las apps de terceros.
             La prueba debe hacerse con Android NORMAL (no en modo seguro).
@@ -149,11 +155,11 @@ IMPORTANTE: el MODO SEGURO de Android DESACTIVA las apps de terceros.
 ========================================================
 7. PRUEBA DESDE LA WEB (TICKETS)
 ========================================================
- 1) Abre la app web de tickets en un navegador de la PDA (misma red).
+ 1) Abre la app SACTel Tickets en la PDA (ya incluye la web).
  2) Ve al dashboard (Cajero o Satélite) -> botón "Test impresora".
  3) En la cadena de impresión el servicio local WS es PRIMERA OPCIÓN,
     así que si el servicio está iniciado, imprimirá por ahí (tipo 'pda').
- 4) Verás confirmación de empuje/imprésión realizada en pantalla.
+ 4) Verás confirmación de impresión realizada en pantalla.
 
 Para la app web, el cliente WS ya está implementado en:
     src/services/pdaWebSocketService.ts   (puerto 8080, PDA_WS_LABEL)
@@ -176,9 +182,9 @@ RESP <-  { "code": 0, "message": "pong" }
 ========================================================
 9. ESTRUCTURA DEL PROYECTO ANDROID
 ========================================================
-pda-websocket-printer/
+sactel-pda-web/
  ├─ build.gradle            # plugins del proyecto (AGP 8.5.2 + Kotlin 1.9.24)
- ├─ settings.gradle         # rootProject "PdaPrintService", include ':app'
+ ├─ settings.gradle         # rootProject "SACTelTickets", include ':app'
  ├─ gradle.properties
  ├─ gradlew / gradlew.bat   # wrapper Gradle 8.7
  ├─ gradle/wrapper/*        # jar + properties del wrapper
@@ -186,10 +192,13 @@ pda-websocket-printer/
     ├─ build.gradle         # com.android.application, SDKs, deps (Java-WebSocket)
     └─ src/main/
        ├─ AndroidManifest.xml
-       └─ java/com/sactel/pdaprint/
-          ├─ MainActivity.kt   # botón "Iniciar servicio" + estado
-          ├─ PrintService.kt   # foreground service + servidor WebSocket 127.0.0.1:8080
-          └─ PrinterDriver.kt  # impresión por Bluetooth SPP a InnerPrinter
+       ├─ res/xml/device_admin.xml, network_security_config.xml
+       └─ java/com/sactel/tickets/
+          ├─ MainActivity.kt    # WebView (tickets.sactel.cloud) + arranca servicio
+          ├─ PrintService.kt    # foreground service + servidor WS 127.0.0.1:8080
+          ├─ PrinterDriver.kt   # impresión por Bluetooth SPP a InnerPrinter
+          ├─ BootReceiver.kt    # auto-inicio al encender la PDA
+          └─ AdminReceiver.kt   # protección "no eliminar" (device admin)
 
 ========================================================
 10. SOLUCIÓN DE PROBLEMAS FRECUENTES
@@ -201,8 +210,11 @@ pda-websocket-printer/
 - La impresión sale siempre por otra vía (no 'pda'):
   Revisa que el servicio esté iniciado (paso 6) antes de probar.
 - "ws://127.0.0.1:8080 no conecta":
-  Confirma que la app esté en línea; el servicio escucha solo en loopback,
-  y es OBLIGATORIO que la web corre EN LA MISMA PDA.
+  Confirma que la app esté abierta; el servicio escucha solo en loopback,
+  y es OBLIGATORIO que la web corre EN LA MISMA PDA (dentro de la app).
+- La web no carga en el WebView:
+  Verifica conectividad a internet en la PDA; la app exige HTTPS válido
+  (network_security_config) a tickets.sactel.cloud.
 - Permiso de Bluetooth denegado: concede manualmente desde Ajustes.
 - Error de tipo "Failed to execute requestDevice" (Web Bluetooth):
   Normal: InnerPrinter es Bluetooth CLASICO (SPP), no BLE.
