@@ -3,16 +3,19 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
-import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import Logout from "./pages/Logout";
-import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
-import AgenciaAdminDashboard from "./pages/admin/AgenciaAdminDashboard";
-import CajeroDashboard from "./pages/cajero/CajeroDashboard";
-import DespachadorDashboard from "./pages/despacho/DespachadorDashboard";
-import SateliteDashboard from "./pages/satelite/SateliteDashboard";
+
+// Los dashboards se cargan bajo demanda (code-splitting) para reducir el
+// bundle inicial y la carga de los terminales (PDAs).
+const SuperAdminDashboard = lazy(() => import("./pages/admin/SuperAdminDashboard"));
+const AgenciaAdminDashboard = lazy(() => import("./pages/admin/AgenciaAdminDashboard"));
+const CajeroDashboard = lazy(() => import("./pages/cajero/CajeroDashboard"));
+const DespachadorDashboard = lazy(() => import("./pages/despacho/DespachadorDashboard"));
+const SateliteDashboard = lazy(() => import("./pages/satelite/SateliteDashboard"));
 
 
 const queryClient = new QueryClient();
@@ -45,6 +48,18 @@ const ProtectedRoute = ({ children, allowedRole }: { children: React.ReactNode, 
   return <>{children}</>;
 };
 
+// Suspense boundary compartido: muestra un spinner mientras carga cada dashboard.
+const DashboardLoader = ({ children }: { children: React.ReactNode }) => (
+  <Suspense
+    fallback={
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white font-medium">
+        Cargando panel...
+      </div>
+    }
+  >
+    {children}
+  </Suspense>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -61,7 +76,7 @@ const App = () => (
               path="/cajero/dashboard" 
               element={
                 <ProtectedRoute allowedRole="CAJERO">
-                  <CajeroDashboard />
+                  <DashboardLoader><CajeroDashboard /></DashboardLoader>
                 </ProtectedRoute>
               } 
             />
@@ -70,7 +85,7 @@ const App = () => (
               path="/despachador" 
               element={
                 <ProtectedRoute allowedRole="DESPACHADOR">
-                  <DespachadorDashboard />
+                  <DashboardLoader><DespachadorDashboard /></DashboardLoader>
                 </ProtectedRoute>
               } 
             />
@@ -81,7 +96,7 @@ const App = () => (
               path="/satelite" 
               element={
                 <ProtectedRoute>
-                  <SateliteDashboard />
+                  <DashboardLoader><SateliteDashboard /></DashboardLoader>
                 </ProtectedRoute>
               } 
             />
@@ -90,7 +105,7 @@ const App = () => (
               path="/agencia" 
               element={
                 <ProtectedRoute allowedRole="ADMIN_AGENCIA">
-                  <AgenciaAdminDashboard />
+                  <DashboardLoader><AgenciaAdminDashboard /></DashboardLoader>
                 </ProtectedRoute>
               } 
             />
@@ -99,11 +114,10 @@ const App = () => (
               path="/superadmin/dashboard" 
               element={
                 <ProtectedRoute allowedRole="SUPERADMIN">
-                  <SuperAdminDashboard />
+                  <DashboardLoader><SuperAdminDashboard /></DashboardLoader>
                 </ProtectedRoute>
               } 
             />
-
 
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

@@ -720,18 +720,27 @@ export const travelsoftService = {
 
   /**
    * Vende el tiquete de un tramo en una agencia satélite.
+   * Soporta una o varias sillas (puestos) y devuelve el resultado consolidado
+   * igual que la venta principal (VentaTiqueteResult).
    * POST /ventas/satelite/tiquete
    */
-  venderTiqueteSatelite: async (input: VentaTiqueteInput): Promise<TicketVenta> => {
-    const response = await apiClient.post<{ success: boolean; data: TicketVenta }>(
-      "/ventas/satelite/tiquete",
-      input
-    );
+  venderTiqueteSatelite: async (input: VentaTiqueteInput): Promise<VentaTiqueteResult> => {
+    const response = await apiClient.post<
+      { success: boolean; data: TicketVenta } & Partial<VentaTiqueteResult>
+    >("/ventas/satelite/tiquete", input);
     const payload = response.data;
     if (!payload || payload.success !== true || !payload.data) {
       throw new Error("No se pudo generar el tiquete.");
     }
-    return payload.data;
+    const puestos = payload.puestos ?? (payload.data.puesto ? [payload.data.puesto] : []);
+    return {
+      data: payload.data,
+      tiquetes: payload.tiquetes ?? [payload.data],
+      cantidad: payload.cantidad ?? payload.data.cantidad ?? (puestos.length || 1),
+      total: payload.total ?? payload.data.total ?? (payload.data.valor ?? 0) * (puestos.length || 1),
+      puestos,
+      consolidado: payload.consolidado ?? false,
+    };
   },
 
   /**

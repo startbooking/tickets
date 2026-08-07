@@ -55,7 +55,7 @@ export default function SateliteDashboard() {
 
   const [sillas, setSillas] = useState<SillasData | null>(null);
   const [cargandoSillas, setCargandoSillas] = useState(false);
-  const [puesto, setPuesto] = useState<number | null>(null);
+  const [puestosSel, setPuestosSel] = useState<number[]>([]);
 
   const [documento, setDocumento] = useState('');
   const [nombres, setNombres] = useState('');
@@ -201,7 +201,7 @@ export default function SateliteDashboard() {
     }
     setVehiculoSel(v);
     setSegmento(s);
-    setPuesto(null);
+    setPuestosSel([]);
     setSillas(null);
     setDocumento('');
     setNombres('');
@@ -230,8 +230,8 @@ export default function SateliteDashboard() {
   const reiniciarVenta = () => {
     setVehiculoSel(null);
     setSegmento(null);
-    setSillas(null);
-    setPuesto(null);
+setSillas(null);
+    setPuestosSel([]);
     setDocumento('');
     setNombres('');
     setApellidos('');
@@ -284,8 +284,8 @@ export default function SateliteDashboard() {
       toast.error('Seleccione el vehículo y el destino del tramo.');
       return;
     }
-    if (!puesto) {
-      toast.error('Seleccione una silla desocupada.');
+    if (puestosSel.length === 0) {
+      toast.error('Seleccione al menos una silla desocupada.');
       return;
     }
     const valorNum = Number(valor);
@@ -302,9 +302,10 @@ export default function SateliteDashboard() {
 
     setGenerando(true);
     try {
-      const t = await travelsoftService.venderTiqueteSatelite({
+      const venta = await travelsoftService.venderTiqueteSatelite({
         cod_ruta: vehiculoSel.cod_ruta,
-        puesto,
+        puesto: puestosSel[0],
+        puestos: puestosSel,
         numero_documento: docFinal,
         nombres: nombresFinal,
         apellidos: apellidosFinal,
@@ -317,13 +318,24 @@ export default function SateliteDashboard() {
         valor: valorNum,
       });
 
-      // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core no responde,
-      // el tiquete se imprime igualmente con la numeración de la resolución local.
-      const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
-
-      guardarVenta(ticketFinal);
-      toast.success(`Tiquete ${ticketFinal.consecutivo_pasajero} generado, imprimiendo...`);
-      void imprimirTicket(ticketFinal);
+      // Modo de impresión según parámetro de la compañía:
+      //  - "un tiquete por silla" (por defecto): cada silla se imprime por separado.
+      //  - "tiquete consolidado": un solo tiquete con todas las sillas.
+      if (venta.consolidado) {
+        // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core no responde,
+        // el tiquete se imprime igualmente con la numeración de la resolución local.
+        const ticketFinal = await emitirConDian(venta.data, (msg) => toast.warning(msg));
+        guardarVenta(ticketFinal);
+        toast.success(`${venta.cantidad} tiquete(s) generados, imprimiendo...`);
+        void imprimirTicket(ticketFinal);
+      } else {
+        // Un tiquete por cada silla vendida.
+        for (const t of venta.tiquetes) {
+          const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
+          guardarVenta(ticketFinal);
+          void imprimirTicket(ticketFinal);
+        }
+      }
       reiniciarVenta();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo generar el tiquete.');
@@ -338,6 +350,9 @@ export default function SateliteDashboard() {
     { id: 'TARJETA', label: 'Tarjeta', icon: <CreditCard className="w-5 h-5" /> },
     { id: 'QR', label: 'QR', icon: <QrCode className="w-5 h-5" /> },
   ];
+
+  const valorUnitario = Number(valor) || 0;
+  const valorTotalMulti = valorUnitario * puestosSel.length;
 
   // ─── Inicio de turno (sin operador aún) ───────────────────────────────────
   if (!turno) {
@@ -526,12 +541,16 @@ export default function SateliteDashboard() {
                       <button
                         key={s.numero}
                         disabled={s.estado === 'ocupada'}
-                        onClick={() => setPuesto(s.numero)}
+                        onClick={() => setPuestosSel((prev) =>
+                          prev.includes(s.numero)
+                            ? prev.filter((n) => n !== s.numero)
+                            : [...prev, s.numero]
+                        )}
                         className={cn(
                           "h-12 rounded-lg text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-0.5",
                           s.estado === 'ocupada'
                             ? "bg-slate-800 text-slate-600 border-slate-800 cursor-not-allowed"
-                            : puesto === s.numero
+                            : puestosSel.includes(s.numero)
                               ? "bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/30"
                               : "bg-slate-900 text-slate-200 border-slate-700 active:bg-emerald-900"
                         )}
@@ -540,6 +559,16 @@ export default function SateliteDashboard() {
                         {s.numero}
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {puestosSel.length > 0 && (
+                  <div className="mt-3 rounded-xl bg-slate-950 border border-emerald-800 p-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-bold">
+                    <span className="text-emerald-300">Sillas: {[...puestosSel].sort((a, b) => a - b).join(', ')}</span>
+                    <span className="text-slate-300">Cantidad: {puestosSel.length}</span>
+                    <span className="text-emerald-400 ml-auto">
+                      Total: ${valorTotalMulti.toLocaleString('es-CO')}
+                    </span>
                   </div>
                 )}
               </div>
