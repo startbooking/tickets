@@ -311,6 +311,53 @@ export function tieneImpresoraBlePredeterminada(): boolean {
   return obtenerImpresoraBlePredeterminada() !== null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Configuración persistente de la impresora de PDA (WebSocket local / Sunmi).
+// Una vez fijada tras el test, se conserva entre sesiones y NO se puede borrar
+// desde la UI (protección "no eliminar la impresora").
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PDA_CACHE_KEY = 'impresora_pda_predeterminada';
+
+interface ImpresoraPdaCache {
+  nombre: string;
+  fija: boolean;
+  fecha: string;
+}
+
+export function guardarImpresoraPda(nombre: string, fija: boolean): void {
+  try {
+    const cache: ImpresoraPdaCache = { nombre, fija, fecha: new Date().toISOString() };
+    localStorage.setItem(PDA_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // localStorage no disponible (modo incógnito / almacenamiento bloqueado)
+  }
+}
+
+/** Nombre de la impresora PDA guardada (o null si no hay). */
+export function obtenerImpresoraPdaGuardada(): string | null {
+  try {
+    const raw = localStorage.getItem(PDA_CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw) as ImpresoraPdaCache;
+    return cache?.nombre ? cache.nombre : null;
+  } catch {
+    return null;
+  }
+}
+
+/** ¿La impresora PDA está fijada (no se debe poder borrar)? */
+export function impresoraPdaFijada(): boolean {
+  try {
+    const raw = localStorage.getItem(PDA_CACHE_KEY);
+    if (!raw) return false;
+    const cache = JSON.parse(raw) as ImpresoraPdaCache;
+    return cache?.fija === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Conecta a una impresora Bluetooth ya emparejada (sin selector) usando el
  * deviceId guardado. Retorna el dispositivo listo para GATT o null.

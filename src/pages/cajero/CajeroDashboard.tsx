@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
-import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada } from '@/utils/ticketFormatter';
+import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -37,11 +37,15 @@ export default function CajeroDashboard() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [testeandoImpresora, setTesteandoImpresora] = useState(false);
   const [impresoraPredeterminada, setImpresoraPredeterminada] = useState<string | null>(() =>
-    esDispositivoSunmi()
-      ? IMPRESORA_INTEGRADA_LABEL
-      : isAndroidDevice() || soportaBluetoothEscPos()
-        ? obtenerImpresoraBlePredeterminada()?.nombre ?? null
-        : null
+    obtenerImpresoraPdaGuardada()
+      ?? (esDispositivoSunmi()
+        ? IMPRESORA_INTEGRADA_LABEL
+        : isAndroidDevice() || soportaBluetoothEscPos()
+          ? obtenerImpresoraBlePredeterminada()?.nombre ?? null
+          : null)
+  );
+  const [impresoraFijada, setImpresoraFijada] = useState<boolean>(() =>
+    impresoraPdaFijada()
   );
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
@@ -133,6 +137,8 @@ export default function CajeroDashboard() {
           const r = await imprimirTestPdaWs();
           if (r.ok) {
             setImpresoraPredeterminada(PDA_WS_LABEL);
+            guardarImpresoraPda(PDA_WS_LABEL, true);
+            setImpresoraFijada(true);
             toast.success(`Ticket de prueba impreso en "${r.dispositivo}".`);
           }
           return;
@@ -144,6 +150,8 @@ export default function CajeroDashboard() {
           const result = await imprimirTestSunmi();
           if (result.ok) {
             setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
+            guardarImpresoraPda(IMPRESORA_INTEGRADA_LABEL, true);
+            setImpresoraFijada(true);
             toast.success(`Ticket de prueba impreso en "${result.dispositivo}".`);
           }
           return;
@@ -151,6 +159,8 @@ export default function CajeroDashboard() {
 
         // 3) RawBT (SPP/InnerPrinter)
         setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
+        guardarImpresoraPda(IMPRESORA_INTEGRADA_LABEL, true);
+        setImpresoraFijada(true);
         imprimirTestRawBt();
         toast.info(
           'Prueba enviada por Bluetooth (InnerPrinter). Si se abrió la Play Store, instale la app RawBT y vuelva a probar.',
@@ -192,13 +202,17 @@ export default function CajeroDashboard() {
     }
   }, []);
 
-  // Limpiar la impresora predeterminada guardada
+  // Limpiar la impresora predeterminada guardada (bloqueado si está fijada)
   const handleLimpiarImpresora = useCallback(() => {
+    if (impresoraFijada) {
+      toast.error('La impresora está configurada y no se puede eliminar.');
+      return;
+    }
     limpiarImpresoraBlePredeterminada();
     reiniciarCacheSunmi();
     setImpresoraPredeterminada(null);
     toast.info('Impresora predeterminada eliminada. Se pedirá seleccionar una nueva.');
-  }, []);
+  }, [impresoraFijada]);
 
   return (
     <div className="flex h-screen-dyn bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
@@ -376,7 +390,10 @@ export default function CajeroDashboard() {
                     variant="ghost"
                     className="h-10 px-2 gap-1 text-[9px] font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 touch-list"
                     onClick={() => void handleLimpiarImpresora()}
-                    title="Quitar impresora predeterminada"
+                    disabled={impresoraFijada}
+                    title={impresoraFijada
+                      ? 'Impresora configurada (no se puede eliminar)'
+                      : 'Quitar impresora predeterminada'}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     {impresoraPredeterminada.length > 12
