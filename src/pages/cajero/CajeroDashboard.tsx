@@ -80,6 +80,13 @@ export default function CajeroDashboard() {
   const nombreUsuario = user?.nombreCompleto || user?.name || "Carlos Eduardo Mendoza";
   const correoUsuario = user?.email || "cajero.salitre@tickets.com";
   const nombreAgencia = String(user?.agencia ?? "") || dashboard?.agencia || "Agencia";
+  const nivelUsuario = Number(user?.nivel_usuario ?? user?.nivel) || 2;
+
+  // Roles finos Bogotá: 4=Rodamiento (solo Programación), 5=Taquilla (solo Ventas),
+  // 6=Rodamiento+Taquilla (todo). Nivel 2 (CAJERO general) y default ven todo.
+  const esTaquilla = nivelUsuario === 5;       // venta de tiquetes, sin despacho
+  const esRodamiento = nivelUsuario === 4;      // programación, sin taquilla
+  const puedeDespacho = dashboard?.tipo_agencia === 'principal' && !esTaquilla;
 
   const getIniciales = (name: string) => {
     return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -88,17 +95,19 @@ export default function CajeroDashboard() {
   // Items de navegación (reutilizables en sidebar desktop y drawer móvil)
   const navItems: { id: CajeroSection; label: string; icon: React.ReactNode }[] = useMemo(() => [
     { id: 'inicio', label: 'Inicio / Resumen Diario', icon: <BarChart3 className="w-5 h-5" /> },
-    ...(dashboard?.tipo_agencia === 'principal'
+    ...(puedeDespacho
       ? [
-          { id: 'despacho' as CajeroSection, label: 'Despacho de Vehículos', icon: <Send className="w-5 h-5" /> },
+          { id: 'despacho' as CajeroSection, label: 'Programación de Vehículos', icon: <Send className="w-5 h-5" /> },
           { id: 'llegadas' as CajeroSection, label: 'Llegadas a la Agencia', icon: <MapPin className="w-5 h-5" /> },
         ]
       : []),
-    { id: 'ventas', label: 'Taquilla de Ventas', icon: <Ticket className="w-5 h-5" /> },
+    ...(!esRodamiento
+      ? [{ id: 'ventas' as CajeroSection, label: 'Taquilla de Ventas', icon: <Ticket className="w-5 h-5" /> }]
+      : []),
     { id: 'reservas', label: 'Control de Reservas', icon: <CalendarDays className="w-5 h-5" /> },
     { id: 'informes', label: 'Informes y Métricas', icon: <ArrowUpRight className="w-5 h-5" /> },
     { id: 'cierre', label: 'Cierre de Cajero', icon: <Coins className="w-5 h-5" /> },
-  ], [dashboard?.tipo_agencia]);
+  ], [puedeDespacho, esRodamiento]);
 
   const toggleMenu = (close = false) => {
     setMenuAbierto(close === undefined ? !menuAbierto : close);
@@ -785,7 +794,7 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
     <div className="space-y-6 animate-in fade-in duration-200">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Despacho de Vehículos</h2>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Programación de Vehículos</h2>
           <p className="text-xs text-slate-500">
             Seleccione el vehículo listo en andén para marcar su salida hacia el destino.
           </p>
@@ -912,6 +921,7 @@ function NuevaRutaDialog({
 
   const [destino, setDestino] = useState('');
   const [horaSalida, setHoraSalida] = useState('');
+  const [numeroOrden, setNumeroOrden] = useState('');
   const [placa, setPlaca] = useState('');
   const [tipoServicio, setTipoServicio] = useState('');
   const [conductor, setConductor] = useState('');
@@ -919,25 +929,40 @@ function NuevaRutaDialog({
   const [conductorAux, setConductorAux] = useState('');
   const [auxiliarViaje, setAuxiliarViaje] = useState('');
   const [conduce, setConduce] = useState('');
+  const [destinosRecorrido, setDestinosRecorrido] = useState<OridesOption[]>([]);
+
+  const horariosSalida = useMemo(() => {
+    const times: string[] = [];
+    for (let h = 3; h <= 23; h++) {
+      const labels: number[] = [0, 15, 30, 45];
+      for (const m of labels) {
+        const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        times.push(time);
+      }
+    }
+    return times;
+  }, []);
 
   const cargarCatalogos = useCallback(async () => {
     setCargandoCatalogos(true);
     try {
-      const [o, c, v] = await Promise.all([
+      const [o, c, v, destinosRecorrido] = await Promise.all([
         travelsoftService.getOrides(),
         travelsoftService.getConductores(),
         travelsoftService.getVehiculosDropdown(),
+        travelsoftService.getRecorridoDestinos(idOrigen),
       ]);
       setOrides(o);
       setConductores(c.filter((x) => (x.estado_conduc ?? '1') === '1'));
       setVehiculos(v.filter((x) => (x.estado_vehi ?? '1') === '1'));
       setTiposServicio(await travelsoftService.getRutasTipos());
+      setDestinosRecorrido(destinosRecorrido);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
     } finally {
       setCargandoCatalogos(false);
     }
-  }, []);
+  }, [idOrigen]);
 
   useEffect(() => {
     if (open) {
@@ -946,10 +971,11 @@ function NuevaRutaDialog({
     }
   }, [open, cargarCatalogos]);
 
-  const destinoOptions = useMemo(
-    () => orides.filter((o) => o.id_orides !== idOrigen && (o.desc_orides || '').trim()),
-    [orides, idOrigen]
-  );
+  const destinoOptions = useMemo(() => {
+    return destinosRecorrido.length > 0
+      ? destinosRecorrido.filter((o) => o.id_orides !== idOrigen && (o.desc_orides || '').trim())
+      : orides.filter((o) => o.id_orides !== idOrigen && (o.desc_orides || '').trim());
+  }, [destinosRecorrido, orides, idOrigen]);
 
   const vehiculosDisponibles = useMemo(
     () => vehiculos.filter((v) => !placasConRutaHoy.has(v.placa_vehi)),
@@ -961,6 +987,15 @@ function NuevaRutaDialog({
       setPlaca('');
     }
   }, [vehiculosDisponibles, placa]);
+
+  useEffect(() => {
+    if (placa) {
+      const vehiculo = vehiculosDisponibles.find((v) => v.placa_vehi === placa);
+      setNumeroOrden(vehiculo?.orden_vehi ?? '');
+    } else {
+      setNumeroOrden('');
+    }
+  }, [placa, vehiculosDisponibles]);
 
   const horaAMinutos = (value: string): number => {
     const [h, m] = value.split(':').map(Number);
@@ -992,6 +1027,7 @@ function NuevaRutaDialog({
         hora_ruta: horaAMinutos(horaSalida),
         hora_programada: horaSalida || undefined,
         placa_vehi: placa,
+        numero_orden: numeroOrden.trim() || undefined,
         id_ruta_tipo: tipoServicio ? Number(tipoServicio) : undefined,
         cedula_conduc: conductor || undefined,
         cedula_conduc2: conductorAux || undefined,
@@ -1058,11 +1094,25 @@ function NuevaRutaDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
+              <Select value={horaSalida} onValueChange={setHoraSalida}>
+                <SelectTrigger className={cn(mostrarErrores && !horaSalida && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+                  <SelectValue placeholder="Seleccione la hora de salida" />
+                </SelectTrigger>
+                <SelectContent>
+                  {horariosSalida.map((h) => (
+                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Número de orden <span className="text-slate-400 font-normal">(6 dígitos, único por Secretaría)</span></Label>
               <Input
-                type="time"
-                value={horaSalida}
-                onChange={(e) => setHoraSalida(e.target.value)}
-                className={cn(mostrarErrores && !horaSalida && "border-red-400 ring-1 ring-red-300 bg-red-50")}
+                value={numeroOrden}
+                onChange={(e) => setNumeroOrden(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="######"
+                maxLength={6}
+                className={cn(mostrarErrores && !numeroOrden && "border-red-400 ring-1 ring-red-300 bg-red-50")}
               />
             </div>
             <div className="space-y-1.5">

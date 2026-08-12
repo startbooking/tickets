@@ -30,8 +30,9 @@ interface LocalUsuario extends UsuarioSACTel {
   agencia?: string;
 }
 
-// Roles operativos que gestiona el admin de agencia (cajeros y despachadores)
-const NIVELES_OPERATIVOS = [0, 2, 5];
+// Roles operativos que gestiona el admin de agencia (cajeros, rodamiento y taquilla)
+// 0=DESPACHADOR, 2=CAJERO, 4=Rodamiento, 5=Taquilla/ADMIN(agencia), 6=Rodamiento+Taquilla
+const NIVELES_OPERATIVOS = [0, 2, 4, 5, 6];
 
 interface LocalUsuarioFormProps {
   open: boolean;

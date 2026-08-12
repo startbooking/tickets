@@ -199,6 +199,13 @@ export interface OridesOption {
   desc_orides: string | null;
   agencia_orides?: string;
   despacho_orides?: string;
+  tipo_agencia?: string | null;
+}
+
+export interface HorarioOption {
+  id_horario: number;
+  hora_horario: string | null;
+  hora_time: string | null;
 }
 
 export interface ConductorOption {
@@ -323,6 +330,7 @@ export interface RutaCreateInput {
   hora_ruta: number;
   hora_programada?: string;
   placa_vehi: string;
+  numero_orden?: string;
   id_ruta_tipo?: number;
   cedula_conduc?: string;
   cedula_conduc2?: string;
@@ -552,7 +560,9 @@ export interface ImprimirTicketResult {
 /** Niveles de usuario que reconoce TravelSoft (mapeo nivel_usuario → rol). */
 export const NIVEL_USUARIO_LABEL: Record<number, string> = {
   10: "SUPERADMIN",
-  5: "ADMIN_AGENCIA",
+  6: "Rodamiento + Taquilla",
+  5: "Taquilla",
+  4: "Rodamiento",
   2: "CAJERO",
   0: "DESPACHADOR",
 };
@@ -600,10 +610,13 @@ export const DASHBOARD_POR_ROL: Record<AppRol, string> = {
 };
 
 // Mapeo histórico de TravelSoft: nivel_usuario -> rol del frontend
-// 10=SUPERADMIN, 5=ADMIN(agencia), 2=CAJERO, 0=DESPACHADOR
+// 10=SUPERADMIN, 5=ADMIN(agencia)/Taquilla(Bogotá), 2=CAJERO, 0=DESPACHADOR
+// Roles finos Bogotá: 4=Rodamiento, 5=Taquilla, 6=Rodamiento+Taquilla → todos CAJERO (dashboard cajero)
 const ROL_POR_NIVEL: Record<number, AppRol> = {
   10: "SUPERADMIN",
   5: "ADMIN_AGENCIA",
+  6: "CAJERO",
+  4: "CAJERO",
   2: "CAJERO",
   0: "DESPACHADOR",
 };
@@ -914,6 +927,21 @@ export const travelsoftService = {
     const response = await apiClient.get<OridesOption[]>("/orides", { params: { limit: 500 } });
     return response.data;
   },
+  /** Destinos filtrados: agencia_orides='1' y desc_orides <> 'MANTENIN' */
+  getDestinosFiltrados: async (): Promise<OridesOption[]> => {
+    const all = await travelsoftService.getOrides();
+    return all.filter(
+      (o) =>
+        String(o.agencia_orides ?? "0") === "1" &&
+        (o.desc_orides ?? "").trim() !== "" &&
+        (o.desc_orides ?? "").trim().toUpperCase() !== "MANTENIN",
+    );
+  },
+  /** Horarios de salida (GET /horario/) — campos hora_horario (display) y hora_time (valor HH:MM:SS) */
+  getHorarios: async (): Promise<HorarioOption[]> => {
+    const response = await apiClient.get<HorarioOption[]>("/horario/", { params: { limit: 500 } });
+    return response.data;
+  },
   getConductores: async (): Promise<ConductorOption[]> => {
     const response = await apiClient.get<ConductorOption[]>("/conductores", { params: { limit: 500 } });
     return response.data;
@@ -921,6 +949,11 @@ export const travelsoftService = {
   /** Lista de vehículos para dropdowns/selects (GET /vehiculos). */
   getVehiculosDropdown: async (): Promise<VehiculoOption[]> => {
     const response = await apiClient.get<VehiculoOption[]>("/vehiculos", { params: { limit: 500 } });
+    return response.data;
+  },
+  /** Destinos válidos según recorridos activos desde un origen (GET /recorridos/destinos). */
+  getRecorridoDestinos: async (origen: number): Promise<OridesOption[]> => {
+    const response = await apiClient.get<OridesOption[]>("/recorridos/destinos", { params: { origen } });
     return response.data;
   },
 

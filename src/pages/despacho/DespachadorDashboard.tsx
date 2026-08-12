@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from '@/lib/utils';
-import { 
-  Bus, FileText, ShieldCheck, ClipboardCheck, LogOut, 
-  Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin, Menu, X
+import { travelsoftService, OridesOption, HorarioOption } from '@/services/travelsoftService';
+import {
+  Bus, FileText, ShieldCheck, ClipboardCheck, LogOut,
+  Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin, Menu, X, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,8 +26,32 @@ export default function DespachadorDashboard() {
   const [activeSection, setActiveSection] = useState<DespachadorSection>('programacion');
   const [menuAbierto, setMenuAbierto] = useState(false);
 
+  const [destinos, setDestinos] = useState<OridesOption[]>([]);
+  const [horarios, setHorarios] = useState<HorarioOption[]>([]);
+  const [cargandoCatalogos, setCargandoCatalogos] = useState(false);
+
   const nombreUsuario = user?.name || "Néstor Fabián Chaux";
   const correoUsuario = user?.email || "despacho.salitre@tickets.com";
+
+  // Catálogos: destinos (orides, agencia_orides=1, desc != MANTENIN) y horarios
+  useEffect(() => {
+    const cargar = async () => {
+      setCargandoCatalogos(true);
+      try {
+        const [d, h] = await Promise.all([
+          travelsoftService.getDestinosFiltrados(),
+          travelsoftService.getHorarios(),
+        ]);
+        setDestinos(d);
+        setHorarios(h.filter((x) => x.hora_time !== null));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
+      } finally {
+        setCargandoCatalogos(false);
+      }
+    };
+    void cargar();
+  }, []);
 
   const getIniciales = (name: string) => {
     return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -224,7 +249,7 @@ export default function DespachadorDashboard() {
           {(() => {
             switch (activeSection) {
               case 'programacion':
-                return <SubViewProgramacion setSeccion={setActiveSection} />;
+                return <SubViewProgramacion setSeccion={setActiveSection} destinos={destinos} horarios={horarios} cargandoCatalogos={cargandoCatalogos} />;
               case 'alistamiento':
                 return <SubViewAlistamiento />;
               case 'manifiestos':
@@ -241,59 +266,161 @@ export default function DespachadorDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // 🚌 1. SUBVISTA: PROGRAMACIÓN / VEHÍCULOS EN ANDÉN
 // ─────────────────────────────────────────────────────────────────────────────
-function SubViewProgramacion({ setSeccion }: { setSeccion: React.Dispatch<React.SetStateAction<DespachadorSection>> }) {
+function SubViewProgramacion({
+  setSeccion,
+  destinos,
+  horarios,
+  cargandoCatalogos,
+}: {
+  setSeccion: React.Dispatch<React.SetStateAction<DespachadorSection>>;
+  destinos: OridesOption[];
+  horarios: HorarioOption[];
+  cargandoCatalogos: boolean;
+}) {
+  const [destinoSel, setDestinoSel] = useState<number | ''>('');
+  const [horaSel, setHoraSel] = useState<string>('');
+  const [placaSel, setPlacaSel] = useState<string>('');
+  const [viajesProgramados, setViajesProgramados] = useState<
+    Array<{ id: number; destino: string; hora: string; placa: string; ocupacion: string }>
+  >([]);
+
+  const handleProgramar = () => {
+    if (!destinoSel || !horaSel || !placaSel) {
+      toast.error('Seleccione destino, hora y placa.');
+      return;
+    }
+    const destino = destinos.find((d) => d.id_orides === Number(destinoSel));
+    const horario = horarios.find((h) => h.hora_time === horaSel);
+    const nuevo = {
+      id: viajesProgramados.length + 1,
+      destino: destino?.desc_orides ?? String(destinoSel),
+      hora: horario?.hora_horario ?? horaSel,
+      placa: placaSel,
+      ocupacion: '0 / 42 Pasajes',
+    };
+    setViajesProgramados([nuevo, ...viajesProgramados]);
+    toast.success(`Salida programada a ${nuevo.destino}.`);
+    setDestinoSel('');
+    setHoraSel('');
+    setPlacaSel('');
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      <div>
-        <h2 className="text-xl font-black text-slate-900 tracking-tight">Próximas Salidas Programadas</h2>
-        <p className="text-xs text-slate-500">Monitoree la ocupación de pasajeros y autorice el alistamiento técnico.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Programación de Vehículos en Andén</h2>
+          <p className="text-xs text-slate-500">Monitoree la ocupación de pasajeros y autorice el alistamiento técnico.</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs font-bold gap-2"
+          onClick={() => setSeccion('alistamiento')}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          Manual de Alistamiento
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Tarjeta de Autobús en Espera */}
-        <Card className="bg-white border-slate-200 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500" />
-          <CardContent className="p-5 space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded uppercase">Espera Alistamiento</span>
-                <h3 className="text-base font-black text-slate-900 mt-1">Bus 405 — Premium Star</h3>
-                <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" /> Destino: Medellín (Directo)</p>
+      {/* Formulario: Programar nueva salida */}
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-sm font-black flex items-center gap-2 text-slate-900">
+            <Plus className="w-4 h-4 text-blue-600" />
+            Programar Nueva Salida
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {cargandoCatalogos ? (
+            <p className="text-sm text-slate-500">Cargando catálogos...</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-bold text-slate-600">Destino</Label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                  value={destinoSel}
+                  onChange={(e) => setDestinoSel(e.target.value ? Number(e.target.value) : '')}
+                >
+                  <option value="">Seleccione un destino</option>
+                  {destinos.map((d) => (
+                    <option key={d.id_orides} value={d.id_orides}>
+                      {d.desc_orides}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="text-right">
-                <span className="text-xs font-mono font-bold block text-slate-700">Salida: 19:30</span>
-                <span className="text-[10px] font-bold text-slate-400">Ocupación: 32 / 40 Pasajes</span>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                  value={horaSel}
+                  onChange={(e) => setHoraSel(e.target.value)}
+                >
+                  <option value="">Seleccione la hora</option>
+                  {horarios.map((h) => (
+                    <option key={h.id_horario} value={h.hora_time ?? ''}>
+                      {h.hora_horario}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-bold text-slate-600">Placa del Bus</Label>
+                <Input
+                  value={placaSel}
+                  onChange={(e) => setPlacaSel(e.target.value)}
+                  placeholder="Ej: SST-901"
+                  className="h-9 text-sm"
+                  maxLength={7}
+                />
               </div>
             </div>
+          )}
+          <div className="mt-3">
+            <Button
+              onClick={handleProgramar}
+              disabled={cargandoCatalogos || !destinoSel || !horaSel || !placaSel}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Agregar a Andén
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-            <div className="border-t pt-3 flex gap-2">
-              <Button onClick={() => setSeccion('alistamiento')} size="sm" className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex-1">
-                Iniciar Revisión de Seguridad
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Tarjetas de viajes programados (si los hay) */}
+      {viajesProgramados.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {viajesProgramados.map((v) => (
+            <Card key={v.id} className="bg-white border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500" />
+              <CardContent className="p-5 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded uppercase">Espera Alistamiento</span>
+                    <h3 className="text-base font-black text-slate-900 mt-1 flex items-center gap-1">
+                      <Bus className="w-4 h-4" /> {v.placa}
+                    </h3>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <MapPin className="w-3 h-3" /> Destino: {v.destino}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-bold block text-slate-700">Salida: {v.hora}</span>
+                    <span className="text-[10px] font-bold text-slate-400">{v.ocupacion}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
-        {/* Tarjeta de Autobús ya Despachado */}
-        <Card className="bg-white border-slate-200 shadow-sm relative overflow-hidden opacity-75">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
-          <CardContent className="p-5 space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase flex items-center gap-1 w-fit">
-                  <CheckCircle2 className="w-3 h-3" /> Ruta en Tránsito
-                </span>
-                <h3 className="text-base font-black text-slate-900 mt-1">Bus 102 — Línea Confort</h3>
-                <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" /> Destino: Bucaramanga</p>
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-mono font-bold block text-slate-400">Salió: 16:15</span>
-                <span className="text-[10px] font-bold text-slate-400">Manifiesto: #MN-9082</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+
     </div>
   );
 }

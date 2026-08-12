@@ -1,0 +1,205 @@
+================================================================================
+ REPORTE: DIFERENCIAS ENTRE travellocal (flota9 remoto) Y NUESTRO PROYECTO SACTel
+================================================================================
+Fecha: 2026-08-11
+Base de datos fuente (remota): flota9 @ 181.143.144.2 (MySQL 5.0.45)
+Base de datos local (destino): travellocal (importada desde flota9)
+Base de datos de desarrollo: travelSoft (local original)
+
+Este reporte identifica qué tablas, columnas y queries del proyecto SACTel.Cloud
+fallarían si se usara la base `travellocal` sin adaptaciones previas.
+
+================================================================================
+ 1. TABLAS FALTANTES EN travellocal (requeridas por el código)
+================================================================================
+
+La siguiente tabla no existe en travellocal pero el backend la referencia
+directamente. ESTO CAUSARÁ FALLOS EN TIEMPO DE EJECUCIÓN.
+
+TABLA: resoluciones
+  - Usada por: _get_resolucion_activa(), vender_tiquete, reportar_llegada,
+    endpoints /resoluciones/agencia/*, reporte de manifiesto
+  - Columnas que el código espera:
+    id_resolucion, id_orides, numero_resolucion, prefijo, rango_inicial,
+    rango_final, consecutivo_actual, fecha_resolucion, municipio,
+    vigencia_desde, vigencia_hasta, activa, notas, fecha_creacion,
+    consecutivo_actual (auto-increment en UPDATE ... LAST_INSERT_ID)
+
+TABLA: turnos_satelite
+  - Usada por: POST /turnos/satelite (cierre de turno satélite)
+  - Columnas que el código espera:
+    id_turno, id_orides, cedula_usuario, operador, fecha_inicio, inicio,
+    cierre, tiquetes, total, efectivo, tarjeta, qr, detalle, fecha_creacion
+
+================================================================================
+ 2. COLUMNAS FALTANTES EN tablas existentes en travellocal
+================================================================================
+
+La siguiente tabla existe en travellocal pero le faltan columnas que el
+código del backend/frontend referencia:
+
+TABLA: usuario
+  - Columnas FALTANTES en travellocal (existen en travelSoft):
+    rol          enum('SUPERADMIN','ADMIN','AGENCIA','CAJERO','DESPACHADOR')
+    password_hash varchar(255)   -- ¡CRITICAL! La autenticación usará clave_usuario
+    token_version int
+    created_at timestamp
+    updated_at timestamp
+  - El código backend usa: rol (para autorización), password_hash (para login),
+    token_version (JWT), created_at/updated_at (auditoría)
+  - NOTA: La columna `clave_usuario` existe en ambas, pero el código usa
+    `password_hash` + bcrypt para el login de SACTel.Cloud
+
+TABLA: parametros
+  - Columnas FALTANTES en travellocal:
+    tiquete_consolidado  char(1) DEFAULT '0'
+  - Usada por: GET/PUT /parametros/tickets, vender_tiquete, vender_tiquete_satelite
+  - Código: consolidado = parametro.tiquete_consolidado == '1'
+
+TABLA: rutas
+  - Columnas FALTANTES en travellocal:
+    llegada_ruta      char(1)      -- estado: '0' = salió, '1' = llegó
+    hora_llegada      char(10)     -- hora HH:MM de llegada reportada
+    fecha_llegada     date         -- fecha de llegada
+    novedad_llegada   varchar(500) -- observaciones de llegada
+    estado_sitio      varchar(20)  -- EN_SITIO | EN_PARQUEADERO
+  - Usadas por: reportar_llegada(), getLlegadas(), getDashboardCajero(),
+    manifiesto, venta de tiquetes (validación de estado)
+
+  - Columna ADICIONAL pendiente (no existe en ninguna base aún):
+    numero_orden      varchar(6)   -- número de ventanilla de Secretaría
+  - Usada por: crearRuta() → NuevaRutaDialog
+
+TABLA: planillas
+  - Columnas FALTANTES en travellocal:
+    forma_pago        char(20) DEFAULT 'EFECTIVO'  -- EFECTIVO|TARJETA|QR
+  - Usada por: vender_tiquete (INSERT en planillas), reporte de cierre,
+    reporte de efectivos, emisión DIAN
+
+================================================================================
+ 3. TABLAS EXTRA EN travellocal (no están en travelSoft)
+================================================================================
+
+Estas tablas son exclusivas del remoto y NO son referenciadas por el código
+del proyecto SACTel.Cloud (vistas y backups). NO causan problemas pero no
+son necesarias:
+
+  - orides_1, orides_2  (posibles backups de orides)
+  - origendestino       (tabla de respaldo/relación origen-destino)
+  - vista_ciudades_recorrido2
+  - vista_planilla
+  - vista_planillas_puestos
+  - vista_planillas_puestos_vacios
+  - vista_planillas_unica
+
+================================================================================
+ 4. COLUMNAS EXTRA EN travelSoft (no están en travellocal)
+================================================================================
+
+Estas son tablas de sistema PowerBuilder que existen en local pero NO en
+el remoto. No son usadas por el código del proyecto:
+
+  - pbcatcol, pbcatedt, pbcatfmt, pbcattbl, pbcatvld (PowerBase catalog)
+
+TABLA: turnos_satelite
+  - Existe en travelSoft pero NO en travellocal (ver sección 1)
+
+TABLA: resoluciones
+  - Existe en travelSoft pero NO en travellocal (ver sección 1)
+
+================================================================================
+ 5. QUERIES / ENDPOINTS QUE FALLARÍAN SIN LAS CORRECCIONES
+================================================================================
+
+Backend (travel.py):
+
+  [FAIL] GET /parametros/tickets
+    - Error: columna tiquete_consolidado no existe en parametros
+    - Línea ~421: str(p.get("tiquete_consolidado", "0"))
+
+  [FAIL] PUT /parametros/tickets
+    - Error: parametros.update(1, {"tiquete_consolidado": valor})
+    - Falla al intentar UPDATE en columna inexistente
+
+  [FAIL] POST /ventas/tiquete (venta simple y multi-silla)
+    - Error: INSERT en planillas necesita forma_pago
+    - Línea ~1329: "...hora_despacho, cedula_conduc2, cedula_auxi,
+      hora_tiquete, datafono, forma_pago, anulado_tiquete)"
+
+  [FAIL] GET /ventas/sillas
+    - Error: rutas.llegada_ruta no existe → WHERE destino_ruta = id_orides
+      AND llegada_ruta = '1'
+
+  [FAIL] GET /dashboard/cajero (llegadas)
+    - Error: rutas.hora_llegada, rutas.estado_sitio no existen
+
+  [FAIL] POST /llegadas/reportar
+    - Error: UPDATE rutas SET llegada_ruta='1', hora_llegada=...,
+      fecha_llegada=..., estado_sitio=... → columnas inexistentes
+
+  [FAIL] POST /rutas/crear (con numero_orden)
+    - Error: INSERT INTO rutas ... numero_orden → columna inexistente
+
+  [FAIL] GET /resoluciones/agencia
+    - Error: tabla resoluciones no existe
+
+  [FAIL] POST /resoluciones/agencia
+    - Error: INSERT INTO resoluciones → tabla no existe
+
+  [FAIL] PUT /resoluciones/agencia/{id}
+    - Error: UPDATE resoluciones → tabla no existe
+
+  [FAIL] DELETE /resoluciones/agencia/{id}
+    - Error: DELETE FROM resoluciones → tabla no existe
+
+  [FAIL] POST /turnos/satelite (cierre turno satélite)
+    - Error: INSERT INTO turnos_satelite → tabla no existe
+
+Frontend (AuthContext):
+  [FAIL] Login
+    - Error: usuario.password_hash no existe → autenticación con bcrypt falla
+    - El código espera password_hash pero la columna en remoto es clave_usuario
+
+  [FAIL] Autorización por roles
+    - Error: usuario.rol no existe → el código no puede determinar el rol
+    - _get_token_payload en el backend lee rol del JWT, pero el CRUD de usuarios
+      devuelve la tabla que no tiene rol
+
+Frontend (ResolutionsManagementView, LocalResolutionsView):
+  [FAIL] Listado, creación, edición y borrado de resoluciones
+    - Error: API 404/500 (tabla resoluciones inexistente)
+
+Frontend (SateliteCierre):
+  [FAIL] Cierre de turno satélite
+    - Error: API 500 (tabla turnos_satelite inexistente)
+
+================================================================================
+ 6. RESUMEN DE ACCIONES REQUERIDAS
+================================================================================
+
+PARA ADAPTAR travellocal AL PROYECTO, SE DEBEN CREAR/AGREGAR:
+
+  a) Tabla resoluciones (ver script migrations/003-travellocal-schema-sync.sql)
+  b) Tabla turnos_satelite (ver script migrations/003-travellocal-schema-sync.sql)
+  c) Columnas en usuario: rol, password_hash, token_version, created_at, updated_at
+  d) Columna en parametros: tiquete_consolidado
+  e) Columnas en rutas: llegada_ruta, hora_llegada, fecha_llegada,
+                           novedad_llegada, estado_sitio, numero_orden
+  f) Columna en planillas: forma_pago
+
+NOTA: Los siguientes ítems YA fueron aplicados a travellocal (ver
+      migrations/003-travellocal-schema-sync.sql):
+      - (a) Tabla resoluciones ✅ creada
+      - (b) Tabla turnos_satelite ✅ creada
+      - (d) parametros.tiquete_consolidado ✅ agregada
+      - (e) rutas: llegada_ruta, hora_llegada, fecha_llegada, novedad_llegada,
+              estado_sitio ✅ agregadas
+      - (e) rutas.numero_orden ✅ agregada
+      - (f) planillas.forma_pago ✅ agregada
+      PENDIENTE (no aplicado por solicitud del usuario):
+      - (c) Columnas en usuario: rol, password_hash, token_version,
+              created_at, updated_at → REQUIERE migración de autenticación
+
+================================================================================
+ FIN DEL REPORTE
+================================================================================

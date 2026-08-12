@@ -1,0 +1,216 @@
+================================================================================
+ REPORTE: CAMBIOS REQUERIDOS EN LA BASE DE DATOS flota9 (181.143.144.2)
+================================================================================
+Fecha: 2026-08-11
+DB origen: flota9 @ 181.143.144.2 (MySQL 5.0.45, 127 tablas)
+No se han aplicado cambios a esta base de datos.
+Estado actual de datos reales:
+  - orides: 113
+  - rutas: 179
+  - vehiculo: 537
+  - pasajero: 228,701
+  - planillas: 24
+
+La base de datos flota9 NO contiene las tablas/columnas que el proyecto
+SACTel.Cloud (backend travelsoft + frontend React) requiere tras las
+funcionalidades implementadas. A continuación el listado de cambios.
+
+================================================================================
+ 1. TABLAS A CREAR EN flota9
+================================================================================
+
+--- TABLA: resoluciones ---
+  Razón: El backend usa esta tabla para:
+    - _get_resolucion_activa(id_orides) → SELECT * FROM resoluciones
+      WHERE id_orides = ? AND activa = 1
+      AND (vigencia_hasta IS NULL OR vigencia_hasta >= CURDATE())
+    - vender_tiquete → UPDATE resoluciones SET consecutivo_actual =
+      LAST_INSERT_ID(consecutivo_actual + 1)
+    - Endpoints CRUD: GET/PUT/POST/DELETE /resoluciones/agencia
+
+  DDL recomendado:
+  CREATE TABLE resoluciones (
+      id_resolucion INT AUTO_INCREMENT PRIMARY KEY,
+      id_orides INT NOT NULL DEFAULT 0,
+      numero_resolucion VARCHAR(40) NOT NULL,
+      prefijo VARCHAR(10),
+      rango_inicial BIGINT,
+      rango_final BIGINT,
+      consecutivo_actual BIGINT NOT NULL DEFAULT 0,
+      fecha_resolucion DATE,
+      municipio VARCHAR(120),
+      vigencia_desde DATE,
+      vigencia_hasta DATE,
+      activa TINYINT(1) NOT NULL DEFAULT 1,
+      notas VARCHAR(255)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+  CREATE INDEX idx_resol_activa ON resoluciones (id_orides, activa);
+
+  --- TABLA: turnos_satelite ---
+  Razón: El backend usa esta tabla para el cierre de turnos satélite
+    (POST /turnos/satelite, INSERT INTO turnos_satelite)
+
+  DDL recomendado:
+  CREATE TABLE turnos_satelite (
+      id_turno INT AUTO_INCREMENT PRIMARY KEY,
+      id_orides INT NOT NULL DEFAULT 0,
+      cedula_usuario VARCHAR(30),
+      operador VARCHAR(100),
+      fecha_inicio DATE,
+      inicio DATETIME,
+      cierre DATETIME,
+      tiquetes INT NOT NULL DEFAULT 0,
+      total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      efectivo DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      tarjeta DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      qr DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      detalle JSON
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+================================================================================
+ 2. COLUMNAS A AGREGAR A tablas existentes EN flota9
+================================================================================
+
+--- TABLA: parametros ---
+  Agregar:
+    tiquete_consolidado CHAR(1) DEFAULT '0'
+  Razón: Controla si la venta multi-silla genera un tiquete consolidado
+    o un tiquete por silla.
+  Endpoints afectados: GET/PUT /parametros/tickets
+
+--- TABLA: rutas ---
+  Agregar:
+    llegada_ruta      CHAR(1)        NOT NULL DEFAULT '0'
+    hora_llegada      CHAR(10)
+    fecha_llegada     DATE
+    novedad_llegada   VARCHAR(500)
+    estado_sitio      VARCHAR(20)
+    numero_orden      VARCHAR(6)   (después de placa_vehi_original)
+  Razón: Estas columnas son usadas por:
+    - reportar_llegada(): UPDATE rutas SET llegada_ruta='1',
+      hora_llegada=..., fecha_llegada=..., estado_sitio=...
+    - getDashboardCajero(): SELECT ... WHERE llegada_ruta = '1'
+    - getLlegadas(): SELECT ... llegada_ruta, estado_sitio FROM rutas
+    - getResumenEnTransito(): WHERE llegada_ruta = '1' AND despachada_ruta = '0'
+    - NuevaRutaDialog: numero_orden para la ventanilla de Secretaría
+
+--- TABLA: planillas ---
+  Agregar:
+    forma_pago        CHAR(20) DEFAULT 'EFECTIVO'
+  Razón: INSERT en planillas durante vender_tiquete incluye forma_pago
+    (EFECTIVO|TARJETA|QR). Usado en reportes de cierre y liquidación.
+
+--- TABLA: usuario ---
+  Agregar:
+    rol              ENUM('SUPERADMIN','ADMIN','AGENCIA','CAJERO','DESPACHADOR')
+                    DEFAULT 'CAJERO'
+    password_hash     VARCHAR(255)
+    token_version     INT DEFAULT 0
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP
+  Razón: El backend SACTel.Cloud usa password_hash + bcrypt para login,
+    rol para autorización y JWT. La columna clave_usuario existe pero
+    el código usa password_hash. Si se usa clave_usuario, adaptar el login.
+
+================================================================================
+ 3. QUERIES / ENDPOINTS QUE FALLARÍAN SIN LOS CAMBIOS
+================================================================================
+
+Backend:
+  [FAIL] GET  /parametros/tickets
+  [FAIL] PUT  /parametros/tickets
+  [FAIL] POST /ventas/tiquete (INSERT planillas con forma_pago)
+  [FAIL] POST /ventas/tiquete/satelite (INSERT planillas con forma_pago)
+  [FAIL] GET  /ventas/sillas (WHERE rutas.llegada_ruta = '1')
+  [FAIL] GET  /dashboard/cajero (SELECT rutas.hora_llegada, estado_sitio)
+  [FAIL] GET  /llegadas (SELECT rutas.llegada_ruta, estado_sitio)
+  [FAIL] POST /llegadas/reportar (UPDATE rutas ... llegada_ruta, etc.)
+  [FAIL] POST /rutas/crear (INSERT rutas ... numero_orden)
+  [FAIL] GET  /resoluciones/agencia
+  [FAIL] POST /resoluciones/agencia
+  [FAIL] PUT  /resoluciones/agencia/{id}
+  [FAIL] DELETE /resoluciones/agencia/{id}
+  [FAIL] POST /turnos/satelite (INSERT turnos_satelite)
+  [FAIL] GET  /dashboard/cajero (llegadas: estado_sitio)
+
+Frontend:
+  [FAIL] Login (usuario.password_hash no existe)
+  [FAIL] Autorización por roles (usuario.rol no existe)
+  [FAIL] ResolucionesManagementView (GET /resoluciones/agencia)
+  [FAIL] LocalResolutionsView (GET /resoluciones/agencia)
+  [FAIL] SateliteCierre (POST /turnos/satelite)
+  [FAIL] NuevaRutaDialog (POST /rutas/crear con numero_orden)
+  [FAIL] CajeroDashboard > Llegadas (GET /dashboard/cajero sin estado_sitio)
+
+================================================================================
+ 4. SCRIPT DE MIGRACIÓ SQL (PARA EJECUTAR EN flota9)
+================================================================================
+
+-- 1. Tabla resoluciones
+CREATE TABLE resoluciones (
+    id_resolucion INT AUTO_INCREMENT PRIMARY KEY,
+    id_orides INT NOT NULL DEFAULT 0,
+    numero_resolucion VARCHAR(40) NOT NULL,
+    prefijo VARCHAR(10),
+    rango_inicial BIGINT,
+    rango_final BIGINT,
+    consecutivo_actual BIGINT NOT NULL DEFAULT 0,
+    fecha_resolucion DATE,
+    municipio VARCHAR(120),
+    vigencia_desde DATE,
+    vigencia_hasta DATE,
+    activa TINYINT(1) NOT NULL DEFAULT 1,
+    notas VARCHAR(255)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE INDEX idx_resol_activa ON resoluciones (id_orides, activa);
+
+-- 2. Tabla turnos_satelite
+CREATE TABLE turnos_satelite (
+    id_turno INT AUTO_INCREMENT PRIMARY KEY,
+    id_orides INT NOT NULL DEFAULT 0,
+    cedula_usuario VARCHAR(30),
+    operador VARCHAR(100),
+    fecha_inicio DATE,
+    inicio DATETIME,
+    cierre DATETIME,
+    tiquetes INT NOT NULL DEFAULT 0,
+    total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    efectivo DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    tarjeta DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    qr DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    detalle TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3. Columnas en parametros
+ALTER TABLE parametros
+  ADD COLUMN tiquete_consolidado CHAR(1) DEFAULT '0';
+
+-- 4. Columnas en rutas
+ALTER TABLE rutas
+  ADD COLUMN llegada_ruta CHAR(1) NOT NULL DEFAULT '0',
+  ADD COLUMN hora_llegada CHAR(10),
+  ADD COLUMN fecha_llegada DATE,
+  ADD COLUMN novedad_llegada VARCHAR(500),
+  ADD COLUMN estado_sitio VARCHAR(20);
+
+ALTER TABLE rutas
+  ADD COLUMN numero_orden VARCHAR(6) AFTER placa_vehi_original;
+
+-- 5. Columna en planillas
+ALTER TABLE planillas
+  ADD COLUMN forma_pago CHAR(20) DEFAULT 'EFECTIVO';
+
+-- 6. Columnas en usuario
+ALTER TABLE usuario
+  ADD COLUMN rol ENUM('SUPERADMIN','ADMIN','AGENCIA','CAJERO','DESPACHADOR') DEFAULT 'CAJERO',
+  ADD COLUMN password_hash VARCHAR(255),
+  ADD COLUMN token_version INT DEFAULT 0,
+  ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+================================================================================
+ FIN DEL REPORTE
+================================================================================
