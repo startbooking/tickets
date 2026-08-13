@@ -48,6 +48,7 @@ export type EstadoBus = 'DISPONIBLE' | 'DESPACHADO' | 'EN_RUTA' | 'ARRIBADO' | '
 
 export interface ViajeDespacho {
   id_viaje: number;
+  cod_ruta?: number;
   destino: string;
   fecha: string;
   hora: string;

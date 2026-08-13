@@ -1,17 +1,10 @@
 import { ViajeDespacho } from '@/types';
 import { useCallback, useEffect, useState } from 'react';
-import { travelsoftService, OridesOption, HorarioOption } from '@/services/travelsoftService';
+import { travelsoftService, OridesOption, HorarioOption, VehiculoOption } from '@/services/travelsoftService';
 import { toast } from 'sonner';
 import {
-  Bus, Clock, FileText, Plus, Save, Send, Users, MapPin,
+  Bus, Clock, FileText, Plus, Save, Send, Users, MapPin, AlertTriangle, Loader2,
 } from 'lucide-react';
-
-interface VehiculoOption {
-  placa_vehi: string;
-  tipo_vehi?: string;
-  marca_vehi?: string;
-  capacidad?: number;
-}
 
 export default function DespachoBuses() {
   const [viajes, setViajes] = useState<ViajeDespacho[]>([]);
@@ -28,6 +21,9 @@ export default function DespachoBuses() {
   const [horaSel, setHoraSel] = useState<string>('');
   const [placaSel, setPlacaSel] = useState<string>('');
 
+  const [guardando, setGuardando] = useState(false);
+  const [despachando, setDespachando] = useState(false);
+
   const cargarCatalogos = useCallback(async () => {
     setCargandoCatalogos(true);
     try {
@@ -38,12 +34,7 @@ export default function DespachoBuses() {
       ]);
       setDestinos(d);
       setHorarios(h.filter((x) => x.hora_time != null));
-      setVehiculos(v.map((x) => ({
-        placa_vehi: x.placa_vehi,
-        tipo_vehi: x.tipo_vehi,
-        marca_vehi: x.marca_vehi,
-        capacidad: x.capacidad,
-      })));
+      setVehiculos(v);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
     } finally {
@@ -62,32 +53,57 @@ export default function DespachoBuses() {
     }
   }, [viajes, viajeSeleccionado]);
 
-  const handleCrearDespacho = () => {
+  const handleCrearDespacho = async () => {
     if (!destinoSel || !horaSel || !placaSel) {
       toast.error('Seleccione destino, hora y vehículo.');
       return;
     }
     const destino = destinos.find((d) => d.id_orides === Number(destinoSel));
-    const horario = horarios.find((h) => h.hora_time === horaSel);
+    const horario = horarios.find((h) => String(h.id_horario) === horaSel);
     const vehiculo = vehiculos.find((v) => v.placa_vehi === placaSel);
 
-    const nuevoViaje: ViajeDespacho = {
-      id_viaje: viajes.length + 1,
-      destino: destino?.desc_orides ?? String(destinoSel),
-      fecha: new Date().toISOString().split('T')[0],
-      hora: horario?.hora_horario?.replace(/am|pm/i, (m) => m.toUpperCase()) ?? horaSel,
-      placa_bus: placaSel,
-      capacidad: vehiculo?.capacidad ?? 42,
-      estado: 'Programado',
-      pasajeros: [],
+    const horaTime = horario?.hora_time ?? null;
+    const horaAMinutos = (value: string): number => {
+      const [h, m] = value.split(':').map(Number);
+      return Number.isNaN(h) || Number.isNaN(m) ? 0 : h * 60 + m;
     };
+    const horaRuta = horaTime ? horaAMinutos(horaTime.slice(0, 5)) : 0;
+    const horaProgramada = horaTime ? horaTime.slice(0, 5) : undefined;
 
-    setViajes([nuevoViaje, ...viajes]);
-    setViajeSeleccionado(nuevoViaje);
-    toast.success(`Viaje a ${nuevoViaje.destino} programado.`);
-    setDestinoSel('');
-    setHoraSel('');
-    setPlacaSel('');
+    setGuardando(true);
+    try {
+      const res = await travelsoftService.crearRuta({
+        destino_ruta: Number(destinoSel),
+        hora_ruta: horaRuta,
+        id_horario: horario?.id_horario ?? undefined,
+        hora_programada: horaProgramada,
+        placa_vehi: placaSel,
+        numero_orden: (vehiculo?.orden_vehi || '').trim().replace(/\D/g, '').slice(0, 6) || undefined,
+      });
+      const cod_ruta = (res.cod_ruta as number) ?? (res.id_ruta as number) ?? 0;
+      const nuevoViaje: ViajeDespacho = {
+        id_viaje: viajes.length + 1,
+        cod_ruta: cod_ruta,
+        destino: destino?.desc_orides ?? String(destinoSel),
+        fecha: new Date().toISOString().split('T')[0],
+        hora: horario?.hora_horario ?? horaProgramada ?? '',
+        placa_bus: placaSel,
+        capacidad: vehiculo?.pasajeros_vehi ?? 42,
+        estado: 'Programado',
+        pasajeros: [],
+      };
+
+      setViajes([nuevoViaje, ...viajes]);
+      setViajeSeleccionado(nuevoViaje);
+      toast.success(`Viaje a ${nuevoViaje.destino} programado en ruta #${cod_ruta}.`);
+      setDestinoSel('');
+      setHoraSel('');
+      setPlacaSel('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo crear el despacho.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   // Alternar el estado de abordaje del pasajero
@@ -105,16 +121,29 @@ export default function DespachoBuses() {
   };
 
   // Cambiar estado del viaje a "En Ruta" (Despachar Bus)
-  const handleDespacharBus = (id: number) => {
-    setViajes(viajes.map(v => {
-      if (v.id_viaje === id) {
-        const actualizado: ViajeDespacho = { ...v, estado: 'En Ruta' };
-        setViajeSeleccionado(actualizado);
-        return actualizado;
-      }
-      return v;
-    }));
-    toast.success(`🚨 ¡Bus con placa ${viajeSeleccionado?.placa_bus} despachado hacia ${viajeSeleccionado?.destino}!`);
+  const handleDespacharBus = async (id: number) => {
+    const viaje = viajes.find((v) => v.id_viaje === id);
+    if (!viaje?.cod_ruta) {
+      toast.error('No se puede despachar: la ruta no fue creada en la BD.');
+      return;
+    }
+    setDespachando(true);
+    try {
+      await travelsoftService.despacharVehiculo(viaje.cod_ruta);
+      setViajes(viajes.map(v => {
+        if (v.id_viaje === id) {
+          const actualizado: ViajeDespacho = { ...v, estado: 'En Ruta' };
+          setViajeSeleccionado(actualizado);
+          return actualizado;
+        }
+        return v;
+      }));
+      toast.success(`🚨 ¡Bus con placa ${viaje.placa_bus} despachado hacia ${viaje.destino}!`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo despachar el vehículo.');
+    } finally {
+      setDespachando(false);
+    }
   };
 
   return (
@@ -157,46 +186,50 @@ export default function DespachoBuses() {
               ))}
             </select>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600">Hora de salida</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
-              value={horaSel}
-              onChange={(e) => setHoraSel(e.target.value)}
-            >
-              <option value="">Seleccione la hora</option>
-              {horarios.map((h) => (
-                <option key={h.id_horario} value={h.hora_time ?? ''}>
-                  {h.hora_horario}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600">Vehículo (Placa)</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
-              value={placaSel}
-              onChange={(e) => setPlacaSel(e.target.value)}
-            >
-              <option value="">Seleccione un bus</option>
-              {vehiculos.map((v) => (
-                <option key={v.placa_vehi} value={v.placa_vehi}>
-                  {v.placa_vehi} ({v.marca_vehi})
-                </option>
-              ))}
-            </select>
-          </div>
+           <div className="space-y-1.5">
+             <label className="text-xs font-bold text-slate-600">Hora de salida</label>
+             <select
+               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-60"
+               value={horaSel}
+               onChange={(e) => setHoraSel(e.target.value)}
+               disabled={cargandoCatalogos}
+             >
+               <option value="">Seleccione la hora</option>
+               {horarios.map((h) => (
+                 <option key={h.id_horario} value={String(h.id_horario)}>
+                   {h.hora_horario}
+                 </option>
+               ))}
+             </select>
+           </div>
+           <div className="space-y-1.5">
+             <label className="text-xs font-bold text-slate-600">Vehículo (Placa)</label>
+             <select
+               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-60"
+               value={placaSel}
+               onChange={(e) => setPlacaSel(e.target.value)}
+               disabled={cargandoCatalogos}
+             >
+               <option value="">Seleccione un bus</option>
+               {vehiculos
+                 .filter((v) => (v.estado_vehi ?? '1') === '1')
+                 .map((v) => (
+                 <option key={v.placa_vehi} value={v.placa_vehi}>
+                   {v.placa_vehi} ({v.marca_vehi})
+                 </option>
+               ))}
+             </select>
+           </div>
         </div>
         )}
         <div className="mt-3">
           <button
             onClick={handleCrearDespacho}
-            disabled={cargandoCatalogos || !destinoSel || !horaSel || !placaSel}
+            disabled={cargandoCatalogos || !destinoSel || !horaSel || !placaSel || guardando}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold px-4 py-2 rounded-lg shadow flex items-center gap-2 text-sm"
           >
-            <Save className="w-4 h-4" />
-            Guardar Despacho
+            {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {guardando ? 'Guardando...' : 'Guardar Despacho'}
           </button>
         </div>
       </div>
@@ -270,10 +303,11 @@ export default function DespachoBuses() {
                 {viajeSeleccionado.estado === 'Programado' ? (
                   <button
                     onClick={() => handleDespacharBus(viajeSeleccionado.id_viaje)}
-                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded-lg shadow transition-colors flex items-center justify-center gap-2"
+                    disabled={despachando}
+                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-bold px-6 py-3 rounded-lg shadow transition-colors flex items-center justify-center gap-2"
                   >
-                    <Send className="w-4 h-4" />
-                    Autorizar Salida (Despachar)
+                    {despachando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {despachando ? 'Despachando...' : 'Autorizar Salida (Despachar)'}
                   </button>
                 ) : (
                   <div className="bg-green-100 text-green-800 font-bold px-6 py-3 rounded-lg text-center">

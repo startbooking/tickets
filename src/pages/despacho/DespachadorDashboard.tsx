@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { travelsoftService, OridesOption, HorarioOption } from '@/services/travelsoftService';
 import {
   Bus, FileText, ShieldCheck, ClipboardCheck, LogOut,
-  Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin, Menu, X, Plus
+  Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin, Menu, X, Plus, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -278,31 +278,58 @@ function SubViewProgramacion({
   cargandoCatalogos: boolean;
 }) {
   const [destinoSel, setDestinoSel] = useState<number | ''>('');
-  const [horaSel, setHoraSel] = useState<string>('');
+  const [idHorarioSel, setIdHorarioSel] = useState<string>('');
   const [placaSel, setPlacaSel] = useState<string>('');
   const [viajesProgramados, setViajesProgramados] = useState<
-    Array<{ id: number; destino: string; hora: string; placa: string; ocupacion: string }>
+    Array<{ id: number; cod_ruta: number; destino: string; hora: string; placa: string; ocupacion: string }>
   >([]);
+  const [guardando, setGuardando] = useState(false);
 
-  const handleProgramar = () => {
-    if (!destinoSel || !horaSel || !placaSel) {
+  const horaAMinutos = (value: string): number => {
+    const [h, m] = value.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+    return h * 60 + m;
+  };
+
+  const handleProgramar = async () => {
+    if (!destinoSel || !idHorarioSel || !placaSel) {
       toast.error('Seleccione destino, hora y placa.');
       return;
     }
     const destino = destinos.find((d) => d.id_orides === Number(destinoSel));
-    const horario = horarios.find((h) => h.hora_time === horaSel);
-    const nuevo = {
-      id: viajesProgramados.length + 1,
-      destino: destino?.desc_orides ?? String(destinoSel),
-      hora: horario?.hora_horario ?? horaSel,
-      placa: placaSel,
-      ocupacion: '0 / 42 Pasajes',
-    };
-    setViajesProgramados([nuevo, ...viajesProgramados]);
-    toast.success(`Salida programada a ${nuevo.destino}.`);
-    setDestinoSel('');
-    setHoraSel('');
-    setPlacaSel('');
+    const horario = horarios.find((h) => String(h.id_horario) === idHorarioSel);
+    const horaTime = horario?.hora_time ?? null;
+    const horaRuta = horaTime ? horaAMinutos(horaTime.slice(0, 5)) : 0;
+    const horaProgramada = horaTime ? horaTime.slice(0, 5) : undefined;
+
+    setGuardando(true);
+    try {
+      const res = await travelsoftService.crearRuta({
+        destino_ruta: Number(destinoSel),
+        hora_ruta: horaRuta,
+        id_horario: horario?.id_horario ?? undefined,
+        hora_programada: horaProgramada,
+        placa_vehi: placaSel,
+      });
+      const cod_ruta = (res.cod_ruta as number) ?? (res.id_ruta as number) ?? 0;
+      const nuevo = {
+        id: viajesProgramados.length + 1,
+        cod_ruta,
+        destino: destino?.desc_orides ?? String(destinoSel),
+        hora: horario?.hora_horario ?? horaProgramada ?? '',
+        placa: placaSel,
+        ocupacion: '0 / 42 Pasajes',
+      };
+      setViajesProgramados([nuevo, ...viajesProgramados]);
+      toast.success(`Salida programada a ${nuevo.destino} en ruta #${cod_ruta}.`);
+      setDestinoSel('');
+      setIdHorarioSel('');
+      setPlacaSel('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo programar la salida.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -351,43 +378,45 @@ function SubViewProgramacion({
                   ))}
                 </select>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
-                <select
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
-                  value={horaSel}
-                  onChange={(e) => setHoraSel(e.target.value)}
-                >
-                  <option value="">Seleccione la hora</option>
-                  {horarios.map((h) => (
-                    <option key={h.id_horario} value={h.hora_time ?? ''}>
-                      {h.hora_horario}
+               <div className="space-y-1.5">
+                 <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
+                 <select
+                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-60"
+                   value={idHorarioSel}
+                   onChange={(e) => setIdHorarioSel(e.target.value)}
+                   disabled={cargandoCatalogos}
+                 >
+                   <option value="">Seleccione la hora</option>
+                   {horarios.map((h) => (
+                     <option key={h.id_horario} value={String(h.id_horario)}>
+                       {h.hora_horario}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-slate-600">Placa del Bus</Label>
-                <Input
-                  value={placaSel}
-                  onChange={(e) => setPlacaSel(e.target.value)}
-                  placeholder="Ej: SST-901"
-                  className="h-9 text-sm"
-                  maxLength={7}
-                />
+               <Input
+                   value={placaSel}
+                   onChange={(e) => setPlacaSel(e.target.value)}
+                   placeholder="Ej: SST-901"
+                   className="h-9 text-sm"
+                   maxLength={7}
+                   disabled={cargandoCatalogos || guardando}
+                 />
               </div>
             </div>
           )}
           <div className="mt-3">
-            <Button
-              onClick={handleProgramar}
-              disabled={cargandoCatalogos || !destinoSel || !horaSel || !placaSel}
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Agregar a Andén
-            </Button>
+               <Button
+               onClick={handleProgramar}
+               disabled={cargandoCatalogos || !destinoSel || !idHorarioSel || !placaSel || guardando}
+               size="sm"
+               className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs gap-2"
+             >
+               {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+               {guardando ? 'Programando...' : 'Agregar a Andén'}
+             </Button>
           </div>
         </CardContent>
       </Card>

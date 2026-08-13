@@ -33,3 +33,6 @@ dev-dist
 
 # Memoria de sesion local (contiene credenciales)
 MEMORIA_SESION.md
+
+# Lockfiles de LibreOffice (al editar .xlsx)
+.~lock.*#*

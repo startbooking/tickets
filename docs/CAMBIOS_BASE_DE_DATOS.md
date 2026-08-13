@@ -102,3 +102,75 @@ ALTER TABLE planillas DROP COLUMN forma_pago;
   del cajero, `id_orides_2` = destino) y los consecutivos
   `consecutivo_pasajero` / `consecutivo_planilla` de `parametros` (que se
   incrementan en cada venta).
+
+## Tabla: `rutas` — columna `id_horario` (Migración 004)
+
+### Columna añadida
+
+| Columna | Tipo | Null | Default | Posición |
+|---------|------|------|---------|----------|
+| `id_horario` | `INT` | NULL | `NULL` | Después de `hora_ruta` |
+
+### Propósito
+
+Persistir el horario de salida de una ruta en lugar de almacenar la hora como
+texto plano. La tabla `horario` dispone de `id_horario` (PK), `hora_horario`
+(display para el usuario) y `hora_time` (`TIME`, valor real).
+
+- `GET /horario/` → lista los horarios disponibles.
+- `POST /rutas/crear` → recibe `id_horario` y lo almacena en `rutas.id_horario`.
+- Anulable para no romper registros históricos que no tengan horario asociado.
+
+### SQL aplicado (ver `migrations/004-id_horario_rutas.sql`)
+
+```sql
+ALTER TABLE rutas
+  ADD COLUMN id_horario INT DEFAULT NULL
+  AFTER hora_ruta;
+```
+
+### Rollback
+
+```sql
+ALTER TABLE rutas
+  DROP COLUMN id_horario;
+```
+
+## Tabla: `rutas` — columna `id_conduce` (Migración 005)
+
+### Columna añadida
+
+| Columna | Tipo | Null | Default | Posición |
+|---------|------|------|---------|----------|
+| `id_conduce` | `INT` | NULL | `NULL` | Después de `conduce_ruta` |
+
+### Propósito
+
+Persistir el N° de conduce seleccionado desde la tabla `concedes`
+(`id_conduce` + `desc_conduce`) en lugar de depender solo del texto descriptivo
+legacy `conduce_ruta` (`CHAR(100)`). Se persiste el `id_conduce` numérico para
+integridad referencial.
+
+- `GET /conduces/` → lista los conductores disponibles (`ConduceOption`).
+- `POST /rutas/crear` → recibe `id_conduce` y lo almacena en `rutas.id_conduce`.
+- El campo `conduce_ruta` queda como respaldo del texto descriptivo (legacy).
+- Anulable para no romper registros históricos sin conduce asociado.
+- **Aplicada a `travelSoft` el 2026-08-13.** El backend de `crear_ruta` ahora
+  resuelve automáticamente `conduce_ruta` (texto) desde `concedes.desc_conduce`
+  cuando llega `id_conduce`, y permite crear rutas sin conduce (flujo del
+  despachador, que solo exige destino/hora/placa).
+
+### SQL aplicado (ver `migrations/005-id_conduce_rutas.sql`)
+
+```sql
+ALTER TABLE rutas
+  ADD COLUMN id_conduce INT DEFAULT NULL
+  AFTER conduce_ruta;
+```
+
+### Rollback
+
+```sql
+ALTER TABLE rutas
+  DROP COLUMN id_conduce;
+```

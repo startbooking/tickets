@@ -208,6 +208,12 @@ export interface HorarioOption {
   hora_time: string | null;
 }
 
+/** Conduce de documento de tránsito (tabla `concedes`). */
+export interface ConduceOption {
+  id_conduce: number;
+  desc_conduce: string | null;
+}
+
 export interface ConductorOption {
   cedula_conduc: string;
   nombre_conduc: string;
@@ -325,9 +331,24 @@ export interface VehiculoOption {
   estado_vehi?: string;
 }
 
+/** Conductor asociado a un vehículo (GET /vehiculos/{placa}/conductores). */
+export interface VehiculoConductor {
+  cedula_conduc: string;
+  nombre_conduc?: string | null;
+  estado_conduc?: string;
+  titular?: number;
+}
+
+/** Respuesta de GET /vehiculos/{placa}/conductores. */
+export interface VehiculoConductoresRespuesta {
+  conductores: VehiculoConductor[];
+  ultimo_conduc?: string | null;
+}
+
 export interface RutaCreateInput {
   destino_ruta: number;
   hora_ruta: number;
+  id_horario?: number;
   hora_programada?: string;
   placa_vehi: string;
   numero_orden?: string;
@@ -336,7 +357,10 @@ export interface RutaCreateInput {
   cedula_conduc2?: string;
   cedula_auxi?: string;
   conduce_ruta?: string;
+  id_conduce?: number;
   fecha_ruta?: string;
+  fecha_regreso?: string;
+  hora_regreso?: string;
 }
 
 export interface RutaTipoOption {
@@ -942,6 +966,11 @@ export const travelsoftService = {
     const response = await apiClient.get<HorarioOption[]>("/horario/", { params: { limit: 500 } });
     return response.data;
   },
+  /** Conduces / N° de conduce de documento de tránsito (GET /conduces/). */
+  getConduces: async (): Promise<ConduceOption[]> => {
+    const response = await apiClient.get<ConduceOption[]>("/conduces/", { params: { limit: 500 } });
+    return response.data;
+  },
   getConductores: async (): Promise<ConductorOption[]> => {
     const response = await apiClient.get<ConductorOption[]>("/conductores", { params: { limit: 500 } });
     return response.data;
@@ -951,9 +980,21 @@ export const travelsoftService = {
     const response = await apiClient.get<VehiculoOption[]>("/vehiculos", { params: { limit: 500 } });
     return response.data;
   },
+  /** Conductores asociados a un vehículo (GET /vehiculos/{placa}/conductores). */
+  getConductoresVehiculo: async (placa: string): Promise<VehiculoConductor[]> => {
+    const response = await apiClient.get<VehiculoConductoresRespuesta>(
+      `/vehiculos/${encodeURIComponent(placa)}/conductores`
+    );
+    return response.data;
+  },
   /** Destinos válidos según recorridos activos desde un origen (GET /recorridos/destinos). */
   getRecorridoDestinos: async (origen: number): Promise<OridesOption[]> => {
     const response = await apiClient.get<OridesOption[]>("/recorridos/destinos", { params: { origen } });
+    return response.data;
+  },
+  /** Lista de recorridos (Id_recorrido + desc_recorrido). */
+  getRecorridos: async (): Promise<{id_recorrido: number; desc_recorrido: string}[]> => {
+    const response = await apiClient.get<{id_recorrido: number; desc_recorrido: string}[]>("/recorridos", { params: { limit: 500 } });
     return response.data;
   },
 

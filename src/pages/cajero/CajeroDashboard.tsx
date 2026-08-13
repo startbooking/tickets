@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { manifiestoListadoTexto, manifiestoTotalesTexto } from '@/services/ticketFiscalService';
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
@@ -913,14 +913,17 @@ function NuevaRutaDialog({
   onCreada: () => void;
 }) {
   const [orides, setOrides] = useState<OridesOption[]>([]);
-  const [conductores, setConductores] = useState<ConductorOption[]>([]);
+  const [conductoresVehiculo, setConductoresVehiculo] = useState<ConductorOption[]>([]);
   const [vehiculos, setVehiculos] = useState<VehiculoOption[]>([]);
+  const [horarios, setHorarios] = useState<HorarioOption[]>([]);
+  const [concedes, setConcedes] = useState<ConduceOption[]>([]);
+  const [recorridos, setRecorridos] = useState<{ id_recorrido: number; desc_recorrido: string }[]>([]);
   const [tiposServicio, setTiposServicio] = useState<RutaTipoOption[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
   const [destino, setDestino] = useState('');
-  const [horaSalida, setHoraSalida] = useState('');
+  const [idHorario, setIdHorario] = useState('');
   const [numeroOrden, setNumeroOrden] = useState('');
   const [placa, setPlaca] = useState('');
   const [tipoServicio, setTipoServicio] = useState('');
@@ -928,35 +931,33 @@ function NuevaRutaDialog({
   const [mostrarErrores, setMostrarErrores] = useState(false);
   const [conductorAux, setConductorAux] = useState('');
   const [auxiliarViaje, setAuxiliarViaje] = useState('');
-  const [conduce, setConduce] = useState('');
+  const [conduceId, setConduceId] = useState('');
   const [destinosRecorrido, setDestinosRecorrido] = useState<OridesOption[]>([]);
-
-  const horariosSalida = useMemo(() => {
-    const times: string[] = [];
-    for (let h = 3; h <= 23; h++) {
-      const labels: number[] = [0, 15, 30, 45];
-      for (const m of labels) {
-        const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-        times.push(time);
-      }
-    }
-    return times;
-  }, []);
 
   const cargarCatalogos = useCallback(async () => {
     setCargandoCatalogos(true);
     try {
-      const [o, c, v, destinosRecorrido] = await Promise.all([
+      const [o, v, hh, dr, rr, cc] = await Promise.all([
         travelsoftService.getOrides(),
-        travelsoftService.getConductores(),
         travelsoftService.getVehiculosDropdown(),
+        travelsoftService.getHorarios(),
         travelsoftService.getRecorridoDestinos(idOrigen),
+        travelsoftService.getRecorridos(),
+        travelsoftService.getConduces(),
       ]);
       setOrides(o);
-      setConductores(c.filter((x) => (x.estado_conduc ?? '1') === '1'));
       setVehiculos(v.filter((x) => (x.estado_vehi ?? '1') === '1'));
+      setHorarios(
+        hh
+          .filter((x) => x.hora_time !== null && x.hora_time !== '')
+          .sort((a, b) => (a.hora_time ?? '').localeCompare(b.hora_time ?? ''))
+      );
+      setConcedes(
+        (cc ?? []).filter((c) => c.id_conduce != null && (c.desc_conduce ?? '').trim() !== '')
+      );
       setTiposServicio(await travelsoftService.getRutasTipos());
-      setDestinosRecorrido(destinosRecorrido);
+      setDestinosRecorrido(dr);
+      setRecorridos(rr);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
     } finally {
@@ -967,6 +968,13 @@ function NuevaRutaDialog({
   useEffect(() => {
     if (open) {
       setMostrarErrores(false);
+      setIdHorario('');
+      setConductor('');
+      setConductorAux('');
+      setAuxiliarViaje('');
+      setPlaca('');
+      setConduceId('');
+      setConductoresVehiculo([]);
       void cargarCatalogos();
     }
   }, [open, cargarCatalogos]);
@@ -992,8 +1000,35 @@ function NuevaRutaDialog({
     if (placa) {
       const vehiculo = vehiculosDisponibles.find((v) => v.placa_vehi === placa);
       setNumeroOrden(vehiculo?.orden_vehi ?? '');
+      setConductor('');
+      setConductorAux('');
+      setAuxiliarViaje('');
+      setConductoresVehiculo([]);
+      travelsoftService
+        .getConductoresVehiculo(placa)
+        .then((data: VehiculoConductoresRespuesta) => {
+          setConductoresVehiculo(
+            data.conductores.map((x) => ({
+              cedula_conduc: x.cedula_conduc,
+              nombre_conduc: x.nombre_conduc ?? x.cedula_conduc,
+              estado_conduc: x.estado_conduc ?? '1',
+            }))
+          );
+          const titular = data.conductores.find((x) => Number(x.titular) === 1);
+          const preseleccion =
+            titular?.cedula_conduc ??
+            data.conductores.find((x) => x.cedula_conduc === data.ultimo_conduc)
+              ?.cedula_conduc ??
+            '';
+          setConductor(preseleccion);
+        })
+        .catch((err) => {
+          setConductoresVehiculo([]);
+          console.error('No se pudieron cargar los conductores del vehículo:', err);
+        });
     } else {
       setNumeroOrden('');
+      setConductoresVehiculo([]);
     }
   }, [placa, vehiculosDisponibles]);
 
@@ -1006,11 +1041,12 @@ function NuevaRutaDialog({
   const erroresRuta = useMemo<string[]>(() => {
     const e: string[] = [];
     if (!destino) e.push('Seleccione el destino.');
-    if (!horaSalida) e.push('Ingrese la hora de salida.');
+    if (!idHorario) e.push('Ingrese la hora de salida.');
     if (!placa) e.push('Seleccione el vehículo.');
-    if (!conduce.trim()) e.push('Debe asignar el número de conduce.');
+    if (!conduceId) e.push('Debe asignar el número de conduce.');
     return e;
-  }, [destino, horaSalida, placa, conduce]);
+
+  }, [destino, idHorario, placa, conduceId]);
 
   const handleGuardar = async () => {
     if (erroresRuta.length > 0) {
@@ -1018,21 +1054,29 @@ function NuevaRutaDialog({
       toast.error(erroresRuta[0]);
       return;
     }
-    setMostrarErrores(false);
+     setMostrarErrores(false);
+
+    const horarioSel = horarios.find((x) => String(x.id_horario) === idHorario);
+    const horaTime = horarioSel?.hora_time ?? null;
+    const horaRuta = horaTime ? horaAMinutos(horaTime.slice(0, 5)) : 0;
+    const horaProgramada = horaTime ? horaTime.slice(0, 5) : undefined;
+
+     const concedeSel = concedes.find((c) => String(c.id_conduce) === conduceId);
 
     setGuardando(true);
     try {
       const res = await travelsoftService.crearRuta({
         destino_ruta: Number(destino),
-        hora_ruta: horaAMinutos(horaSalida),
-        hora_programada: horaSalida || undefined,
+        hora_ruta: horaRuta,
+        id_horario: horarioSel?.id_horario ?? undefined,
+        hora_programada: horaProgramada,
         placa_vehi: placa,
-        numero_orden: numeroOrden.trim() || undefined,
+        numero_orden: (numeroOrden || '').trim().replace(/\D/g, '').slice(0, 6) || undefined,
         id_ruta_tipo: tipoServicio ? Number(tipoServicio) : undefined,
         cedula_conduc: conductor || undefined,
         cedula_conduc2: conductorAux || undefined,
         cedula_auxi: auxiliarViaje || undefined,
-        conduce_ruta: conduce.trim().toUpperCase() || undefined,
+        id_conduce: concedeSel?.id_conduce ?? undefined,
       });
       toast.success(`Ruta ${res.cod_ruta} creada en estado por despachar.`);
       onOpenChange(false);
@@ -1094,25 +1138,25 @@ function NuevaRutaDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
-              <Select value={horaSalida} onValueChange={setHoraSalida}>
-                <SelectTrigger className={cn(mostrarErrores && !horaSalida && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+              <Select value={idHorario} onValueChange={setIdHorario}>
+                <SelectTrigger className={cn(mostrarErrores && !idHorario && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
                   <SelectValue placeholder="Seleccione la hora de salida" />
                 </SelectTrigger>
                 <SelectContent>
-                  {horariosSalida.map((h) => (
-                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                  {horarios.map((x) => (
+                    <SelectItem key={x.id_horario} value={String(x.id_horario)}>{x.hora_horario}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold text-slate-600">Número de orden <span className="text-slate-400 font-normal">(6 dígitos, único por Secretaría)</span></Label>
+              <Label className="text-[11px] font-bold text-slate-600">Número de orden <span className="text-slate-400 font-normal"></span></Label>
               <Input
                 value={numeroOrden}
-                onChange={(e) => setNumeroOrden(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="######"
+                readOnly
+                placeholder={placa ? "Sin orden asignado" : "Se asigna al elegir el vehículo"}
                 maxLength={6}
-                className={cn(mostrarErrores && !numeroOrden && "border-red-400 ring-1 ring-red-300 bg-red-50")}
+                className="bg-slate-100 text-slate-500"
               />
             </div>
             <div className="space-y-1.5">
@@ -1150,9 +1194,16 @@ function NuevaRutaDialog({
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Conductor</Label>
               <Select value={conductor} onValueChange={setConductor}>
-                <SelectTrigger><SelectValue placeholder="Seleccione el conductor" /></SelectTrigger>
+                <SelectTrigger className={cn(mostrarErrores && !conductor && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+                  <SelectValue placeholder={placa ? "Seleccione el conductor" : "Primero elija el vehículo"} />
+                </SelectTrigger>
                 <SelectContent>
-                  {conductores.map((c) => (
+                  {conductoresVehiculo.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">
+                      {placa ? "Este vehículo no tiene conductores asignados." : "Elija primero el vehículo."}
+                    </div>
+                  )}
+                  {conductoresVehiculo.map((c) => (
                     <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
                       {c.nombre_conduc} ({c.cedula_conduc})
                     </SelectItem>
@@ -1166,7 +1217,7 @@ function NuevaRutaDialog({
                 <SelectTrigger><SelectValue placeholder="Ninguno" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Ninguno</SelectItem>
-                  {conductores.map((c) => (
+                  {conductoresVehiculo.map((c) => (
                     <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
                       {c.nombre_conduc} ({c.cedula_conduc})
                     </SelectItem>
@@ -1180,7 +1231,10 @@ function NuevaRutaDialog({
                 <SelectTrigger><SelectValue placeholder="Ninguno" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Ninguno</SelectItem>
-                  {conductores.map((c) => (
+                  {conductoresVehiculo.length === 0 && !placa && (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">Elija primero el vehículo.</div>
+                  )}
+                  {conductoresVehiculo.map((c) => (
                     <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
                       {c.nombre_conduc} ({c.cedula_conduc})
                     </SelectItem>
@@ -1190,12 +1244,19 @@ function NuevaRutaDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">N° Conduce <span className="text-red-500">*</span> <span className="text-slate-400 font-normal">(documento de tránsito exigido al conductor)</span></Label>
-              <Input
-                value={conduce}
-                onChange={(e) => setConduce(e.target.value)}
-                placeholder="Ej: 120000345"
-                className={cn(mostrarErrores && !conduce.trim() && "border-red-400 ring-1 ring-red-300 bg-red-50")}
-              />
+              <Select value={conduceId} onValueChange={setConduceId}>
+                <SelectTrigger className={cn(mostrarErrores && !conduceId && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+                  <SelectValue placeholder="Seleccione el conduce" />
+                </SelectTrigger>
+                <SelectContent>
+                  {concedes.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">Sin concedes disponibles.</div>
+                  )}
+                  {concedes.map((c) => (
+                    <SelectItem key={c.id_conduce} value={String(c.id_conduce)}>{c.desc_conduce}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         )}
