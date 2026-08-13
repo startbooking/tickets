@@ -174,3 +174,59 @@ ALTER TABLE rutas
 ALTER TABLE rutas
   DROP COLUMN id_conduce;
 ```
+
+## Tabla: `usuario` — rol, password_hash, token_version (Migración 006)
+
+### Contexto
+
+`travelSoft` (BD activa del service) ya tiene `rol`, `password_hash`,
+`token_version` y `estado_usuario` (usuarios demo insertados el 2026-08-12).
+La BD `travellocal` (usada cuando el backend corre con el `.env` local, sin el
+systemd service) **no** las tenía: faltaban `rol`, `password_hash` y
+`token_version`. `nivel_usuario` y `estado_usuario` ya existían y no se tocan.
+
+### Columnas añadidas (solo si faltan, migración idempotente)
+
+| Columna | Tipo | Null | Default |
+|---------|------|------|---------|
+| `rol` | `VARCHAR(20)` | NO | `CAJERO` |
+| `password_hash` | `VARCHAR(255)` | YES | `NULL` |
+| `token_version` | `INT` | NO | `0` |
+
+### Nota técnica
+
+MySQL 8.x (versión del servidor: 8.4.10) **no soporta** `ADD COLUMN IF NOT
+EXISTS` (eso es MariaDB). Se usa el patrón `information_schema.columns` +
+`PREPARE`/`EXECUTE` para que la migración sea re-ejecutable sin errores.
+
+### SQL aplicado (ver `migrations/006-usuario-schema-sync.sql`)
+
+```sql
+USE travellocal;
+
+SET @db = 'travellocal';
+-- rol
+SET @sql_rol = (SELECT IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = @db AND table_name = 'usuario' AND column_name = 'rol'),
+    'SELECT 1',
+    'ALTER TABLE usuario ADD COLUMN rol VARCHAR(20) NOT NULL DEFAULT ''CAJERO'' AFTER clave_usuario'));
+PREPARE stmt_rol FROM @sql_rol; EXECUTE stmt_rol; DEALLOCATE PREPARE stmt_rol;
+-- ... (password_hash y token_version análogos: ver el archivo completo)
+```
+
+### Rollback
+
+```sql
+ALTER TABLE travellocal.usuario
+  DROP COLUMN rol,
+  DROP COLUMN password_hash,
+  DROP COLUMN token_version;
+```
+
+### Nota
+
+Solo afecta al entorno local. El service activo lee siempre `travelSoft`
+(systemd sobreescribe `DB_DATABASE=travelSoft` sobre el `.env`). El backend
+autentica con `SELECT * FROM usuario WHERE cedula_usuario = %s`, así que con
+estas columnas presentes el flujo local de login ya es compatible.
