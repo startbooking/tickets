@@ -73,7 +73,7 @@ Ver la version instalada:
    BLUETOOTH_SCAN, BLUETOOTH_CONNECT (Android 12+) y POST_NOTIFICATIONS
    (Android 13+). Concederlos todos.
 2) Encender Bluetooth desde la barra superior de la PDA.
-3) Abrir la app "SACTel Tickets": carga la web (tickets.sactel.cloud) y
+3) Abrir la app "SACTel Tickets": carga la web (travelsoft.plus) y
    arranca solo el servicio de impresion (notificacion "PDA Print Service").
 4) En la web, dentro de la app, hacer "Test impresora" para comprobar.
    (Si no arranco el servicio, la web tambien intenta otras vias:

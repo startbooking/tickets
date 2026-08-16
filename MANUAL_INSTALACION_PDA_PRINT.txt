@@ -26,7 +26,7 @@ Fecha: 2026-08-07
 Una sola app Android ("SACTel Sistema de Tickets on Line", paquete
 com.sactel.tickets) que combina:
 
-  a) Un WebView que carga la PWA de tickets: https://tickets.sactel.cloud
+  a) Un WebView que carga la PWA de tickets: https://travelsoft.plus
   b) Un servicio en primer plano (PrintService) que hostea un servidor
      WebSocket en ws://127.0.0.1:8080 y, al recibir el ticket en base64
      ESC/POS, imprime en la impresora integrada por Bluetooth SPP
@@ -95,7 +95,7 @@ Datos del APK actual:
     package: com.sactel.tickets
     versionCode: 1 / versionName: 1.0
     compileSdk/targetSdk: 34 (Android 14), minSdk 21
-    URL cargada en WebView: https://tickets.sactel.cloud
+    URL cargada en WebView: https://travelsoft.plus
     permisos: BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT,
               ACCESS_FINE_LOCATION, INTERNET, FOREGROUND_SERVICE,
               POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, BIND_DEVICE_ADMIN
@@ -194,7 +194,7 @@ sactel-pda-web/
        ├─ AndroidManifest.xml
        ├─ res/xml/device_admin.xml, network_security_config.xml
        └─ java/com/sactel/tickets/
-          ├─ MainActivity.kt    # WebView (tickets.sactel.cloud) + arranca servicio
+          ├─ MainActivity.kt    # WebView (travelsoft.plus) + arranca servicio
           ├─ PrintService.kt    # foreground service + servidor WS 127.0.0.1:8080
           ├─ PrinterDriver.kt   # impresión por Bluetooth SPP a InnerPrinter
           ├─ BootReceiver.kt    # auto-inicio al encender la PDA
@@ -214,7 +214,7 @@ sactel-pda-web/
   y es OBLIGATORIO que la web corre EN LA MISMA PDA (dentro de la app).
 - La web no carga en el WebView:
   Verifica conectividad a internet en la PDA; la app exige HTTPS válido
-  (network_security_config) a tickets.sactel.cloud.
+  (network_security_config) a travelsoft.plus.
 - Permiso de Bluetooth denegado: concede manualmente desde Ajustes.
 - Error de tipo "Failed to execute requestDevice" (Web Bluetooth):
   Normal: InnerPrinter es Bluetooth CLASICO (SPP), no BLE.

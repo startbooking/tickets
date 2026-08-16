@@ -19,6 +19,7 @@ dev-dist
 .env.local.bak
 .env.production.bak
 .env*.bak
+.env*.bak.*
 
 # Editor directories and files
 .vscode/*

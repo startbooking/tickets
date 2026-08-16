@@ -23,7 +23,7 @@ import android.webkit.WebViewClient
  */
 class MainActivity : Activity() {
 
-    private val APP_URL = "https://tickets.sactel.cloud"
+    private val APP_URL = "https://travelsoft.plus"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +69,8 @@ class MainActivity : Activity() {
     }
 
     private fun esSactel(host: String): Boolean =
-        host == "tickets.sactel.cloud" || host.endsWith(".sactel.cloud")
+        host == "travelsoft.plus" || host.endsWith(".travelsoft.plus") ||
+            host == "tickets.sactel.cloud" || host.endsWith(".sactel.cloud")
 
     private fun permisosNecesarios(): List<String> {
         val lista = mutableListOf<String>()
