@@ -39,6 +39,7 @@ export interface VehiculoEstado {
   destino_ruta: number | null;
   fecha_ruta: string | null;
   placa_vehi: string | null;
+  orden_vehi?: string | null;
   destino: string | null;
   hora_ruta: number | null;
   habilitada_ruta: string | null;
@@ -61,6 +62,7 @@ export interface DashboardCajeroData {
     despachados: number;
     en_plataforma: number;
     proximos: number;
+    programados: number;
     total: number;
   } | null;
   vehiculos: {
@@ -73,6 +75,36 @@ export interface DashboardCajeroData {
 export interface DashboardCajeroResponse {
   success: boolean;
   data: DashboardCajeroData;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Programación de vehículos (tabla `adicional`): vehículos programados y ya
+// despachados de la agencia del usuario autenticado en la fecha consultada.
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface ProgramacionVehiculo extends VehiculoEstado {
+  cod_adicional: number;
+}
+
+export interface ProgramacionVehiculosData {
+  fecha: string;
+  id_orides: number;
+  agencia: string | null;
+  tipo_agencia: TipoAgencia;
+  resumen: {
+    programados: number;
+    despachados: number;
+    total: number;
+  } | null;
+  vehiculos: {
+    programados: ProgramacionVehiculo[];
+    despachados: ProgramacionVehiculo[];
+  } | null;
+}
+
+export interface ProgramacionVehiculosResponse {
+  success: boolean;
+  data: ProgramacionVehiculosData;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -94,6 +126,7 @@ export interface SateliteVehiculo {
   cod_ruta: number;
   fecha_ruta: string | null;
   placa_vehi: string | null;
+  orden_vehi?: string | null;
   hora_ruta: number | null;
   hora_despacho: string | null;
   despachada_ruta?: string | null;
@@ -174,6 +207,7 @@ export interface EnTransitoItem {
   origen: string | null;
   destino: string | null;
   placa_vehi: string | null;
+  orden_vehi?: string | null;
   hora_ruta: number | null;
   hora_despacho: string | null;
   hora_llegada: string | null;
@@ -200,6 +234,16 @@ export interface OridesOption {
   agencia_orides?: string;
   despacho_orides?: string;
   tipo_agencia?: string | null;
+}
+
+/** Recorrido (tabla `recorrido`): descripción + origen/destino/sentido. */
+export interface RecorridoOption {
+  Id_recorrido: number;
+  desc_recorrido: string | null;
+  origen: number;
+  destino: number;
+  sentido: number;
+  tiempo_viaje?: number | null;
 }
 
 export interface HorarioOption {
@@ -347,6 +391,7 @@ export interface VehiculoConductoresRespuesta {
 
 export interface RutaCreateInput {
   destino_ruta: number;
+  id_recorrido?: number;
   hora_ruta: number;
   id_horario?: number;
   hora_programada?: string;
@@ -518,6 +563,7 @@ export interface ManifiestoDespacho {
   };
   conductores: { cedula: string; nombre?: string | null }[];
   auxiliar?: { cedula: string; nombre?: string | null } | null;
+  conduce?: string | number | null;
   pasajeros: ManifiestoPasajero[];
   totales: { pasajeros: number; total_venta_cajero: number };
 }
@@ -690,6 +736,20 @@ export function splitNombreCompleto(nombreCompleto: string): { nombres: string; 
 }
 
 /**
+ * Convierte una duración ISO 8601 ("PT2H5M", "PT30M") a minutos desde
+ * medianoche. El backend entrega `horario.hora_time` en ese formato.
+ */
+export function horaDurationAMinutos(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso.trim());
+  if (!m) return 0;
+  const h = parseInt(m[1] || '0', 10);
+  const mi = parseInt(m[2] || '0', 10);
+  const s = parseInt(m[3] || '0', 10);
+  return h * 60 + mi + Math.round(s / 60);
+}
+
+/**
  * Convierte minutos desde medianoche (hora_ruta de TravelSoft) a "HH:MM".
  */
 export function formatHora(minutos: number | null | undefined): string {
@@ -772,6 +832,23 @@ export const travelsoftService = {
     const payload = response.data;
     if (!payload || payload.success !== true || !payload.data) {
       throw new Error("No se pudieron cargar las estadísticas de vehículos.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * Programación de vehículos del día (tabla `adicional`) para la agencia
+   * del usuario autenticado. GET /despacho/programacion?fecha=YYYY-MM-DD.
+   * Devuelve vehículos programados (despachada_adicional = '0') y
+   * despachados ('1') con conductor, destino, capacidad y tiquetes vendidos.
+   */
+  getProgramacionVehiculos: async (fecha?: string): Promise<ProgramacionVehiculosData> => {
+    const response = await apiClient.get<ProgramacionVehiculosResponse>("/despacho/programacion", {
+      params: fecha ? { fecha } : undefined,
+    });
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudieron cargar los vehículos programados.");
     }
     return payload.data;
   },
@@ -981,7 +1058,7 @@ export const travelsoftService = {
     return response.data;
   },
   /** Conductores asociados a un vehículo (GET /vehiculos/{placa}/conductores). */
-  getConductoresVehiculo: async (placa: string): Promise<VehiculoConductor[]> => {
+  getConductoresVehiculo: async (placa: string): Promise<VehiculoConductoresRespuesta> => {
     const response = await apiClient.get<VehiculoConductoresRespuesta>(
       `/vehiculos/${encodeURIComponent(placa)}/conductores`
     );
@@ -992,9 +1069,9 @@ export const travelsoftService = {
     const response = await apiClient.get<OridesOption[]>("/recorridos/destinos", { params: { origen } });
     return response.data;
   },
-  /** Lista de recorridos (Id_recorrido + desc_recorrido). */
-  getRecorridos: async (): Promise<{id_recorrido: number; desc_recorrido: string}[]> => {
-    const response = await apiClient.get<{id_recorrido: number; desc_recorrido: string}[]>("/recorridos", { params: { limit: 500 } });
+  /** Lista de recorridos (Id_recorrido + desc_recorrido + origen/destino/sentido). */
+  getRecorridos: async (): Promise<RecorridoOption[]> => {
+    const response = await apiClient.get<RecorridoOption[]>("/recorridos", { params: { limit: 500 } });
     return response.data;
   },
 

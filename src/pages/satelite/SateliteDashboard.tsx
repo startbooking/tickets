@@ -760,7 +760,7 @@ function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: Sat
       <div className="p-3 pb-2 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-mono font-black text-white text-sm">{v.placa_vehi || 'SIN PLACA'}</span>
+            <span className="font-mono font-black text-white text-sm">{v.orden_vehi || v.placa_vehi || 'SIN ORDEN'}</span>
             <Badge className="bg-slate-900 text-emerald-300 border-slate-700 text-[9px] font-bold">Ruta {v.cod_ruta}</Badge>
             <EstadoVehiculoBadge estado={v.estado} />
           </div>

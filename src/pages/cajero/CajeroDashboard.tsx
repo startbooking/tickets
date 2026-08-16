@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, DashboardCajeroData, VehiculoEstado, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { manifiestoListadoTexto, manifiestoTotalesTexto } from '@/services/ticketFiscalService';
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
@@ -549,34 +549,63 @@ function SubViewInicio({
       {/* Agencia principal: estadísticas reales de vehículos */}
       {!loading && dashboard?.tipo_agencia === 'principal' && resumen && vehiculos && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="bg-white border-slate-200 shadow-sm">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <button
+              type="button"
+              onClick={() => setSeccion('despacho')}
+              className="text-left group bg-white border border-slate-200 shadow-sm rounded-xl hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer"
+            >
+              <CardContent className="pt-4 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Programados</span>
+                  <h3 className="text-xl font-black text-slate-900">{resumen.programados}</h3>
+                  <span className="text-[10px] font-bold text-emerald-600 group-hover:underline">Ver programación →</span>
+                </div>
+                <div className="p-3 bg-slate-50 text-slate-500 rounded-xl"><Clock className="w-5 h-5" /></div>
+              </CardContent>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSeccion('despacho')}
+              className="text-left group bg-white border border-slate-200 shadow-sm rounded-xl hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer"
+            >
               <CardContent className="pt-4 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">En Plataforma</span>
                   <h3 className="text-xl font-black text-slate-900">{resumen.en_plataforma}</h3>
+                  <span className="text-[10px] font-bold text-emerald-600 group-hover:underline">Ver programación →</span>
                 </div>
                 <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Bus className="w-5 h-5" /></div>
               </CardContent>
-            </Card>
-            <Card className="bg-white border-slate-200 shadow-sm">
+            </button>
+            <button
+              type="button"
+              onClick={() => setSeccion('despacho')}
+              className="text-left group bg-white border border-slate-200 shadow-sm rounded-xl hover:shadow-md hover:border-amber-300 transition-all cursor-pointer"
+            >
               <CardContent className="pt-4 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Próximos a Salir</span>
                   <h3 className="text-xl font-black text-slate-900">{resumen.proximos}</h3>
+                  <span className="text-[10px] font-bold text-amber-600 group-hover:underline">Ver programación →</span>
                 </div>
                 <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
               </CardContent>
-            </Card>
-            <Card className="bg-slate-900 text-white border-none shadow-md">
+            </button>
+            <button
+              type="button"
+              onClick={() => setSeccion('despacho')}
+              className="text-left group bg-slate-900 text-white border-none shadow-md rounded-xl hover:bg-slate-800 transition-all cursor-pointer"
+            >
               <CardContent className="pt-4 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Despachados (Salió)</span>
                   <h3 className="text-xl font-black text-emerald-400">{resumen.despachados}</h3>
+                  <span className="text-[10px] font-bold text-emerald-400 group-hover:underline">Ver programación →</span>
                 </div>
                 <div className="p-3 bg-slate-800 text-emerald-400 rounded-xl"><ArrowUpRight className="w-5 h-5" /></div>
               </CardContent>
-            </Card>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -646,7 +675,7 @@ function ListaVehiculos({
               <li key={v.cod_ruta} className="py-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-black text-slate-900 font-mono truncate">
-                    {v.placa_vehi || "SIN PLACA"}
+                    {v.orden_vehi || v.placa_vehi || "SIN ORDEN"}
                   </p>
                   <p className="text-[11px] text-slate-500 truncate">
                     {v.destino || "—"}
@@ -676,7 +705,7 @@ function ListaVehiculos({
 // 🚌 1b. SUBVISTA: DESPACHO DE VEHÍCULOS (solo agencia principal)
 // ─────────────────────────────────────────────────────────────────────────────
 function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstado) => void }) {
-  const [dashboard, setDashboard] = useState<DashboardCajeroData | null>(null);
+  const [programacion, setProgramacion] = useState<ProgramacionVehiculosData | null>(null);
   const [loading, setLoading] = useState(true);
   const [despachando, setDespachando] = useState<number | null>(null);
   const [imprimiendo, setImprimiendo] = useState<number | null>(null);
@@ -686,10 +715,10 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      setDashboard(await travelsoftService.getDashboardCajero());
+      setProgramacion(await travelsoftService.getProgramacionVehiculos());
     } catch (err) {
-      setDashboard(null);
-      console.error('Error al cargar rutas para despacho:', err);
+      setProgramacion(null);
+      console.error('Error al cargar la programación de vehículos:', err);
     } finally {
       setLoading(false);
     }
@@ -700,22 +729,30 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
   }, [cargar]);
 
   const despachables = useMemo(() => {
-    const v = dashboard?.vehiculos;
+    const v = programacion?.vehiculos;
     if (!v) return [];
-    return [...v.en_plataforma, ...v.proximos].sort(
+    return [...v.programados].sort(
       (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
     );
-  }, [dashboard]);
+  }, [programacion]);
+
+  const todos = useMemo(() => {
+    const v = programacion?.vehiculos;
+    if (!v) return [];
+    return [...v.programados, ...v.despachados].sort(
+      (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
+    );
+  }, [programacion]);
 
   const placasConRutaHoy = useMemo(() => {
-    const v = dashboard?.vehiculos;
+    const v = programacion?.vehiculos;
     const placas = new Set<string>();
     if (!v) return placas;
-    [...v.en_plataforma, ...v.proximos, ...v.despachados].forEach((x) => {
+    [...v.programados, ...v.despachados].forEach((x) => {
       if (x.placa_vehi) placas.add(x.placa_vehi);
     });
     return placas;
-  }, [dashboard]);
+  }, [programacion]);
 
   const handleDespachar = async (v: VehiculoEstado) => {
     setDespachando(v.cod_ruta);
@@ -742,12 +779,12 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
       toast.loading("Imprimiendo listado de pasajeros...", { id: `mani-${v.cod_ruta}` });
       const r1 = await imprimirTexto(manifiestoListadoTexto(manifiesto));
       toast.dismiss(`mani-${v.cod_ruta}`);
-      toast.loading("Imprimiendo documento de despacho...", { id: `mani2-${v.cod_ruta}` });
+      toast.loading("Imprimiendo informe de ventas...", { id: `mani2-${v.cod_ruta}` });
       await imprimirTexto(manifiestoTotalesTexto(manifiesto));
       toast.dismiss(`mani2-${v.cod_ruta}`);
-      toast.success(`Manifiesto impreso${r1 ? ` (${r1})` : ""}.`);
+      toast.success(`Listado e informe impresos${r1 ? ` (${r1})` : ""}.`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo imprimir el manifiesto.");
+      toast.error(err instanceof Error ? err.message : "No se pudo imprimir el listado de pasajeros.");
     } finally {
       setImprimiendo(null);
     }
@@ -767,19 +804,19 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
       <Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-slate-400">
           <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
-          <span className="text-xs font-bold tracking-wide">Cargando rutas del día...</span>
+          <span className="text-xs font-bold tracking-wide">Cargando programación del día...</span>
         </CardContent>
       </Card>
     );
   }
 
-  if (!dashboard) {
+  if (!programacion) {
     return (
       <Card className="bg-white border-rose-200 shadow-sm">
         <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-center">
           <AlertTriangle className="w-8 h-8 text-rose-500" />
           <div>
-            <h3 className="text-sm font-black text-slate-900">No se pudieron cargar las rutas</h3>
+            <h3 className="text-sm font-black text-slate-900">No se pudieron cargar los vehículos</h3>
             <p className="text-xs text-slate-500 mt-1">Verifica el backend e inténtalo de nuevo.</p>
           </div>
           <Button size="sm" variant="outline" className="text-xs font-bold gap-2 h-11 touch-list" onClick={() => void cargar()}>
@@ -796,12 +833,12 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
         <div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Programación de Vehículos</h2>
           <p className="text-xs text-slate-500">
-            Seleccione el vehículo listo en andén para marcar su salida hacia el destino.
+            Los vehículos habilitados en plataforma pueden vender tiquetes; al despachar quedan en tránsito.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[11px] font-bold">
-            {despachables.length} por despachar
+            {despachables.length} en plataforma
           </Badge>
           <Button size="sm" className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5" onClick={() => setDialogoNuevaRuta(true)}>
             <Plus className="w-3.5 h-3.5" /> Adicionar Ruta
@@ -811,76 +848,97 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
 
       <Card className="bg-white border-slate-200 shadow-sm">
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-xs font-bold uppercase text-emerald-600">Rutas del Día</CardTitle>
-          <CardDescription className="text-[11px]">Vehiculos habilitados y programados para salir hoy.</CardDescription>
+          <CardTitle className="text-xs font-bold uppercase text-emerald-600">Vehículos y Rutas del Día</CardTitle>
+          <CardDescription className="text-[11px]">
+            Vehículos habilitados de la agencia. Los de plataforma venden tiquetes; los en tránsito ya salieron.
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          {despachables.length === 0 ? (
-            <p className="text-xs text-slate-400 italic py-6 text-center">No hay vehículos pendientes de despacho.</p>
+          {todos.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-6 text-center">
+              No hay vehículos programados hoy. Use "Adicionar Ruta" para crear uno.
+            </p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {despachables.map((v) => (
-                <div key={v.cod_ruta} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0 flex items-center gap-2.5">
-                      <div className={cn(
-                        "p-2.5 rounded-xl shrink-0",
-                        v.habilitada_ruta === "1" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"
-                      )}>
+            <ul className="divide-y divide-slate-100">
+              {todos.map((v) => {
+                const habilitada = v.habilitada_ruta === '1';
+                const despachado = v.despachada_ruta === '1';
+                const enTransito = habilitada && despachado;
+                const estadoLabel = enTransito ? "En Tránsito" : habilitada ? "En Plataforma" : "No Habilitado";
+                const badgeClass = enTransito
+                  ? "bg-sky-100 text-sky-800 border-sky-200"
+                  : habilitada
+                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                    : "bg-slate-100 text-slate-600 border-slate-200";
+                const iconClass = enTransito
+                  ? "bg-sky-50 text-sky-600"
+                  : habilitada
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "bg-slate-50 text-slate-500";
+                return (
+                  <li key={`${v.cod_ruta}-${(v as { cod_adicional?: number }).cod_adicional ?? ''}`} className="py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn("p-2.5 rounded-xl shrink-0", iconClass)}>
                         <Bus className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-black text-slate-900 font-mono truncate">{v.orden_vehi || v.placa_vehi || "SIN ORDEN"}</p>
+                          <span className="text-[11px] font-bold text-slate-500 font-mono shrink-0">{formatHora(v.hora_ruta)}</span>
+                        </div>
                         <p className="text-[11px] text-slate-500 truncate">
                           {v.destino || "—"}
                           {v.conductor ? ` · ${v.conductor}` : ""}
                         </p>
                       </div>
                     </div>
-                    <Badge className={cn(
-                      "text-[10px] font-bold border shrink-0",
-                      v.habilitada_ruta === "1"
-                        ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                        : "bg-amber-100 text-amber-800 border-amber-200"
-                    )}>
-                      {v.habilitada_ruta === "1" ? "En plataforma" : "Programada"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-slate-700 font-mono">{formatHora(v.hora_ruta)}</span>
-                    <span className="flex items-center gap-3">
-                      {v.capacidad ? (
-                        <span className="text-slate-500 flex items-center gap-1">
-                          <Armchair className="w-3 h-3" /> {v.capacidad}
-                        </span>
-                      ) : null}
-                      <span className="flex items-center gap-1 font-bold text-emerald-700">
+                    <div className="flex items-center justify-between gap-2 sm:justify-end">
+                      <Badge className={cn("text-[10px] font-bold border shrink-0", badgeClass)}>
+                        {estadoLabel}
+                      </Badge>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 shrink-0">
                         <Ticket className="w-3 h-3" /> {v.tickets_vendidos ?? 0} vendidos
                       </span>
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-auto">
-                    <Button
-                      size="sm"
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
-                      disabled={despachando === v.cod_ruta || imprimiendo === v.cod_ruta}
-                      onClick={() => confirmarDespacho(v)}
-                    >
-                      {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : imprimiendo === v.cod_ruta ? <Printer className="w-3.5 h-3.5 animate-pulse" /> : <Send className="w-3.5 h-3.5" />}
-                      {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Despachar"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-[11px] gap-1.5"
-                      onClick={() => onVenderTicket(v)}
-                    >
-                      <Ticket className="w-3.5 h-3.5" /> Vender Ticket
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {habilitada && !despachado && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-[11px] gap-1.5"
+                            onClick={() => onVenderTicket(v)}
+                          >
+                            <Ticket className="w-3.5 h-3.5" /> Vender Ticket
+                          </Button>
+                        )}
+                        {habilitada && !despachado && (
+                          <Button
+                            size="sm"
+                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
+                            disabled={despachando === v.cod_ruta || imprimiendo === v.cod_ruta}
+                            onClick={() => confirmarDespacho(v)}
+                          >
+                            {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : imprimiendo === v.cod_ruta ? <Printer className="w-3.5 h-3.5 animate-pulse" /> : <Send className="w-3.5 h-3.5" />}
+                            {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Despachar"}
+                          </Button>
+                        )}
+                        {enTransito && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-sky-300 text-sky-700 hover:bg-sky-50 font-bold text-[11px] gap-1.5"
+                            disabled={imprimiendo === v.cod_ruta}
+                            onClick={() => void imprimirManifiesto(v)}
+                          >
+                            {imprimiendo === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                            {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Imprimir Listado"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </CardContent>
       </Card>
@@ -889,8 +947,8 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
         <NuevaRutaDialog
           open={dialogoNuevaRuta}
           onOpenChange={setDialogoNuevaRuta}
-          idOrigen={dashboard.id_orides}
-          nombreOrigen={dashboard.agencia ?? 'Agencia'}
+          idOrigen={programacion.id_orides}
+          nombreOrigen={programacion.agencia ?? 'Agencia'}
           placasConRutaHoy={placasConRutaHoy}
           onCreada={() => void cargar()}
         />
@@ -917,10 +975,11 @@ function NuevaRutaDialog({
   const [vehiculos, setVehiculos] = useState<VehiculoOption[]>([]);
   const [horarios, setHorarios] = useState<HorarioOption[]>([]);
   const [concedes, setConcedes] = useState<ConduceOption[]>([]);
-  const [recorridos, setRecorridos] = useState<{ id_recorrido: number; desc_recorrido: string }[]>([]);
+  const [recorridos, setRecorridos] = useState<RecorridoOption[]>([]);
   const [tiposServicio, setTiposServicio] = useState<RutaTipoOption[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [cargandoConductores, setCargandoConductores] = useState(false);
 
   const [destino, setDestino] = useState('');
   const [idHorario, setIdHorario] = useState('');
@@ -932,6 +991,7 @@ function NuevaRutaDialog({
   const [conductorAux, setConductorAux] = useState('');
   const [auxiliarViaje, setAuxiliarViaje] = useState('');
   const [conduceId, setConduceId] = useState('');
+  const [recorridoId, setRecorridoId] = useState('');
   const [destinosRecorrido, setDestinosRecorrido] = useState<OridesOption[]>([]);
 
   const cargarCatalogos = useCallback(async () => {
@@ -950,12 +1010,17 @@ function NuevaRutaDialog({
       setHorarios(
         hh
           .filter((x) => x.hora_time !== null && x.hora_time !== '')
-          .sort((a, b) => (a.hora_time ?? '').localeCompare(b.hora_time ?? ''))
+          .sort((a, b) => horaDurationAMinutos(a.hora_time) - horaDurationAMinutos(b.hora_time))
       );
       setConcedes(
         (cc ?? []).filter((c) => c.id_conduce != null && (c.desc_conduce ?? '').trim() !== '')
       );
-      setTiposServicio(await travelsoftService.getRutasTipos());
+      const tipos = await travelsoftService.getRutasTipos();
+      setTiposServicio(tipos);
+      const sinAire =
+        tipos.find((t) => t.id_ruta_tipo === 1) ??
+        tipos.find((t) => (t.desc_ruta_tipo ?? '').toUpperCase().includes('SIN AIRE'));
+      if (sinAire) setTipoServicio(String(sinAire.id_ruta_tipo));
       setDestinosRecorrido(dr);
       setRecorridos(rr);
     } catch (err) {
@@ -974,6 +1039,7 @@ function NuevaRutaDialog({
       setAuxiliarViaje('');
       setPlaca('');
       setConduceId('');
+      setRecorridoId('');
       setConductoresVehiculo([]);
       void cargarCatalogos();
     }
@@ -984,6 +1050,23 @@ function NuevaRutaDialog({
       ? destinosRecorrido.filter((o) => o.id_orides !== idOrigen && (o.desc_orides || '').trim())
       : orides.filter((o) => o.id_orides !== idOrigen && (o.desc_orides || '').trim());
   }, [destinosRecorrido, orides, idOrigen]);
+
+  // Recorridos cuyo origen y destino coinciden con los de la ruta (sentido 0 = salida)
+  const recorridosDeRuta = useMemo(() => {
+    if (!destino) return [];
+    return recorridos
+      .filter(
+        (r) =>
+          Number(r.origen) === idOrigen &&
+          Number(r.destino) === Number(destino) &&
+          Number(r.sentido) === 0
+      )
+      .sort((a, b) => (a.desc_recorrido ?? '').localeCompare(b.desc_recorrido ?? ''));
+  }, [recorridos, idOrigen, destino]);
+
+  useEffect(() => {
+    setRecorridoId('');
+  }, [destino, idOrigen]);
 
   const vehiculosDisponibles = useMemo(
     () => vehiculos.filter((v) => !placasConRutaHoy.has(v.placa_vehi)),
@@ -1004,6 +1087,7 @@ function NuevaRutaDialog({
       setConductorAux('');
       setAuxiliarViaje('');
       setConductoresVehiculo([]);
+      setCargandoConductores(true);
       travelsoftService
         .getConductoresVehiculo(placa)
         .then((data: VehiculoConductoresRespuesta) => {
@@ -1025,28 +1109,27 @@ function NuevaRutaDialog({
         .catch((err) => {
           setConductoresVehiculo([]);
           console.error('No se pudieron cargar los conductores del vehículo:', err);
-        });
+        })
+        .finally(() => setCargandoConductores(false));
     } else {
       setNumeroOrden('');
       setConductoresVehiculo([]);
+      setCargandoConductores(false);
     }
   }, [placa, vehiculosDisponibles]);
 
-  const horaAMinutos = (value: string): number => {
-    const [h, m] = value.split(':').map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
-    return h * 60 + m;
-  };
+  const horaAMinutos = horaDurationAMinutos;
 
   const erroresRuta = useMemo<string[]>(() => {
     const e: string[] = [];
     if (!destino) e.push('Seleccione el destino.');
+    if (!recorridoId) e.push('Seleccione el recorrido.');
     if (!idHorario) e.push('Ingrese la hora de salida.');
     if (!placa) e.push('Seleccione el vehículo.');
     if (!conduceId) e.push('Debe asignar el número de conduce.');
     return e;
 
-  }, [destino, idHorario, placa, conduceId]);
+  }, [destino, recorridoId, idHorario, placa, conduceId]);
 
   const handleGuardar = async () => {
     if (erroresRuta.length > 0) {
@@ -1058,8 +1141,8 @@ function NuevaRutaDialog({
 
     const horarioSel = horarios.find((x) => String(x.id_horario) === idHorario);
     const horaTime = horarioSel?.hora_time ?? null;
-    const horaRuta = horaTime ? horaAMinutos(horaTime.slice(0, 5)) : 0;
-    const horaProgramada = horaTime ? horaTime.slice(0, 5) : undefined;
+    const horaRuta = horaTime ? horaAMinutos(horaTime) : 0;
+    const horaProgramada = horaTime ? formatHora(horaAMinutos(horaTime)) : undefined;
 
      const concedeSel = concedes.find((c) => String(c.id_conduce) === conduceId);
 
@@ -1067,6 +1150,7 @@ function NuevaRutaDialog({
     try {
       const res = await travelsoftService.crearRuta({
         destino_ruta: Number(destino),
+        id_recorrido: recorridoId ? Number(recorridoId) : undefined,
         hora_ruta: horaRuta,
         id_horario: horarioSel?.id_horario ?? undefined,
         hora_programada: horaProgramada,
@@ -1137,6 +1221,30 @@ function NuevaRutaDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Recorrido <span className="text-red-500">*</span></Label>
+              <Select value={recorridoId} onValueChange={setRecorridoId} disabled={!destino}>
+                <SelectTrigger className={cn(
+                  "transition-colors",
+                  mostrarErrores && !recorridoId && "border-red-400 ring-1 ring-red-300 bg-red-50"
+                )}>
+                  <SelectValue placeholder={destino ? "Seleccione el recorrido" : "Primero elija el destino"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {recorridosDeRuta.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">
+                      {destino ? "No hay recorridos para este origen/destino." : "Elija primero el destino."}
+                    </div>
+                  )}
+                  {recorridosDeRuta.map((r) => (
+                    <SelectItem key={r.Id_recorrido} value={String(r.Id_recorrido)}>{r.desc_recorrido}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {destino && recorridosDeRuta.length > 0 && (
+                <p className="text-[10px] text-slate-400">Recorridos que coinciden con el origen y destino de la ruta.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Hora de salida</Label>
               <Select value={idHorario} onValueChange={setIdHorario}>
                 <SelectTrigger className={cn(mostrarErrores && !idHorario && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
@@ -1193,17 +1301,26 @@ function NuevaRutaDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Conductor</Label>
-              <Select value={conductor} onValueChange={setConductor}>
-                <SelectTrigger className={cn(mostrarErrores && !conductor && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
+              <Select value={conductor} onValueChange={setConductor} disabled={cargandoConductores}>
+                <SelectTrigger className={cn(
+                  "transition-colors",
+                  cargandoConductores && "cursor-wait",
+                  mostrarErrores && !conductor && "border-red-400 ring-1 ring-red-300 bg-red-50"
+                )}>
                   <SelectValue placeholder={placa ? "Seleccione el conductor" : "Primero elija el vehículo"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {conductoresVehiculo.length === 0 && (
+                  {cargandoConductores && (
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500 font-semibold">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" /> Cargando conductores de la placa...
+                    </div>
+                  )}
+                  {!cargandoConductores && conductoresVehiculo.length === 0 && (
                     <div className="px-3 py-2 text-xs text-slate-400 italic">
                       {placa ? "Este vehículo no tiene conductores asignados." : "Elija primero el vehículo."}
                     </div>
                   )}
-                  {conductoresVehiculo.map((c) => (
+                  {!cargandoConductores && conductoresVehiculo.map((c) => (
                     <SelectItem key={c.cedula_conduc} value={c.cedula_conduc}>
                       {c.nombre_conduc} ({c.cedula_conduc})
                     </SelectItem>
@@ -1211,6 +1328,10 @@ function NuevaRutaDialog({
                 </SelectContent>
               </Select>
             </div>
+            {/* TODO(2026-08-15): Campos "Conductor auxiliar" y "Auxiliar de viaje"
+                comentarizados para habilitarse más adelante. Se conservan los estados
+                conductorAux/auxiliarViaje y su envío en crearRuta (cedula_conduc2/cedula_auxi)
+                para cuando se reactiven.
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Conductor auxiliar <span className="text-slate-400 font-normal">(opcional)</span></Label>
               <Select value={conductorAux} onValueChange={(v) => setConductorAux(v === '__none__' ? '' : v)}>
@@ -1242,6 +1363,7 @@ function NuevaRutaDialog({
                 </SelectContent>
               </Select>
             </div>
+            */}
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">N° Conduce <span className="text-red-500">*</span> <span className="text-slate-400 font-normal">(documento de tránsito exigido al conductor)</span></Label>
               <Select value={conduceId} onValueChange={setConduceId}>
@@ -1492,7 +1614,7 @@ function SubViewLlegadas() {
                         <Bus className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.orden_vehi || v.placa_vehi || "SIN ORDEN"}</p>
                         <p className="text-[11px] text-slate-500 truncate">
                           Desde <strong className="text-slate-700">{v.origen || "—"}</strong>
                         </p>
@@ -1543,7 +1665,7 @@ function SubViewLlegadas() {
                         <Bus className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.placa_vehi || "SIN PLACA"}</p>
+                        <p className="text-xs font-black text-slate-900 font-mono truncate">{v.orden_vehi || v.placa_vehi || "SIN ORDEN"}</p>
                         <p className="text-[11px] text-slate-500 truncate">
                           Desde <strong className="text-slate-700">{v.origen || "—"}</strong>
                         </p>
@@ -1596,7 +1718,7 @@ function SubViewVentas({
   ventaInicial?: VehiculoEstado | null;
   onVentaInicialConsumida?: () => void;
 }) {
-  const [dashboard, setDashboard] = useState<DashboardCajeroData | null>(null);
+  const [programacion, setProgramacion] = useState<ProgramacionVehiculosData | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
   const [vehiculoSel, setVehiculoSel] = useState<VehiculoEstado | null>(null);
@@ -1636,9 +1758,9 @@ function SubViewVentas({
   const cargarDashboard = useCallback(async () => {
     setLoadingDashboard(true);
     try {
-      setDashboard(await travelsoftService.getDashboardCajero());
+      setProgramacion(await travelsoftService.getProgramacionVehiculos());
     } catch {
-      setDashboard(null);
+      setProgramacion(null);
     } finally {
       setLoadingDashboard(false);
     }
@@ -1648,13 +1770,16 @@ function SubViewVentas({
     void cargarDashboard();
   }, [cargarDashboard]);
 
+  // La taquilla vende tiquetes de los vehículos habilitados que aún están en
+  // plataforma (habilitada_adicional='1' y despachada_adicional='0'). Los que
+  // ya fueron despachados (despachada='1') están en tránsito y terminó su venta.
   const porDespachar = useMemo(() => {
-    const v = dashboard?.vehiculos;
+    const v = programacion?.vehiculos;
     if (!v) return [];
-    return [...v.en_plataforma, ...v.proximos].sort(
-      (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
-    );
-  }, [dashboard]);
+    return [...v.programados]
+      .filter((r) => r.habilitada_ruta === '1')
+      .sort((a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0));
+  }, [programacion]);
 
   // Preselecciona el vehículo cuando se llega a la taquilla desde "Vender Ticket" de Despacho
   useEffect(() => {
@@ -1841,7 +1966,7 @@ function SubViewVentas({
     );
   }
 
-  if (!dashboard) {
+  if (!programacion) {
     return (
       <Card className="bg-white border-rose-200 shadow-sm">
         <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-3 text-center">
@@ -1861,22 +1986,21 @@ function SubViewVentas({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 animate-in fade-in duration-200">
       <div className="lg:col-span-2 space-y-3 sm:space-y-4">
-        {/* 1. Vehículo por despachar */}
+        {/* 1. Vehículo despachado */}
         <Card className={cn("bg-white shadow-sm", mostrarErrores && !vehiculoSel ? "border-red-400 ring-1 ring-red-300" : "border-slate-200")}>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-xs font-bold uppercase text-emerald-600">1. Vehículo por Despachar</CardTitle>
-            <CardDescription className="text-[11px]">Seleccione el vehículo en plataforma o programado.</CardDescription>
+            <CardTitle className="text-xs font-bold uppercase text-emerald-600">1. Vehículo Disponible</CardTitle>
+            <CardDescription className="text-[11px]">Venta de tiquetes de los vehículos habilitados que aún están en plataforma.</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             {          porDespachar.length === 0 ? (
               <div className="p-4 rounded-xl bg-slate-50 border border-dashed text-xs text-slate-400 italic text-center">
-                No hay vehículos por despachar hoy.
+                No hay vehículos habilitados en plataforma hoy. Adicione una ruta desde Programación para vender sus tiquetes.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {porDespachar.map((r) => {
                   const activo = vehiculoSel?.cod_ruta === r.cod_ruta;
-                  const enPlataforma = (r.habilitada_ruta ?? '0') === '1';
                   return (
                     <button
                       key={r.cod_ruta}
@@ -1890,16 +2014,9 @@ function SubViewVentas({
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-black text-slate-900 font-mono">{r.placa_vehi || 'SIN PLACA'}</span>
-                        <Badge
-                          className={cn(
-                            "text-[9px] font-bold border",
-                            enPlataforma
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                              : "bg-amber-100 text-amber-800 border-amber-200"
-                          )}
-                        >
-                          {enPlataforma ? 'EN PLATAFORMA' : 'PROGRAMADO'}
+                        <span className="font-black text-slate-900 font-mono">{r.orden_vehi || r.placa_vehi || 'SIN ORDEN'}</span>
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] font-bold border">
+                          EN PLATAFORMA
                         </Badge>
                       </div>
                       <div className="mt-1.5 space-y-0.5 text-[11px]">

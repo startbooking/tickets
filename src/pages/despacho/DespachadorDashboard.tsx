@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from '@/lib/utils';
-import { travelsoftService, OridesOption, HorarioOption } from '@/services/travelsoftService';
+import { travelsoftService, OridesOption, HorarioOption, VehiculoOption, ConductorOption, VehiculoConductoresRespuesta, horaDurationAMinutos, formatHora } from '@/services/travelsoftService';
 import {
   Bus, FileText, ShieldCheck, ClipboardCheck, LogOut,
   Clock, CheckCircle2, AlertTriangle, Gauge, User, MapPin, Menu, X, Plus, Loader2
@@ -28,6 +28,8 @@ export default function DespachadorDashboard() {
 
   const [destinos, setDestinos] = useState<OridesOption[]>([]);
   const [horarios, setHorarios] = useState<HorarioOption[]>([]);
+  const [vehiculos, setVehiculos] = useState<VehiculoOption[]>([]);
+  const [conductoresVehiculo, setConductoresVehiculo] = useState<ConductorOption[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState(false);
 
   const nombreUsuario = user?.name || "Néstor Fabián Chaux";
@@ -38,12 +40,18 @@ export default function DespachadorDashboard() {
     const cargar = async () => {
       setCargandoCatalogos(true);
       try {
-        const [d, h] = await Promise.all([
+        const [d, h, v] = await Promise.all([
           travelsoftService.getDestinosFiltrados(),
           travelsoftService.getHorarios(),
+          travelsoftService.getVehiculosDropdown(),
         ]);
         setDestinos(d);
-        setHorarios(h.filter((x) => x.hora_time !== null));
+        setVehiculos(v.filter((x) => (x.estado_vehi ?? '1') === '1'));
+        setHorarios(
+          h
+            .filter((x) => x.hora_time !== null)
+            .sort((a, b) => horaDurationAMinutos(a.hora_time) - horaDurationAMinutos(b.hora_time))
+        );
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.');
       } finally {
@@ -249,7 +257,7 @@ export default function DespachadorDashboard() {
           {(() => {
             switch (activeSection) {
               case 'programacion':
-                return <SubViewProgramacion setSeccion={setActiveSection} destinos={destinos} horarios={horarios} cargandoCatalogos={cargandoCatalogos} />;
+                return <SubViewProgramacion setSeccion={setActiveSection} destinos={destinos} horarios={horarios} vehiculos={vehiculos} cargandoCatalogos={cargandoCatalogos} />;
               case 'alistamiento':
                 return <SubViewAlistamiento />;
               case 'manifiestos':
@@ -270,26 +278,62 @@ function SubViewProgramacion({
   setSeccion,
   destinos,
   horarios,
+  vehiculos,
   cargandoCatalogos,
 }: {
   setSeccion: React.Dispatch<React.SetStateAction<DespachadorSection>>;
   destinos: OridesOption[];
   horarios: HorarioOption[];
+  vehiculos: VehiculoOption[];
   cargandoCatalogos: boolean;
 }) {
   const [destinoSel, setDestinoSel] = useState<number | ''>('');
   const [idHorarioSel, setIdHorarioSel] = useState<string>('');
   const [placaSel, setPlacaSel] = useState<string>('');
+  const [conductorSel, setConductorSel] = useState<string>('');
+  const [conductoresVehiculo, setConductoresVehiculo] = useState<ConductorOption[]>([]);
+  const [cargandoConductores, setCargandoConductores] = useState(false);
   const [viajesProgramados, setViajesProgramados] = useState<
     Array<{ id: number; cod_ruta: number; destino: string; hora: string; placa: string; ocupacion: string }>
   >([]);
   const [guardando, setGuardando] = useState(false);
 
-  const horaAMinutos = (value: string): number => {
-    const [h, m] = value.split(':').map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
-    return h * 60 + m;
-  };
+  const horaAMinutos = horaDurationAMinutos;
+
+  // Conductores asignados a la placa (tabla vehiculo_conductor)
+  useEffect(() => {
+    if (!placaSel) {
+      setConductoresVehiculo([]);
+      setConductorSel('');
+      setCargandoConductores(false);
+      return;
+    }
+    setConductorSel('');
+    setCargandoConductores(true);
+    travelsoftService
+      .getConductoresVehiculo(placaSel)
+      .then((data: VehiculoConductoresRespuesta) => {
+        setConductoresVehiculo(
+          data.conductores.map((x) => ({
+            cedula_conduc: x.cedula_conduc,
+            nombre_conduc: x.nombre_conduc ?? x.cedula_conduc,
+            estado_conduc: x.estado_conduc ?? '1',
+          }))
+        );
+        const titular = data.conductores.find((x) => Number(x.titular) === 1);
+        setConductorSel(
+          titular?.cedula_conduc ??
+            data.conductores.find((x) => x.cedula_conduc === data.ultimo_conduc)
+              ?.cedula_conduc ??
+            ''
+        );
+      })
+      .catch((err) => {
+        setConductoresVehiculo([]);
+        console.error('No se pudieron cargar los conductores del vehículo:', err);
+      })
+      .finally(() => setCargandoConductores(false));
+  }, [placaSel]);
 
   const handleProgramar = async () => {
     if (!destinoSel || !idHorarioSel || !placaSel) {
@@ -299,8 +343,8 @@ function SubViewProgramacion({
     const destino = destinos.find((d) => d.id_orides === Number(destinoSel));
     const horario = horarios.find((h) => String(h.id_horario) === idHorarioSel);
     const horaTime = horario?.hora_time ?? null;
-    const horaRuta = horaTime ? horaAMinutos(horaTime.slice(0, 5)) : 0;
-    const horaProgramada = horaTime ? horaTime.slice(0, 5) : undefined;
+    const horaRuta = horaTime ? horaAMinutos(horaTime) : 0;
+    const horaProgramada = horaTime ? formatHora(horaAMinutos(horaTime)) : undefined;
 
     setGuardando(true);
     try {
@@ -310,6 +354,7 @@ function SubViewProgramacion({
         id_horario: horario?.id_horario ?? undefined,
         hora_programada: horaProgramada,
         placa_vehi: placaSel,
+        cedula_conduc: conductorSel || undefined,
       });
       const cod_ruta = (res.cod_ruta as number) ?? (res.id_ruta as number) ?? 0;
       const nuevo = {
@@ -325,6 +370,7 @@ function SubViewProgramacion({
       setDestinoSel('');
       setIdHorarioSel('');
       setPlacaSel('');
+      setConductorSel('');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudo programar la salida.');
     } finally {
@@ -362,7 +408,7 @@ function SubViewProgramacion({
           {cargandoCatalogos ? (
             <p className="text-sm text-slate-500">Cargando catálogos...</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-end">
               <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-slate-600">Destino</Label>
                 <select
@@ -396,14 +442,44 @@ function SubViewProgramacion({
               </div>
               <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-slate-600">Placa del Bus</Label>
-               <Input
-                   value={placaSel}
-                   onChange={(e) => setPlacaSel(e.target.value)}
-                   placeholder="Ej: SST-901"
-                   className="h-9 text-sm"
-                   maxLength={7}
-                   disabled={cargandoCatalogos || guardando}
-                 />
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-60"
+                  value={placaSel}
+                  onChange={(e) => setPlacaSel(e.target.value)}
+                  disabled={cargandoCatalogos || guardando}
+                >
+                  <option value="">Seleccione la placa</option>
+                  {vehiculos.map((v) => (
+                    <option key={v.placa_vehi} value={v.placa_vehi}>
+                      {v.placa_vehi}{v.marca_vehi ? ` · ${v.marca_vehi}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-bold text-slate-600">Conductor</Label>
+                <select
+                  className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-60 transition-colors ${cargandoConductores ? 'cursor-wait' : ''}`}
+                  value={conductorSel}
+                  onChange={(e) => setConductorSel(e.target.value)}
+                  disabled={cargandoCatalogos || guardando || !placaSel || cargandoConductores}
+                >
+                  <option value="">
+                    {cargandoConductores
+                      ? 'Cargando conductores...'
+                      : placaSel
+                        ? 'Seleccione el conductor'
+                        : 'Primero elija la placa'}
+                  </option>
+                  {!cargandoConductores && conductoresVehiculo.map((c) => (
+                    <option key={c.cedula_conduc} value={c.cedula_conduc}>
+                      {c.nombre_conduc} ({c.cedula_conduc})
+                    </option>
+                  ))}
+                </select>
+                {placaSel && !cargandoConductores && conductoresVehiculo.length === 0 && (
+                  <p className="text-[10px] text-slate-400 italic">El vehículo no tiene conductores asignados.</p>
+                )}
               </div>
             </div>
           )}

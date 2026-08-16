@@ -1,6 +1,6 @@
 import { ViajeDespacho } from '@/types';
 import { useCallback, useEffect, useState } from 'react';
-import { travelsoftService, OridesOption, HorarioOption, VehiculoOption } from '@/services/travelsoftService';
+import { travelsoftService, OridesOption, HorarioOption, VehiculoOption, ConductorOption, VehiculoConductoresRespuesta, horaDurationAMinutos, formatHora } from '@/services/travelsoftService';
 import { toast } from 'sonner';
 import {
   Bus, Clock, FileText, Plus, Save, Send, Users, MapPin, AlertTriangle, Loader2,
@@ -20,6 +20,9 @@ export default function DespachoBuses() {
   const [destinoSel, setDestinoSel] = useState<number | ''>('');
   const [horaSel, setHoraSel] = useState<string>('');
   const [placaSel, setPlacaSel] = useState<string>('');
+  const [conductorSel, setConductorSel] = useState<string>('');
+  const [conductoresVehiculo, setConductoresVehiculo] = useState<ConductorOption[]>([]);
+  const [cargandoConductores, setCargandoConductores] = useState(false);
 
   const [guardando, setGuardando] = useState(false);
   const [despachando, setDespachando] = useState(false);
@@ -46,6 +49,41 @@ export default function DespachoBuses() {
     void cargarCatalogos();
   }, [cargarCatalogos]);
 
+  // Conductores asignados a la placa (tabla vehiculo_conductor)
+  useEffect(() => {
+    if (!placaSel) {
+      setConductoresVehiculo([]);
+      setConductorSel('');
+      setCargandoConductores(false);
+      return;
+    }
+    setConductorSel('');
+    setCargandoConductores(true);
+    travelsoftService
+      .getConductoresVehiculo(placaSel)
+      .then((data: VehiculoConductoresRespuesta) => {
+        setConductoresVehiculo(
+          data.conductores.map((x) => ({
+            cedula_conduc: x.cedula_conduc,
+            nombre_conduc: x.nombre_conduc ?? x.cedula_conduc,
+            estado_conduc: x.estado_conduc ?? '1',
+          }))
+        );
+        const titular = data.conductores.find((x) => Number(x.titular) === 1);
+        setConductorSel(
+          titular?.cedula_conduc ??
+            data.conductores.find((x) => x.cedula_conduc === data.ultimo_conduc)
+              ?.cedula_conduc ??
+            ''
+        );
+      })
+      .catch((err) => {
+        setConductoresVehiculo([]);
+        console.error('No se pudieron cargar los conductores del vehículo:', err);
+      })
+      .finally(() => setCargandoConductores(false));
+  }, [placaSel]);
+
   // Seleccionar el primer viaje por defecto al cargar
   useEffect(() => {
     if (viajes.length > 0 && !viajeSeleccionado) {
@@ -63,12 +101,8 @@ export default function DespachoBuses() {
     const vehiculo = vehiculos.find((v) => v.placa_vehi === placaSel);
 
     const horaTime = horario?.hora_time ?? null;
-    const horaAMinutos = (value: string): number => {
-      const [h, m] = value.split(':').map(Number);
-      return Number.isNaN(h) || Number.isNaN(m) ? 0 : h * 60 + m;
-    };
-    const horaRuta = horaTime ? horaAMinutos(horaTime.slice(0, 5)) : 0;
-    const horaProgramada = horaTime ? horaTime.slice(0, 5) : undefined;
+    const horaRuta = horaTime ? horaDurationAMinutos(horaTime) : 0;
+    const horaProgramada = horaTime ? formatHora(horaDurationAMinutos(horaTime)) : undefined;
 
     setGuardando(true);
     try {
@@ -78,6 +112,7 @@ export default function DespachoBuses() {
         id_horario: horario?.id_horario ?? undefined,
         hora_programada: horaProgramada,
         placa_vehi: placaSel,
+        cedula_conduc: conductorSel || undefined,
         numero_orden: (vehiculo?.orden_vehi || '').trim().replace(/\D/g, '').slice(0, 6) || undefined,
       });
       const cod_ruta = (res.cod_ruta as number) ?? (res.id_ruta as number) ?? 0;
@@ -170,7 +205,7 @@ export default function DespachoBuses() {
         {cargandoCatalogos ? (
           <p className="text-sm text-gray-500">Cargando catálogos...</p>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-end">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-600">Destino</label>
             <select
@@ -218,7 +253,32 @@ export default function DespachoBuses() {
                    {v.placa_vehi} ({v.marca_vehi})
                  </option>
                ))}
+              </select>
+           </div>
+           <div className="space-y-1.5">
+             <label className="text-xs font-bold text-slate-600">Conductor</label>
+             <select
+               className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-60 transition-colors ${cargandoConductores ? 'cursor-wait' : ''}`}
+               value={conductorSel}
+               onChange={(e) => setConductorSel(e.target.value)}
+               disabled={cargandoCatalogos || guardando || !placaSel || cargandoConductores}
+             >
+               <option value="">
+                 {cargandoConductores
+                   ? 'Cargando conductores...'
+                   : placaSel
+                     ? 'Seleccione el conductor'
+                     : 'Primero elija la placa'}
+               </option>
+               {!cargandoConductores && conductoresVehiculo.map((c) => (
+                 <option key={c.cedula_conduc} value={c.cedula_conduc}>
+                   {c.nombre_conduc} ({c.cedula_conduc})
+                 </option>
+               ))}
              </select>
+             {placaSel && !cargandoConductores && conductoresVehiculo.length === 0 && (
+               <p className="text-[10px] text-slate-400 italic">El vehículo no tiene conductores asignados.</p>
+             )}
            </div>
         </div>
         )}
