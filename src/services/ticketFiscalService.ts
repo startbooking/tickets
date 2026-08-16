@@ -399,7 +399,9 @@ export function manifiestoTotalesTexto(m: ManifiestoDespacho): string {
   t += normalizarImpresion('AUXILIAR:\n');
   t += normalizarImpresion(`  ${m.auxiliar?.nombre || m.auxiliar?.cedula || '(no registrado)'}\n`);
 
-  // Origen/Destino ya impresos en cabecera; totales
+  // Origen/Destino ya impresos en cabecera; conduce y totales
+  const conduce = m.conduce != null ? String(m.conduce).trim() : '';
+  if (conduce) t += normalizarImpresion(`CONDUCE: ${conduce}\n`);
   t += ESC_POS.BOLD_ON;
   t += normalizarImpresion(`${separadorDoble()}\n`);
   t += normalizarImpresion(`TOTAL PASAJEROS: ${m.totales.pasajeros}\n`);

@@ -275,6 +275,7 @@ describe('manifiestos de despacho', () => {
         { cedula: '99', nombre: 'CONDUCTOR RELEVO' },
       ],
       auxiliar: { cedula: '1.000.350.227', nombre: 'PENA HERNANDEZ OSCAR CAMILO' },
+      conduce: 'CONDUCE 0042',
     };
     const txt = manifiestoTotalesTexto(conAuxiliar);
     expect(txt).toContain('DOCUMENTO DE DESPACHO');
@@ -285,6 +286,7 @@ describe('manifiestos de despacho', () => {
     expect(txt).toContain('2. CONDUCTOR RELEVO');
     expect(txt).toContain('AUXILIAR:');
     expect(txt).toContain('PENA HERNANDEZ OSCAR CAMILO');
+    expect(txt).toContain('CONDUCE: CONDUCE 0042');
     expect(txt).toContain('TOTAL PASAJEROS: 2');
     expect(txt).toContain('TOTAL VENTA CAJERO:');
   });

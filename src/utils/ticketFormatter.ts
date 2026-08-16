@@ -255,7 +255,28 @@ export const BLE_PRINTER = {
   chunk_size_bytes: 20,
   /** Fabricantes/aliases para filtrar dispositivos en el selector del navegador. */
   DISPOSITIVO_LABEL: 'Impresora Térmica',
+  /** Máx. ms que se espera al selector Bluetooth antes de abortar y seguir con window.print. */
+  SELECTOR_TIMEOUT_MS: 30000,
+  /** Máx. ms por operación GATT (conexión/servicio/escritura) antes de abortar. */
+  GATT_TIMEOUT_MS: 15000,
 };
+
+/**
+ * Ejecuta una promesa con límite de tiempo. Si no resuelve/rechaza antes, rechaza
+ * con un Error descriptivo. Evita que el spinner de impresión quede girando para
+ * siempre cuando el dispositivo Bluetooth no responde o el usuario ignora el selector.
+ */
+async function conTimeout<T>(promise: Promise<T>, ms: number, descripcion: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Tiempo de espera agotado: ${descripcion}`)), ms);
+      promise.then(resolve, reject);
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export interface BluetoothEscPosResult {
   ok: true;
@@ -382,9 +403,21 @@ async function enviarEscPosBle(device: BluetoothDevice, texto: string): Promise<
   if (!device?.gatt) {
     throw new Error('El dispositivo Bluetooth no expone GATT.');
   }
-  const server = await device.gatt.connect();
-  const service = await server.getPrimaryService(BLE_PRINTER.SERVICE_UUID);
-  const characteristic = await service.getCharacteristic(BLE_PRINTER.CHARACTERISTIC_UUID);
+  const server = await conTimeout(
+    device.gatt.connect(),
+    BLE_PRINTER.GATT_TIMEOUT_MS,
+    'conectando Bluetooth GATT'
+  );
+  const service = await conTimeout(
+    server.getPrimaryService(BLE_PRINTER.SERVICE_UUID),
+    BLE_PRINTER.GATT_TIMEOUT_MS,
+    'buscando servicio de impresora'
+  );
+  const characteristic = await conTimeout(
+    service.getCharacteristic(BLE_PRINTER.CHARACTERISTIC_UUID),
+    BLE_PRINTER.GATT_TIMEOUT_MS,
+    'buscando característica de escritura'
+  );
 
   const bytes = encodarEscPos(texto);
 
@@ -407,12 +440,20 @@ async function enviarEscPosBle(device: BluetoothDevice, texto: string): Promise<
   for (let i = 0; i < bytes.length; i += CHUNK) {
     const chunk = bytes.slice(i, i + CHUNK);
     try {
-      await write(chunk);
+      await conTimeout(
+        write(chunk),
+        BLE_PRINTER.GATT_TIMEOUT_MS,
+        'escribiendo en la impresora Bluetooth'
+      );
     } catch (err) {
       if (modo === 'withoutResponse') {
         modo = 'withResponse';
         write = fallback;
-        await fallback(chunk);
+        await conTimeout(
+          fallback(chunk),
+          BLE_PRINTER.GATT_TIMEOUT_MS,
+          'escribiendo en la impresora Bluetooth'
+        );
       } else {
         throw err;
       }
@@ -445,10 +486,17 @@ export async function imprimirBleEscPos(texto: string): Promise<BluetoothEscPosR
 
   // 2) Si no hay guardada/falló, abrir el selector
   if (!device) {
-    device = await navigator.bluetooth!.requestDevice({
-      filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
-      optionalServices: [BLE_PRINTER.SERVICE_UUID],
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), BLE_PRINTER.SELECTOR_TIMEOUT_MS);
+    try {
+      device = await navigator.bluetooth!.requestDevice({
+        filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
+        optionalServices: [BLE_PRINTER.SERVICE_UUID],
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   const nombre = await enviarEscPosBle(device, texto);
