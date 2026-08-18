@@ -1,6 +1,11 @@
 # Logs
 logs
 *.log
+
+# Mini-servicio de impresión (escritorio): volcados mock de tickets
+desktop-print-service/logs/
+desktop-print-service/__pycache__/
+desktop-print-service/.venv/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -38,3 +43,4 @@ MEMORIA_SESION.md
 # Lockfiles de LibreOffice (al editar .xlsx)
 .~lock.*#*
 .*.~lock.*#*
+.gstack/

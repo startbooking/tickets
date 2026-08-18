@@ -1,0 +1,157 @@
+====================================================================
+RECOMENDACIONES TECNICAS - SATURACION DE LA BASE DE DATOS REMOTA
+====================================================================
+Fecha: 2026-08-16
+Servidor afectado: 181.143.144.2:3306  (BD flota9)
+Generado tras el incidente de saturación de conexiones que provocó
+timeouts de login en travelsoft.web / PDA desde el 2026-08-16.
+====================================================================
+
+
+--------------------------------------------------------------------
+1) DIAGNOSTICO ACTUAL (medido en el servidor)
+--------------------------------------------------------------------
+  Version MySQL        : 5.0.45  (año 2006, sin soporte EOL+10 años)
+  max_connections      : 100
+  Max_used_connections : 101        (<-- YA REBASO el limite)
+  Aborted_connects     : 4154 de 6517 conexiones totales
+                         (~63% de conexiones rechazadas)
+  wait_timeout         : 28800      (8 horas)
+  interactive_timeout  : 28800      (8 horas)
+  innodb_buffer_pool   : 16 MB      (minimo absoluto -> todo en disco)
+  key_buffer_size      : 16 MB      (minimo absoluto)
+  query_cache_type     : ON con query_cache_size=0  (inutil)
+  Conexiones ajenas    : ~41        (de otros sistemas, no visibles)
+
+
+--------------------------------------------------------------------
+2) CAUSAS RAIZ DEL PROBLEMA
+--------------------------------------------------------------------
+  A) Servidor MySQL 5.0.45 demasiado antiguo:
+     - No soporta COM_RESET_CONNECTION ni un ping eficiente.
+     - Cuando una conexion del pool muere, el driver hace un
+       reconnect() que se "cuelga" si la BD esta saturada.
+     - El driver moderno (mysql-connector-python 26.7.0) debe usar
+       pool_reset_session=False como workaround.
+
+  B) Buffers de memoria minimos:
+     - innodb_buffer_pool_size de solo 16 MB hace que las tablas
+       InnoDB se lean/escriban EN DISCO constantemente.
+     - Queries lentas -> conexiones ocupadas mas tiempo -> se acumulan.
+
+  C) Timeouts de 8 horas:
+     - Los reinicios forzados del backend (kill -9) dejan conexiones
+       "Sleep" que la BD solo cierra a las 8 horas.
+     - Esa es la causa de los picos de 70-80 conexiones dormidas.
+
+  D) max_connections bajo (100) para una BD COMPARTIDA:
+     - ~41 conexiones pertenecen a otros sistemas (no controlables
+       con el usuario developer).
+     - Sumado al backend (aprox 20 conn con pool 5x4) roza el limite.
+
+  E) Pool del backend sin topes:
+     - pool_size 5 x 4 workers = hasta 20 conexiones abiertas.
+     - Sin connect_timeout, el reconnect ante saturación cuelga la
+       peticion 30s+ (login con timeout).
+
+--------------------------------------------------------------------
+3) RECOMENDACIONES OBLIGATORIAS (por impacto)
+--------------------------------------------------------------------
+  R1) ACTUALIZAR MySQL a 8.0.x o MariaDB 10.11.x
+      - Es la correccion de fondo.
+      - Con MySQL 8 se habilita pool_reset_session=True, wait_timeout
+        por sesion, COM_PING eficiente y monitoreo Performance Schema.
+      - IMPORTANTE al migrar 5.0 -> 8.0:
+          * Revisar charset: latin1 -> utf8mb4
+          * Revisar sql_mode (STRICT_TRANS_TABLES)
+          * Revisar privilegios y stored procedures
+          * Migracion por dump: mysqldump + apply, no in-place.
+
+  R2) DIMENSIONAR BUFFERS SEGUN LA RAM DEL SERVIDOR
+      - innodb_buffer_pool_size = 50-70% de la RAM.
+        Ej: 8GB RAM -> 4-6 GB. (hoy tiene 16 MB: TODO cae en disco)
+      - key_buffer_size: solo relevante para tablas MyISAM (max 512MB).
+      - query_cache_type = OFF  (en 5.0 es bugs + inutil con InnoDB)
+      - Efecto: queries rapidas -> conexiones se liberan pronto ->
+        sin saturacion.
+
+  R3) TIMEOUTS AGRESIVOS PARA MATAR ZOMBIES
+      - wait_timeout        = 60
+      - interactive_timeout = 300
+      - Efecto: cualquier conexion muerta desaparece sola en 1-5 min
+        (hoy tarda 8 HORAS). Es el firewall contra la recaida.
+
+  R4) SUBIR max_connections
+      - max_connections = 300 a 500 (segun RAM; MySQL 8 usa ~1-3MB
+        por conexion).
+      - Con 100 actuales y 41 ajenas no hay margen.
+
+  R5) REDUCIR CONSUMO DEL BACKEND (travelsoft)
+      - pool_size: 5 -> 2 por worker (de ~20 a ~8 conexiones) [ESTADO]
+      - connect_timeout=5 en config del pool para no colgar 30s.
+      - Evaluar bajar de 4 a 2 workers (uvicorn async para I/O de BD).
+      - Reiniciar SIEMPRE con systemctl (stop/start) y NUNCA con
+        kill -9, para no dejar zombies.
+
+  R6) MONITOREO AUTOMATICO DE ZOMBIES (cron en la PC)
+      Cada 10 minutos ejecutar contra la BD remota:
+        KILL de conexiones Sleep con TIME > 600s originadas desde
+        nuestra IP/host.
+      Con un script .sh + cron: evita acumulacion entre reinicios.
+
+  R7) DECISION SOBRE EL SERVIDOR COMPARTIDO
+      - La BD flota9 es COMPARTIDA: hay ~41 conexiones de otros
+        sistemas que el usuario developer no puede ver ni matar.
+      - Si esos sistemas legacy requieren MySQL 5.0, NO actualizar
+        el servidor actual (los rompe).
+      - RECOMENDADO: levantar un SERVICIO DE BD DEDICADO nuevo
+        (MySQL 8 / MariaDB 10.11) en un servidor propio o en este
+        PC, migrar flota9 ahi, y apuntar el backend a el.
+      - Los sistemas legacy siguen en el servidor viejo sin riesgo.
+
+--------------------------------------------------------------------
+4) PLAN DE EJECUCION SUGERIDO
+--------------------------------------------------------------------
+  FASE 1 (hoy, sin riesgo):
+    - Aplicar R5 (pool_size 2 + connect_timeout + workers).
+    - Crear cron R6 de limpieza de zombies.
+    - Limpiar conexiones huérfanas manualmente.
+
+  FASE 2 (mediano plazo):
+    - Definir RAM del servidor de BD y re-dimensionar buffers (R2).
+    - Bajar wait_timeout/interactive_timeout (R3).
+    - Subir max_connections (R4).
+
+  FASE 3 (estructural):
+    - Migrar a MySQL 8 / MariaDB (R1) en servidor dedicado (R7).
+
+--------------------------------------------------------------------
+5) CAMBIOS YA APLICADOS EN ESTA SESION
+--------------------------------------------------------------------
+  1. Limpieza de ~47 conexiones zombie (Sleep) de pools muertos.
+  2. pool_size de travelsoft: 5 -> 2 por worker (backend)
+     archivo: /var/www/backend.lan/travelsoft/app/core/database.py
+  3. Servicio travelsoft reiniciado y verificado:
+     - Login local : 200 en 0.09s
+     - Login tunel : 200 en 0.57s
+     - Login CORS  : 200 con token en 0.43s
+  PENDIENTE:
+   - connect_timeout=5 en el pool (no aplicado aun)
+   - cron de limpieza de zombies (no creado aun)
+   - decision sobre migracion a MySQL 8 / servidor dedicado
+
+--------------------------------------------------------------------
+6) ARCHIVOS RELEVANTES
+--------------------------------------------------------------------
+  Backend travelsoft:
+    /var/www/backend.lan/travelsoft/app/core/database.py  (pool)
+    /var/www/backend.lan/travelsoft/app/core/config.py     (DB_CONFIG)
+    /var/www/backend.lan/travelsoft/.env                   (credenciales)
+    /etc/systemd/system/travelsoft.service                (workers)
+  Frontend:
+    /var/www/sactel.lan/rutas/.env.production
+    /var/www/sactel.lan/rutas/dist/index-DOG4QsxR.js
+
+====================================================================
+Cualquier duda o decision marcar: listo para aplicar FASE 1.
+====================================================================

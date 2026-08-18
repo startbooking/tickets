@@ -36,6 +36,7 @@ export type TipoAgencia = "principal" | "satelite";
 export interface VehiculoEstado {
   cod_ruta: number;
   origen_ruta: number | null;
+  origen?: string | null;
   destino_ruta: number | null;
   fecha_ruta: string | null;
   placa_vehi: string | null;
@@ -48,9 +49,11 @@ export interface VehiculoEstado {
   hora_despacho: string | null;
   hora_llegada: string | null;
   conductor: string | null;
+  recorrido?: string | null;
   capacidad: number | null;
   tickets_vendidos?: number | null;
   estado_sitio?: string | null;
+  anulada?: string | null;
 }
 
 export interface DashboardCajeroData {
@@ -671,22 +674,28 @@ export interface UsuarioUpdateInput {
 }
 
 // Roles que entiende el frontend (App.tsx / ProtectedRoute)
+export type AppRol = "SUPERADMIN" | "ADMIN_AGENCIA" | "CAJERO" | "DESPACHADOR" | "CAJERO_DESPACHADOR";
 
 export const DASHBOARD_POR_ROL: Record<AppRol, string> = {
   SUPERADMIN: "/superadmin/dashboard",
   ADMIN_AGENCIA: "/agencia",
   CAJERO: "/cajero/dashboard",
-  DESPACHADOR: "/despachador",
+  // Nivel 4 (Rodamiento) y Nivel 6 (Rodamiento+Taquilla) usan el CajeroDashboard:
+  // el nivel 4 solo Programación (esRodamiento), el nivel 6 acceso completo.
+  DESPACHADOR: "/cajero/dashboard",
+  CAJERO_DESPACHADOR: "/cajero/dashboard",
 };
 
-// Mapeo histórico de TravelSoft: nivel_usuario -> rol del frontend
-// 10=SUPERADMIN, 5=ADMIN(agencia)/Taquilla(Bogotá), 2=CAJERO, 0=DESPACHADOR
-// Roles finos Bogotá: 4=Rodamiento, 5=Taquilla, 6=Rodamiento+Taquilla → todos CAJERO (dashboard cajero)
+// Mapeo de TravelSoft: nivel_usuario -> rol del frontend
+// 4=Rodamiento (programa, sin taquilla) → DESPACHADOR (CajeroDashboard con esRodamiento)
+// 5=Taquilla → CAJERO (dashboard cajero, venta)
+// 6=Taquilla+Rodamiento → CAJERO_DESPACHADOR (CajeroDashboard completo)
+// 10=SUPERADMIN, 2=CAJERO, 0=DESPACHADOR (legacy)
 const ROL_POR_NIVEL: Record<number, AppRol> = {
   10: "SUPERADMIN",
-  5: "ADMIN_AGENCIA",
-  6: "CAJERO",
-  4: "CAJERO",
+  6: "CAJERO_DESPACHADOR",
+  5: "CAJERO",
+  4: "DESPACHADOR",
   2: "CAJERO",
   0: "DESPACHADOR",
 };
@@ -697,6 +706,7 @@ const ROL_BACKEND_A_APP: Record<string, AppRol> = {
   AGENCIA: "ADMIN_AGENCIA",
   CAJERO: "CAJERO",
   DESPACHADOR: "DESPACHADOR",
+  CAJERO_DESPACHADOR: "CAJERO_DESPACHADOR",
 };
 
 /**
@@ -956,6 +966,52 @@ export const travelsoftService = {
       throw new Error("No se pudo despachar el vehículo.");
     }
     return payload.data;
+  },
+
+  /**
+   * Anula una ruta programada de la agencia autenticada (POST /rutas/anular).
+   * Al anularse no se pueden vender tiquetes ni despachar la ruta.
+   */
+  anularRuta: async (cod_ruta: number, fecha?: string, motivo?: string): Promise<OperacionResponse["data"]> => {
+    const response = await apiClient.post<OperacionResponse>("/rutas/anular", {
+      cod_ruta,
+      ...(fecha ? { fecha } : {}),
+      motivo,
+    });
+    const payload = response.data;
+    if (!payload || payload.success !== true) {
+      throw new Error("No se pudo anular la ruta.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * Bitácora de anulaciones de ruta (trazabilidad / medición).
+   * GET /anulaciones
+   */
+  getAnulaciones: async (params?: { fecha?: string; usuario?: string; limite?: number }) => {
+    const { data } = await apiClient.get<{
+      success: boolean;
+      data: {
+        totales: { total: number; hoy: number };
+        anulaciones: {
+          id: number;
+          cod_ruta: number;
+          origen_ruta: number;
+          fecha_ruta: string;
+          placa_vehi: string | null;
+          numero_orden: string | null;
+          motivo_anulacion: string;
+          cedula_usuario: string | null;
+          nombre_usuario: string | null;
+          fecha_anulacion: string;
+        }[];
+      };
+    }>("/anulaciones", { params });
+    if (!data || data.success !== true) {
+      throw new Error("No se pudo consultar la bitácora de anulaciones.");
+    }
+    return data.data;
   },
 
   /**

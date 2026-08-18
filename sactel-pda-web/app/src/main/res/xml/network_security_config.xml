@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Permite tráfico local en loopback (ws://127.0.0.1:8080) usado por el
+  Permite tráfico local en loopback (ws://127.0.0.1:8091) usado por el
   servicio de impresión embebido, manteniendo HTTPS para todo lo demás.
 -->
 <network-security-config>

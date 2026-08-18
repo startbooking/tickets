@@ -28,7 +28,7 @@ com.sactel.tickets) que combina:
 
   a) Un WebView que carga la PWA de tickets: https://travelsoft.plus
   b) Un servicio en primer plano (PrintService) que hostea un servidor
-     WebSocket en ws://127.0.0.1:8080 y, al recibir el ticket en base64
+     WebSocket en ws://127.0.0.1:8091 y, al recibir el ticket en base64
      ESC/POS, imprime en la impresora integrada por Bluetooth SPP
      "InnerPrinter" (dirección virtual 00:11:22:33:44:55, UUID SPP
      00001101-...-00805F9B34FB).
@@ -132,7 +132,7 @@ VÍA C - ADB por red (si ya tienes la PDA en la red local):
  2) ACTIVA BLUETOOTH del sistema (y empareja InnerPrinter si aparece).
  3) ABRE la app "SACTel Tickets": carga la web de tickets y arranca el
      servicio de impresión en segundo plano (notificación "PDA Print Service",
-     escuchando en ws://127.0.0.1:8080).
+     escuchando en ws://127.0.0.1:8091).
  4) Usa la web DENTRO de la app para operar (cajero/satélite).
 
 AUTOINICIO AL ENCENDER LA PDA (NUEVO)
@@ -162,12 +162,12 @@ IMPORTANTE: el MODO SEGURO de Android DESACTIVA las apps de terceros.
  4) Verás confirmación de impresión realizada en pantalla.
 
 Para la app web, el cliente WS ya está implementado en:
-    src/services/pdaWebSocketService.ts   (puerto 8080, PDA_WS_LABEL)
+    src/services/pdaWebSocketService.ts   (puerto 8091 en PDA / 8090 en escritorio)
 
 ========================================================
 8. PROTOCOLO WEBSOCKET DEL SERVICIO LOCAL (referencia)
 ========================================================
-Servidor: ws://127.0.0.1:8080  (solo loopback local a la PDA)
+Servidor: ws://127.0.0.1:8091  (solo loopback local a la PDA)
 
 ENVÍO ->  { "action": "PRINT", "data": "<base64 del ESC/POS>", "copies": 1 }
 RESP <-  { "code": 0, "message": "ok" }
@@ -195,7 +195,7 @@ sactel-pda-web/
        ├─ res/xml/device_admin.xml, network_security_config.xml
        └─ java/com/sactel/tickets/
           ├─ MainActivity.kt    # WebView (travelsoft.plus) + arranca servicio
-          ├─ PrintService.kt    # foreground service + servidor WS 127.0.0.1:8080
+          ├─ PrintService.kt    # foreground service + servidor WS 127.0.0.1:8091
           ├─ PrinterDriver.kt   # impresión por Bluetooth SPP a InnerPrinter
           ├─ BootReceiver.kt    # auto-inicio al encender la PDA
           └─ AdminReceiver.kt   # protección "no eliminar" (device admin)
@@ -209,7 +209,7 @@ sactel-pda-web/
   "InnerPrinter". Si tu PDA no lo expone por BT, habrá que ir por AIDL (pendiente).
 - La impresión sale siempre por otra vía (no 'pda'):
   Revisa que el servicio esté iniciado (paso 6) antes de probar.
-- "ws://127.0.0.1:8080 no conecta":
+- "ws://127.0.0.1:8091 no conecta":
   Confirma que la app esté abierta; el servicio escucha solo en loopback,
   y es OBLIGATORIO que la web corre EN LA MISMA PDA (dentro de la app).
 - La web no carga en el WebView:

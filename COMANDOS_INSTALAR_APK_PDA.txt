@@ -31,7 +31,7 @@ adb devices
 2b) DESINSTALAR LA APP ANTERIOR (IMPORTANTE)
 ----------------------------------------------------------------
 La app vieja "PDA Print Service" (paquete com.sactel.pdaprint)
-usa el MISMO puerto WebSocket 8080. Si queda instalada, el servicio
+usa el MISMO puerto WebSocket 8091. Si queda instalada, el servicio
 de impresion del APK nuevo no podra abrir el puerto.
 
   adb uninstall com.sactel.pdaprint

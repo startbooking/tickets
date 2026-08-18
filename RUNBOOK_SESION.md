@@ -28,17 +28,20 @@ Configurar la impresión del tiquete en la impresora térmica **integrada** de l
 - Resultados (`ImpresionResultado`): `'pda' | 'sunmi' | 'usb' | 'ble' | 'rawbt' | 'print' | 'error'`
 
 ## Impresión local WebSocket (concepto "app ligera en la PDA") [NUEVO]
-- Una app Android (`pda-websocket-printer/`) abre un WebSocket en `ws://127.0.0.1:8080`
+- Una app Android (`pda-websocket-printer/`) abre un WebSocket en `ws://127.0.0.1:8091`
   y, al recibir `{action:"PRINT", data:"<base64 ESC/POS>"}`, imprime directo a la integrada
   por Bluetooth SPP "InnerPrinter" — sin diálogos, sin RawBT, sin plugin JS USDK.
+  (El escritorio usa el mini-servicio Python `desktop-print-service/` en `ws://127.0.0.1:8090`.)
 - Lado web: `src/services/pdaWebSocketService.ts` (cliente WS), se integra como PRIMERA
-  opción en la cadena de impresión Android.
+  opción en la cadena de impresión (Android y escritorio).
 - Proyecto Android: `pda-websocket-printer/` (Kotlin, Foreground Service + WebSocketServer
   + `PrinterDriver` SPP), con README de build/instalación.
 - Requisito operativo: instalar el APK en la PDA e iniciar el servicio (permisos Bluetooth).
+- Puertos de impresión: escritorio 8090, PDA Android 8091. El 8080 queda libre.
 
 ## Archivos modificados/creados
-- `src/services/pdaWebSocketService.ts`: cliente WebSocket local de la PDA (puerto 8080).
+- `src/services/pdaWebSocketService.ts`: cliente WebSocket local (puerto 8090 escritorio / 8091 PDA).
+- `desktop-print-service/`: mini-servicio Python de impresión local del escritorio (puerto 8090).
 - `pda-websocket-printer/`: proyecto Android (Kotlin) del "PDA Print Service".
 - `src/services/sunmiPrinter.ts`: integración plugin JS USDK. Sonda real al WebSocket 7070
   (sondear a ws no depende del userAgent), cache de disponibilidad, `imprimirSunmi`,

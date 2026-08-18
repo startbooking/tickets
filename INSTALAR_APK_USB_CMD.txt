@@ -8,7 +8,7 @@ El APK unifica en una sola app instalable: la plataforma web de tickets
 (PWA) en un WebView + el servicio de impresion a la impresora integrada
 de la PDA Sunmi (WebSocket local, sin dialogos, sin RawBT ni plugin JS
 USDK). Al abrir la app, ademas de cargar la web, arranca en segundo plano
-el servicio de impresion en ws://127.0.0.1:8080.
+el servicio de impresion en ws://127.0.0.1:8091.
 
 ARCHIVOS CLAVE
 - APK : /var/www/sactel.lan/rutas/dist/SACTel_Tickets_v1.0.apk

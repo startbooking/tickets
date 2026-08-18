@@ -15,7 +15,7 @@ import java.net.InetSocketAddress
 import java.util.Base64
 
 /**
- * Servicio en primer plano que hostea un servidor WebSocket en 127.0.0.1:8080
+ * Servicio en primer plano que hostea un servidor WebSocket en 127.0.0.1:8091
  * y, al recibir { action:"PRINT", data:"<base64 ESC/POS>" }, imprime en la
  * impresora integrada de la Sunmi (InnerPrinter) SIN abrir diálogos.
  */
@@ -55,7 +55,7 @@ class PrintService : Service() {
         return builder
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentTitle("PDA Print Service")
-            .setContentText("Escuchando en ws://127.0.0.1:8080")
+            .setContentText("Escuchando en ws://127.0.0.1:8091")
             .setOngoing(true)
             .build()
     }
@@ -101,7 +101,7 @@ class PrintService : Service() {
     }
 
     companion object {
-        const val PORT = 8080
+        const val PORT = 8091
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "pda"
         @Volatile private var running = false

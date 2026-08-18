@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption, SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption,   SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption, VehiculoSACTel } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
-import { manifiestoListadoTexto, manifiestoTotalesTexto } from '@/services/ticketFiscalService';
+import { manifiestoListadoTexto, manifiestoTotalesTexto, EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
+import { buildWhatsAppCard } from '@/utils/whatsappShare';
+
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
-import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
+import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, DESKTOP_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +17,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
+import {
+  Tooltip, TooltipTrigger, TooltipContent,
+} from '@/components/ui/tooltip';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -27,7 +32,7 @@ import {
   TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
   Send, MapPin, Plus, Banknote, CreditCard, QrCode,
   User, Phone, Mail, Armchair, CheckCircle2, Clock,
-  Menu, X, Printer,
+   Menu, X, Printer, Eye, Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -102,11 +107,13 @@ export default function CajeroDashboard() {
         ]
       : []),
     ...(!esRodamiento
-      ? [{ id: 'ventas' as CajeroSection, label: 'Taquilla de Ventas', icon: <Ticket className="w-5 h-5" /> }]
+      ? [
+          { id: 'ventas' as CajeroSection, label: 'Taquilla de Ventas', icon: <Ticket className="w-5 h-5" /> },
+          { id: 'reservas' as CajeroSection, label: 'Control de Reservas', icon: <CalendarDays className="w-5 h-5" /> },
+          { id: 'cierre' as CajeroSection, label: 'Cierre de Cajero', icon: <Coins className="w-5 h-5" /> },
+        ]
       : []),
-    { id: 'reservas', label: 'Control de Reservas', icon: <CalendarDays className="w-5 h-5" /> },
     { id: 'informes', label: 'Informes y Métricas', icon: <ArrowUpRight className="w-5 h-5" /> },
-    { id: 'cierre', label: 'Cierre de Cajero', icon: <Coins className="w-5 h-5" /> },
   ], [puedeDespacho, esRodamiento]);
 
   const toggleMenu = (close = false) => {
@@ -185,7 +192,28 @@ export default function CajeroDashboard() {
       return;
     }
 
-    // Escritorio: validación a través de Web Bluetooth
+    // Escritorio: primero el mini-servicio local WS (print-service del PC);
+    // si no está, validación a través de Web Bluetooth.
+    const desktopOk = await servicioPdaDisponible();
+    if (desktopOk) {
+      setTesteandoImpresora(true);
+      try {
+        const r = await imprimirTestPdaWs();
+        if (r.ok) {
+          setImpresoraPredeterminada(DESKTOP_WS_LABEL);
+          guardarImpresoraPda(DESKTOP_WS_LABEL, true);
+          setImpresoraFijada(true);
+          toast.success(`Ticket de prueba impreso en "${r.dispositivo}".`);
+        }
+        return;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Error al validar la impresora local.');
+      } finally {
+        setTesteandoImpresora(false);
+      }
+      return;
+    }
+
     if (!soportaBluetoothEscPos()) {
       toast.error('Este navegador no soporta impresión en local (Bluetooth).');
       return;
@@ -450,7 +478,7 @@ export default function CajeroDashboard() {
               case 'inicio':
                 return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} />;
               case 'despacho':
-                return <SubViewDespacho onVenderTicket={(v) => { setVentaInicial(v); setActiveSection('ventas'); }} />;
+                return <SubViewDespacho permiteVenta={!esRodamiento} onVenderTicket={(v) => { setVentaInicial(v); setActiveSection('ventas'); }} />;
               case 'llegadas':
                 return <SubViewLlegadas />;
               case 'ventas':
@@ -704,13 +732,11 @@ function ListaVehiculos({
 // ─────────────────────────────────────────────────────────────────────────────
 // 🚌 1b. SUBVISTA: DESPACHO DE VEHÍCULOS (solo agencia principal)
 // ─────────────────────────────────────────────────────────────────────────────
-function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstado) => void }) {
+function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta?: boolean; onVenderTicket: (v: VehiculoEstado) => void }) {
   const [programacion, setProgramacion] = useState<ProgramacionVehiculosData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [despachando, setDespachando] = useState<number | null>(null);
-  const [imprimiendo, setImprimiendo] = useState<number | null>(null);
   const [dialogoNuevaRuta, setDialogoNuevaRuta] = useState(false);
-  const { imprimirTexto } = useTicketFiscal();
+  const [tabVehiculos, setTabVehiculos] = useState<'plataforma' | 'despachados'>('plataforma');
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -728,6 +754,30 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
     void cargar();
   }, [cargar]);
 
+  const [vehiculoConsulta, setVehiculoConsulta] = useState<VehiculoEstado | null>(null);
+  const [vehiculoDetalle, setVehiculoDetalle] = useState<VehiculoSACTel | null>(null);
+  const [cargandoVehiculo, setCargandoVehiculo] = useState(false);
+
+  const [despachando, setDespachando] = useState<number | null>(null);
+  const [imprimiendo, setImprimiendo] = useState<number | null>(null);
+  const [vehiculoAnular, setVehiculoAnular] = useState<VehiculoEstado | null>(null);
+  const [motivoAnulacion, setMotivoAnulacion] = useState('');
+  const [anulando, setAnulando] = useState(false);
+  const { imprimirTexto } = useTicketFiscal();
+
+  useEffect(() => {
+    setVehiculoDetalle(null);
+    if (!vehiculoConsulta?.placa_vehi) return;
+    let activo = true;
+    setCargandoVehiculo(true);
+    travelsoftService
+      .getVehiculo(vehiculoConsulta.placa_vehi)
+      .then((d) => { if (activo) setVehiculoDetalle(d); })
+      .catch(() => { if (activo) setVehiculoDetalle(null); })
+      .finally(() => { if (activo) setCargandoVehiculo(false); });
+    return () => { activo = false; };
+  }, [vehiculoConsulta]);
+
   const despachables = useMemo(() => {
     const v = programacion?.vehiculos;
     if (!v) return [];
@@ -736,13 +786,22 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
     );
   }, [programacion]);
 
-  const todos = useMemo(() => {
+  const despachadosTab = useMemo(() => {
     const v = programacion?.vehiculos;
     if (!v) return [];
-    return [...v.programados, ...v.despachados].sort(
+    return [...v.despachados].sort(
       (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
     );
   }, [programacion]);
+
+  const todos = useMemo(() => {
+    const v = programacion?.vehiculos;
+    if (!v) return [];
+    const base = tabVehiculos === 'plataforma' ? v.programados : v.despachados;
+    return [...base].sort(
+      (a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0)
+    );
+  }, [programacion, tabVehiculos]);
 
   const placasConRutaHoy = useMemo(() => {
     const v = programacion?.vehiculos;
@@ -799,6 +858,31 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
     });
   };
 
+  const confirmarAnular = (v: VehiculoEstado) => {
+    setMotivoAnulacion('');
+    setVehiculoAnular(v);
+  };
+
+  const ejecutarAnulacion = async () => {
+    if (!vehiculoAnular) return;
+    const motivo = motivoAnulacion.trim();
+    if (!motivo) {
+      toast.error("Debe indicar el motivo de la anulación.");
+      return;
+    }
+    setAnulando(true);
+    try {
+      await travelsoftService.anularRuta(vehiculoAnular.cod_ruta, vehiculoAnular.fecha_ruta ?? undefined, motivo);
+      toast.success(`Ruta ${vehiculoAnular.placa_vehi || vehiculoAnular.cod_ruta} anulada.`);
+      setVehiculoAnular(null);
+      await cargar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo anular la ruta.");
+    } finally {
+      setAnulando(false);
+    }
+  };
+
   if (loading) {
     return (
       <Card className="bg-white border-slate-200 shadow-sm">
@@ -847,98 +931,186 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
       </div>
 
       <Card className="bg-white border-slate-200 shadow-sm">
-        <CardHeader className="p-4 pb-2">
+        <CardHeader className="p-4 pb-2 space-y-3">
           <CardTitle className="text-xs font-bold uppercase text-emerald-600">Vehículos y Rutas del Día</CardTitle>
           <CardDescription className="text-[11px]">
             Vehículos habilitados de la agencia. Los de plataforma venden tiquetes; los en tránsito ya salieron.
           </CardDescription>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant={tabVehiculos === 'plataforma' ? 'default' : 'outline'}
+              className={cn(
+                "text-[11px] font-bold gap-1.5 h-9",
+                tabVehiculos === 'plataforma'
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+              )}
+              onClick={() => setTabVehiculos('plataforma')}
+            >
+              <Bus className="w-3.5 h-3.5" /> En Plataforma
+              <Badge className={cn("ml-1", tabVehiculos === 'plataforma' ? "bg-white/20 text-white border-white/30" : "bg-emerald-100 text-emerald-800 border-emerald-200")}> {despachables.length}</Badge>
+            </Button>
+            <Button
+              size="sm"
+              variant={tabVehiculos === 'despachados' ? 'default' : 'outline'}
+              className={cn(
+                "text-[11px] font-bold gap-1.5 h-9",
+                tabVehiculos === 'despachados'
+                  ? "bg-sky-600 hover:bg-sky-700 text-white"
+                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+              )}
+              onClick={() => setTabVehiculos('despachados')}
+            >
+              <Send className="w-3.5 h-3.5" /> Despachados
+              <Badge className={cn("ml-1", tabVehiculos === 'despachados' ? "bg-white/20 text-white border-white/30" : "bg-sky-100 text-sky-800 border-sky-200")}> {despachadosTab.length}</Badge>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           {todos.length === 0 ? (
             <p className="text-xs text-slate-400 italic py-6 text-center">
-              No hay vehículos programados hoy. Use "Adicionar Ruta" para crear uno.
+              {tabVehiculos === 'plataforma'
+                ? 'No hay vehículos en plataforma hoy. Use "Adicionar Ruta" para crear uno.'
+                : 'No hay vehículos despachados hoy.'}
             </p>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {todos.map((v) => {
-                const habilitada = v.habilitada_ruta === '1';
-                const despachado = v.despachada_ruta === '1';
-                const enTransito = habilitada && despachado;
-                const estadoLabel = enTransito ? "En Tránsito" : habilitada ? "En Plataforma" : "No Habilitado";
-                const badgeClass = enTransito
-                  ? "bg-sky-100 text-sky-800 border-sky-200"
-                  : habilitada
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                    : "bg-slate-100 text-slate-600 border-slate-200";
-                const iconClass = enTransito
-                  ? "bg-sky-50 text-sky-600"
-                  : habilitada
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-slate-50 text-slate-500";
-                return (
-                  <li key={`${v.cod_ruta}-${(v as { cod_adicional?: number }).cod_adicional ?? ''}`} className="py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className={cn("p-2.5 rounded-xl shrink-0", iconClass)}>
-                        <Bus className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[720px]">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
+                    <th className="px-3 py-2 font-bold">Nº Orden</th>
+                    <th className="px-3 py-2 font-bold">Hora Ruta</th>
+                    <th className="px-3 py-2 font-bold">Recorrido</th>
+                    <th className="px-3 py-2 font-bold">Hora Salida</th>
+                    <th className="px-3 py-2 font-bold">Estado</th>
+                    <th className="px-3 py-2 font-bold">Acciones</th>
+                    <th className="px-3 py-2 font-bold text-right">Consulta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {todos.map((v) => {
+                    const habilitada = v.habilitada_ruta === '1';
+                    const despachado = v.despachada_ruta === '1';
+                    const enPlataforma = habilitada && !despachado;
+                    const enTransito = habilitada && despachado;
+                    const anulada = v.anulada === '1';
+                    const estadoLabel = anulada ? "Anulada" : enTransito ? "En Tránsito" : enPlataforma ? "En Plataforma" : "No Habilitado";
+                    const badgeClass = anulada
+                      ? "bg-rose-100 text-rose-800 border-rose-200"
+                      : enTransito
+                        ? "bg-sky-100 text-sky-800 border-sky-200"
+                        : enPlataforma
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                          : "bg-slate-100 text-slate-600 border-slate-200";
+                    return (
+                      <tr
+                        key={`${v.cod_ruta}-${(v as { cod_adicional?: number }).cod_adicional ?? ''}`}
+                        className="border-b border-slate-100 hover:bg-slate-50/70"
+                      >
+                        <td className="px-3 py-2.5">
                           <p className="text-xs font-black text-slate-900 font-mono truncate">{v.orden_vehi || v.placa_vehi || "SIN ORDEN"}</p>
-                          <span className="text-[11px] font-bold text-slate-500 font-mono shrink-0">{formatHora(v.hora_ruta)}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {v.destino || "—"}
-                          {v.conductor ? ` · ${v.conductor}` : ""}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 sm:justify-end">
-                      <Badge className={cn("text-[10px] font-bold border shrink-0", badgeClass)}>
-                        {estadoLabel}
-                      </Badge>
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 shrink-0">
-                        <Ticket className="w-3 h-3" /> {v.tickets_vendidos ?? 0} vendidos
-                      </span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {habilitada && !despachado && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-[11px] gap-1.5"
-                            onClick={() => onVenderTicket(v)}
-                          >
-                            <Ticket className="w-3.5 h-3.5" /> Vender Ticket
-                          </Button>
-                        )}
-                        {habilitada && !despachado && (
-                          <Button
-                            size="sm"
-                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5"
-                            disabled={despachando === v.cod_ruta || imprimiendo === v.cod_ruta}
-                            onClick={() => confirmarDespacho(v)}
-                          >
-                            {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : imprimiendo === v.cod_ruta ? <Printer className="w-3.5 h-3.5 animate-pulse" /> : <Send className="w-3.5 h-3.5" />}
-                            {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Despachar"}
-                          </Button>
-                        )}
-                        {enTransito && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-sky-300 text-sky-700 hover:bg-sky-50 font-bold text-[11px] gap-1.5"
-                            disabled={imprimiendo === v.cod_ruta}
-                            onClick={() => void imprimirManifiesto(v)}
-                          >
-                            {imprimiendo === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-                            {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Imprimir Listado"}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] font-bold text-slate-700 font-mono whitespace-nowrap">
+                          {formatHora(v.hora_ruta)}
+                        </td>
+                        <td className="px-3 py-2.5 min-w-[240px]">
+                          <p className="text-[11px] text-slate-600 truncate">
+                            {v.origen || "—"} <span className="text-slate-400">→</span> {v.destino || "—"}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {v.recorrido || ""}
+                          </p>
+                          {v.conductor && (
+                            <p className="text-[10px] text-slate-500 truncate">
+                              <User className="w-3 h-3 inline mr-1 text-slate-400" />{v.conductor}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] font-bold text-slate-700 font-mono whitespace-nowrap">
+                          {v.hora_despacho || formatHora(v.hora_ruta)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge className={cn("text-[10px] font-bold border whitespace-nowrap", badgeClass)}>
+                            {estadoLabel}
+                          </Badge>
+                          {!anulada && (
+                            <span className="block mt-1 text-[10px] font-bold text-emerald-700">
+                              <Ticket className="w-3 h-3 inline mr-0.5 -mt-0.5" /> {v.tickets_vendidos ?? 0} vendidos
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {!anulada && (
+                            <div className="flex items-center gap-2 shrink-0">
+                              {enPlataforma && permiteVenta && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-[11px] gap-1.5 whitespace-nowrap"
+                                  onClick={() => onVenderTicket(v)}
+                                >
+                                  <Ticket className="w-3.5 h-3.5" /> Vender Ticket
+                                </Button>
+                              )}
+                              {enPlataforma && (
+                                <Button
+                                  size="sm"
+                                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5 whitespace-nowrap"
+                                  disabled={despachando === v.cod_ruta || imprimiendo === v.cod_ruta}
+                                  onClick={() => confirmarDespacho(v)}
+                                >
+                                  {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : imprimiendo === v.cod_ruta ? <Printer className="w-3.5 h-3.5 animate-pulse" /> : <Send className="w-3.5 h-3.5" />}
+                                  {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Despachar"}
+                                </Button>
+                              )}
+                              {enPlataforma && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-rose-300 text-rose-700 hover:bg-rose-50 font-bold text-[11px] gap-1.5 whitespace-nowrap"
+                                  disabled={despachando === v.cod_ruta}
+                                  onClick={() => confirmarAnular(v)}
+                                >
+                                  <Ban className="w-3.5 h-3.5" /> Anular Ruta
+                                </Button>
+                              )}
+                              {enTransito && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-sky-300 text-sky-700 hover:bg-sky-50 font-bold text-[11px] gap-1.5 whitespace-nowrap"
+                                  disabled={imprimiendo === v.cod_ruta}
+                                  onClick={() => void imprimirManifiesto(v)}
+                                >
+                                  {imprimiendo === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                                  {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Imprimir Listado"}
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-7 w-7 border-slate-300 text-slate-700 hover:bg-slate-100 font-bold"
+                                onClick={() => setVehiculoConsulta(v)}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Consulta del Vehículo</TooltipContent>
+                          </Tooltip>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -952,6 +1124,130 @@ function SubViewDespacho({ onVenderTicket }: { onVenderTicket: (v: VehiculoEstad
           placasConRutaHoy={placasConRutaHoy}
           onCreada={() => void cargar()}
         />
+      )}
+
+      {vehiculoAnular && (
+        <Dialog open onOpenChange={(open) => { if (!open) setVehiculoAnular(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-slate-900">
+                <Ban className="w-4 h-4 text-rose-600" /> Anular Ruta
+              </DialogTitle>
+              <DialogDescription>
+                {vehiculoAnular.orden_vehi || vehiculoAnular.placa_vehi || "SIN ORDEN"} · {vehiculoAnular.origen || "—"} → {vehiculoAnular.destino || "—"} · {formatHora(vehiculoAnular.hora_ruta)}. Al anular, NO se podrán vender tiquetes ni despachar.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Label className="text-[11px] font-bold text-slate-600">Motivo de la anulación <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={motivoAnulacion}
+                onChange={(e) => setMotivoAnulacion(e.target.value)}
+                placeholder="Ej: daño del vehículo, novedad de ruta, reprogramación..."
+                rows={3}
+                maxLength={255}
+                className="resize-none"
+              />
+              <p className="text-[10px] text-slate-400">{motivoAnulacion.length}/255 caracteres</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-[11px] font-bold"
+                onClick={() => setVehiculoAnular(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] gap-1.5"
+                disabled={anulando || !motivoAnulacion.trim()}
+                onClick={() => void ejecutarAnulacion()}
+              >
+                {anulando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+                {anulando ? "Anulando..." : "Confirmar Anulación"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {vehiculoConsulta && (
+        <Dialog open onOpenChange={(open) => { if (!open) setVehiculoConsulta(null); }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-slate-900">
+                <Bus className="w-4 h-4 text-emerald-600" /> Consulta del Vehículo
+              </DialogTitle>
+              <DialogDescription>
+                Detalle del vehículo y de la ruta programada para hoy.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vehículo</p>
+                {cargandoVehiculo ? (
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 py-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Consultando vehículo...
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm font-black text-slate-900 font-mono">
+                      {vehiculoDetalle?.placa_vehi || vehiculoConsulta.placa_vehi || "SIN PLACA"}
+                    </p>
+                    {vehiculoDetalle?.orden_vehi && (
+                      <p className="text-[11px] text-slate-600">Nº Orden: <strong>{vehiculoDetalle.orden_vehi}</strong></p>
+                    )}
+                    {vehiculoDetalle?.marca_vehi && (
+                      <p className="text-[11px] text-slate-600">Marca: <strong>{vehiculoDetalle.marca_vehi}</strong></p>
+                    )}
+                    {vehiculoDetalle?.tipo_vehi && (
+                      <p className="text-[11px] text-slate-600">Tipo: <strong>{vehiculoDetalle.tipo_vehi}</strong></p>
+                    )}
+                    {vehiculoDetalle?.modelo_vehi != null && (
+                      <p className="text-[11px] text-slate-600">Modelo: <strong>{vehiculoDetalle.modelo_vehi}</strong></p>
+                    )}
+                    {vehiculoDetalle?.pasajeros_vehi != null && (
+                      <p className="text-[11px] text-slate-600">Cupo: <strong>{vehiculoDetalle.pasajeros_vehi} pasajeros</strong></p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ruta</p>
+                <p className="text-[11px] text-slate-700">
+                  {vehiculoConsulta.origen || "—"} <span className="text-slate-400">→</span> {vehiculoConsulta.destino || "—"}
+                </p>
+                {vehiculoConsulta.recorrido && (
+                  <p className="text-[11px] text-slate-500">{vehiculoConsulta.recorrido}</p>
+                )}
+                <p className="text-[11px] text-slate-600">Hora Ruta: <strong className="font-mono">{formatHora(vehiculoConsulta.hora_ruta)}</strong></p>
+                <p className="text-[11px] text-slate-600">Hora Salida: <strong className="font-mono">{vehiculoConsulta.hora_despacho || formatHora(vehiculoConsulta.hora_ruta)}</strong></p>
+                {vehiculoConsulta.conductor && (
+                  <p className="text-[11px] text-slate-600">Conductor: <strong>{vehiculoConsulta.conductor}</strong></p>
+                )}
+                <p className="text-[11px] text-emerald-700 font-bold">
+                  <Ticket className="w-3 h-3 inline mr-1" /> {vehiculoConsulta.tickets_vendidos ?? 0} vendidos
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-[11px] font-bold"
+                onClick={() => setVehiculoConsulta(null)}
+              >
+                Cerrar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
@@ -1013,7 +1309,11 @@ function NuevaRutaDialog({
           .sort((a, b) => horaDurationAMinutos(a.hora_time) - horaDurationAMinutos(b.hora_time))
       );
       setConcedes(
-        (cc ?? []).filter((c) => c.id_conduce != null && (c.desc_conduce ?? '').trim() !== '')
+        (cc ?? [])
+          .filter((c) => c.id_conduce != null && (c.desc_conduce ?? '').trim() !== '')
+          .sort((a, b) =>
+            (a.desc_conduce ?? '').localeCompare(b.desc_conduce ?? '', 'es', { sensitivity: 'base' })
+          )
       );
       const tipos = await travelsoftService.getRutasTipos();
       setTiposServicio(tipos);
@@ -1073,11 +1373,26 @@ function NuevaRutaDialog({
     [vehiculos, placasConRutaHoy]
   );
 
+  // Números de orden disponibles = orden_vehi de los vehículos activos sin ruta hoy.
+  const ordenesDisponibles = useMemo(
+    () =>
+      vehiculosDisponibles
+        .filter((v) => (v.orden_vehi ?? '').trim() !== '')
+        .sort((a, b) => Number(a.orden_vehi) - Number(b.orden_vehi)),
+    [vehiculosDisponibles]
+  );
+
+  const vehiculoSelOrden = useMemo(
+    () => ordenesDisponibles.find((v) => (v.orden_vehi ?? '') === numeroOrden) ?? null,
+    [ordenesDisponibles, numeroOrden]
+  );
+
   useEffect(() => {
-    if (placa && !vehiculosDisponibles.some((v) => v.placa_vehi === placa)) {
+    if (numeroOrden && !vehiculoSelOrden) {
+      setNumeroOrden('');
       setPlaca('');
     }
-  }, [vehiculosDisponibles, placa]);
+  }, [numeroOrden, vehiculoSelOrden]);
 
   useEffect(() => {
     if (placa) {
@@ -1118,6 +1433,13 @@ function NuevaRutaDialog({
     }
   }, [placa, vehiculosDisponibles]);
 
+  // Al elegir el número de orden se autocompleta la placa y se cargan sus conductores.
+  const handleSeleccionarOrden = (orden: string) => {
+    setNumeroOrden(orden);
+    const vehiculo = ordenesDisponibles.find((v) => (v.orden_vehi ?? '') === orden);
+    setPlaca(vehiculo?.placa_vehi ?? '');
+  };
+
   const horaAMinutos = horaDurationAMinutos;
 
   const erroresRuta = useMemo<string[]>(() => {
@@ -1125,11 +1447,11 @@ function NuevaRutaDialog({
     if (!destino) e.push('Seleccione el destino.');
     if (!recorridoId) e.push('Seleccione el recorrido.');
     if (!idHorario) e.push('Ingrese la hora de salida.');
-    if (!placa) e.push('Seleccione el vehículo.');
+    if (!numeroOrden) e.push('Seleccione el número de orden del vehículo.');
     if (!conduceId) e.push('Debe asignar el número de conduce.');
     return e;
 
-  }, [destino, recorridoId, idHorario, placa, conduceId]);
+  }, [destino, recorridoId, idHorario, numeroOrden, conduceId]);
 
   const handleGuardar = async () => {
     if (erroresRuta.length > 0) {
@@ -1258,28 +1580,21 @@ function NuevaRutaDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold text-slate-600">Número de orden <span className="text-slate-400 font-normal"></span></Label>
-              <Input
-                value={numeroOrden}
-                readOnly
-                placeholder={placa ? "Sin orden asignado" : "Se asigna al elegir el vehículo"}
-                maxLength={6}
-                className="bg-slate-100 text-slate-500"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold text-slate-600">Vehículo</Label>
-              <Select value={placa} onValueChange={setPlaca}>
-                <SelectTrigger className={cn(mostrarErrores && !placa && "border-red-400 ring-1 ring-red-300 bg-red-50")}>
-                  <SelectValue placeholder="Seleccione el vehículo" />
+              <Label className="text-[11px] font-bold text-slate-600">Número de orden <span className="text-red-500">*</span> <span className="text-slate-400 font-normal">(del vehículo)</span></Label>
+              <Select value={numeroOrden} onValueChange={handleSeleccionarOrden}>
+                <SelectTrigger className={cn(
+                  "transition-colors",
+                  mostrarErrores && !numeroOrden && "border-red-400 ring-1 ring-red-300 bg-red-50"
+                )}>
+                  <SelectValue placeholder="Seleccione el número de orden" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vehiculosDisponibles.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-slate-400 italic">Todos los vehículos ya tienen ruta hoy.</div>
+                  {ordenesDisponibles.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">Sin vehículos disponibles con número de orden.</div>
                   )}
-                  {vehiculosDisponibles.map((v) => (
-                    <SelectItem key={v.placa_vehi} value={v.placa_vehi}>
-                      {v.placa_vehi}{v.marca_vehi ? ` · ${v.marca_vehi}` : ''}{v.modelo_vehi ? ` ${v.modelo_vehi}` : ''}
+                  {ordenesDisponibles.map((v) => (
+                    <SelectItem key={`${v.orden_vehi}-${v.placa_vehi}`} value={String(v.orden_vehi)}>
+                      {v.orden_vehi}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1287,6 +1602,15 @@ function NuevaRutaDialog({
               {placasConRutaHoy.size > 0 && (
                 <p className="text-[10px] text-slate-400">Se ocultan los vehículos que ya tienen ruta creada hoy.</p>
               )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-bold text-slate-600">Vehículo</Label>
+              <Input
+                value={vehiculoSelOrden ? `${vehiculoSelOrden.placa_vehi}${vehiculoSelOrden.marca_vehi ? ` · ${vehiculoSelOrden.marca_vehi}` : ''}${vehiculoSelOrden.modelo_vehi ? ` ${vehiculoSelOrden.modelo_vehi}` : ''}` : ''}
+                readOnly
+                placeholder={numeroOrden ? "Placa del vehículo" : "Se asigna al elegir el número de orden"}
+                className="bg-slate-100 text-slate-700 font-semibold"
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[11px] font-bold text-slate-600">Tipo de servicio <span className="text-slate-400 font-normal">(básico, premium, etc.)</span></Label>
@@ -1307,7 +1631,7 @@ function NuevaRutaDialog({
                   cargandoConductores && "cursor-wait",
                   mostrarErrores && !conductor && "border-red-400 ring-1 ring-red-300 bg-red-50"
                 )}>
-                  <SelectValue placeholder={placa ? "Seleccione el conductor" : "Primero elija el vehículo"} />
+                  <SelectValue placeholder={numeroOrden ? "Seleccione el conductor" : "Primero elija el número de orden"} />
                 </SelectTrigger>
                 <SelectContent>
                   {cargandoConductores && (
@@ -1317,7 +1641,7 @@ function NuevaRutaDialog({
                   )}
                   {!cargandoConductores && conductoresVehiculo.length === 0 && (
                     <div className="px-3 py-2 text-xs text-slate-400 italic">
-                      {placa ? "Este vehículo no tiene conductores asignados." : "Elija primero el vehículo."}
+                      {placa ? "Este vehículo no tiene conductores asignados." : "Elija primero el número de orden."}
                     </div>
                   )}
                   {!cargandoConductores && conductoresVehiculo.map((c) => (
@@ -1777,7 +2101,7 @@ function SubViewVentas({
     const v = programacion?.vehiculos;
     if (!v) return [];
     return [...v.programados]
-      .filter((r) => r.habilitada_ruta === '1')
+       .filter((r) => r.habilitada_ruta === '1')
       .sort((a, b) => (a.hora_ruta ?? 0) - (b.hora_ruta ?? 0));
   }, [programacion]);
 
@@ -1845,18 +2169,49 @@ function SubViewVentas({
     if (ticket && !impresoRef.current) {
       impresoRef.current = true;
       const t = window.setTimeout(() => {
-        void imprimirTicket(ticket);
         reiniciar();
       }, 400);
       return () => window.clearTimeout(t);
     }
   }, [ticket, imprimirTicket, reiniciar]);
 
+  // ── WhatsApp share card (estilo soyllanero.com) ────────────────────────
+  const compartirWhatsApp = () => {
+    const card = buildWhatsAppCard({
+      title: 'Viaje Confirmado',
+      empresa: EMPRESA_NOMBRE,
+      ruta: ticket?.cod_ruta != null ? String(ticket.cod_ruta) : '-',
+      origen: ticket?.origen ?? '-',
+      destino: ticket?.destino ?? '-',
+      hora: ticket?.hora_tiquete || formatHora(ticket?.hora_ruta),
+      asiento: ticket?.puesto != null ? String(ticket.puesto) : (ticket?.sillas?.join(', ') ?? '-'),
+      precio: ticket?.total != null
+        ? `$${ticket.total.toLocaleString('es-CO')}`
+        : (ticket?.valor != null ? `$${ticket.valor.toLocaleString('es-CO')}` : '-'),
+      url: window.location.origin,
+      qrData: ticket?.cufe ?? '',
+    });
+    window.open(card.link, '_blank', 'noopener,noreferrer,width=600,height=800');
+  };
+
   const formasPago: { id: FormaPago; label: string; desc: string; icon: React.ReactNode }[] = [
     { id: 'EFECTIVO', label: 'Efectivo', desc: 'Pago en caja', icon: <Banknote className="w-5 h-5" /> },
     { id: 'TARJETA', label: 'Tarjeta', desc: 'Débito / crédito', icon: <CreditCard className="w-5 h-5" /> },
     { id: 'QR', label: 'Código QR', desc: 'Pago por QR', icon: <QrCode className="w-5 h-5" /> },
   ];
+
+  const BotonWhatsApp = () => (
+    <button
+      type="button"
+      onClick={compartirWhatsApp}
+      className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full shadow-xl text-white bg-[#2d5a3d] hover:bg-[#4a7c59] transition-transform hover:scale-105"
+      title="Compartir ticket por WhatsApp"
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M12.04 2.01C6.5 2.01 2 6.21 2 11.29c0 2.46 1.63 4.55 3.9 5.28l-.6.46c-.33.25-.45.7-.23 1.05l1.7 2.92c.22.37.7.5 1.08.32l1.9-1c.93.36 1.92.57 2.95.57 5.54 0 10.04-4.2 10.04-9.72S17.58 2.01 12.04 2.01zm5.43 7.64-4.5 3.13c-.3.21-.65.31-.99.29-.34-.02-.6-.14-.78-.39l-1.5-1.99c-.21-.28-.17-.68.09-.9 0 0 0 0 .01-.01.26-.23.66-.2 1.03.03.1.06.21.11.31.17l.49 3.93c.05.48.28 1 .68 1.33l1.45 1.04c.43.31.99.36 1.48.12l3.36-1.47c.3-.13.59-.36.76-.66.16-.27.22-.6.11-.9-.1-.3-.33-.53-.61-.67z"/>
+      </svg>
+    </button>
+  );
 
   const errores = useMemo<string[]>(() => {
     const e: string[] = [];
@@ -1933,6 +2288,7 @@ function SubViewVentas({
         // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core no responde,
         // el tiquete se imprime igualmente con la numeración de la resolución local.
         const ticketFinal = await emitirConDian(venta.data, (msg) => toast.warning(msg));
+        void imprimirTicket(ticketFinal);
         setTicket(ticketFinal);
         if (venta.total) setTotalCaja((p) => p + venta.total);
         toast.success(`${venta.cantidad} tiquete(s) generados, imprimiendo...`);
@@ -2374,6 +2730,7 @@ function SubViewVentas({
             <hr className="border-t border-dashed border-slate-300 my-2" />
           </div>
         )}
+        {ticket && <BotonWhatsApp />}
       </div>
     </div>
   );

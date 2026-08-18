@@ -1,0 +1,63 @@
+========================================================================
+ REPORTE DE CAMBIO — ANULACIÓN DE RUTA (para aprobación de AdminDB)
+ Proyecto: TravelSoft (backend.lan/travelsoft) / SACTel
+ Fecha: 2026-08-17
+========================================================================
+
+1. RESUMEN
+------------------------------------------------------------------------
+Al ejecutar la función "Anular Ruta" (botón en Programación de Vehículos),
+el sistema DEBE dejar de permitir la venta de tiquetes y el despacho de esa
+ruta. Para lograrlo se propone cambiar el estado de la columna existente
+`habilitada_adicional` de la tabla `adicional` a '0'.
+
+Este cambio NO modifica ni crea estructura de la tabla (sin DDL). Solo se
+actualiza el valor de una columna que ya existe y que el motor de venta de
+tiquetes ya consulta para decidir si la ruta puede vender.
+
+2. CAMBIO PROPUESTO (lógica del sistema)
+------------------------------------------------------------------------
+Cuando un usuario autorizado confirma la anulación de una ruta:
+
+    UPDATE adicional
+       SET habilitada_adicional = '0'
+     WHERE cod_ruta         = <cod_ruta>
+       AND origen_adicional = <agencia del usuario>
+       AND fecha_adicional  = <fecha de la ruta>;
+
+Además, el sistema marca la ruta como no despachable (la fila `rutas`
+correspondiente deja de poder despacharse).
+
+3. IMPACTO EN EL FUNCIONAMIENTO
+------------------------------------------------------------------------
+- La taquilla de ventas deja de listar/vender tiquetes para esa ruta
+  (porque la validación de venta revisa `habilitada_adicional`).
+- El despacho de la ruta queda bloqueado (no se genera planilla/manifiesto).
+- La ruta se muestra en el listado de Programación con estado claro de
+  anulada, conservando su historial (NO se elimina el registro).
+
+4. LO QUE NO SE MODIFICA
+------------------------------------------------------------------------
+- No se agregan columnas nuevas a `adicional` ni a `rutas`.
+- No se elimina ni cambia de tipo ninguna columna existente.
+- No se afectan las demás rutas ni la operación normal del día.
+
+5. ELEMENTOS DEL SISTEMA QUE IMPLEMENTAN EL CAMBIO
+------------------------------------------------------------------------
+- Backend: endpoint POST /api/v1/rutas/anular
+  (app/api/travel.py)
+- Validación de venta de tiquetes (app/api/travel.py)
+- Frontend: Programación de Vehículos — botón "Anular Ruta" con motivo
+  (src/pages/cajero/CajeroDashboard.tsx)
+  (src/services/travelsoftService.ts)
+
+6. SOLICITUD A AdminDB
+------------------------------------------------------------------------
+Se solicita la APROBACIÓN para que el backend actualice
+`habilitada_adicional = '0'` en la fila de la ruta anulada (operación
+UPDATE sobre columna existente). No se requiere ningún DDL ni backup
+especial. En caso de requerirse, confirmar que la columna
+`habilitada_adicional` (CHAR(1), valores '0'/'1') está disponible en la
+base de datos de producción para los tres criterios: cod_ruta +
+origen_adicional + fecha_adicional.
+========================================================================

@@ -1,21 +1,40 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// IMPRESIÓN EN LA PDA VÍA SERVICIO LOCAL WEBSOCKET (sin diálogos)
+// IMPRESIÓN VÍA SERVICIO LOCAL WEBSOCKET (sin diálogos)
 // ─────────────────────────────────────────────────────────────────────────────
-// En la PDA Sunmi corre una app/servicio Android ligera que abre un servidor
-// WebSocket en `ws://127.0.0.1:8080`. Ese servicio recibe el ticket, decodifica
-// el base64 y llama al SDK de Sunmi (AIDL/SUNMIOS) para imprimir directo en la
-// impresora integrada, SIN abrir selectores ni ventanas.
+// La impresión local se delega a un mini-servicio WS en 127.0.0.1 que escribe
+// los bytes en la impresora del equipo SIN abrir selectores ni ventanas:
+//   - En la PDA Sunmi: la app Android "PDA Print Service" (pda-websocket-printer)
+//     escucha en el puerto 8091 e imprime en la integrada (InnerPrinter).
+//   - En el escritorio: el mini-servicio Python "desktop-print-service"
+//     escucha en el puerto 8090 e imprime con win32print a la impresora local.
+// El puerto 8080 queda libre para el servidor web/desarrollo.
 //
 // Protocolo (JSON):
 //   Send:  { action: "PRINT", data: "<base64 del ESC/POS>", copies: 1 }
 //   Reply: { code: 0 | 1, message?: string }   (0 = ok)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { encodarEscPos } from '@/utils/ticketFormatter';
+import { encodarEscPos, isAndroidDevice } from '@/utils/ticketFormatter';
 
-const URL_PDA = 'ws://127.0.0.1:8080';
+/** Mini-servicio del escritorio (desktop-print-service/print_service.py). */
+const URL_DESKTOP_WS = 'ws://127.0.0.1:8090';
+/** App Android de la PDA (pda-websocket-printer/PrintService.kt). */
+const URL_PDA_WS = 'ws://127.0.0.1:8091';
 const CONNECT_TIMEOUT = 2000;
+/** Etiqueta del servicio WS local en una PDA Android (app "PDA Print Service"). */
 export const PDA_WS_LABEL = 'PDA (WebSocket local)';
+/** Etiqueta del mini-servicio de impresión del escritorio (desktop-print-service). */
+export const DESKTOP_WS_LABEL = 'Servicio local (WebSocket)';
+
+/** URL del mini-servicio local según el dispositivo. */
+export function getLocalWsUrl(): string {
+  return isAndroidDevice() ? URL_PDA_WS : URL_DESKTOP_WS;
+}
+
+/** Etiqueta según el dispositivo actual. */
+export function getLocalWsLabel(): string {
+  return isAndroidDevice() ? PDA_WS_LABEL : DESKTOP_WS_LABEL;
+}
 
 let socket: WebSocket | null = null;
 let disponibleCache: boolean | null = null;
@@ -47,7 +66,7 @@ function conectar(timeoutMs = CONNECT_TIMEOUT): Promise<boolean> {
     };
     const timer = setTimeout(() => terminar(false), timeoutMs);
     try {
-      ws = new WebSocket(URL_PDA);
+      ws = new WebSocket(getLocalWsUrl());
       ws.onopen = () => { socket = ws; terminar(true); };
       ws.onerror = () => terminar(false);
       ws.onclose = () => {
@@ -86,13 +105,13 @@ export async function imprimirPdaWs(texto: string): Promise<ResultadoPdaWs> {
   if (!conectado || !socket || socket.readyState !== WebSocket.OPEN) {
     disponibleCache = false;
     throw new Error(
-      'Servicio de impresión local no disponible. Instale la app "PDA Print Service" en el equipo.'
+      'Servicio de impresión local no disponible. Active el mini-servicio del equipo (' + getLocalWsUrl() + ').'
     );
   }
   disponibleCache = true;
   const b64 = bytesABase64(encodarEscPos(texto));
   socket.send(JSON.stringify({ action: 'PRINT', data: b64, copies: 1 }));
-  return { ok: true, dispositivo: PDA_WS_LABEL };
+  return { ok: true, dispositivo: getLocalWsLabel() };
 }
 
 /** Ticket de prueba por el servicio WS local (botón "Test Impresora"). */
@@ -102,7 +121,7 @@ export async function imprimirTestPdaWs(): Promise<ResultadoPdaWs> {
     '\x1b\x61\x01PRUEBA DE IMPRESIÓN\n' +
     '\x1b\x61\x00---------------------------\n' +
     'FLOTA SAN VICENTE S.A.\n' +
-    'PDA WebSocket OK\n' +
+    'Print Service WS OK\n' +
     'fecha: ' + new Date().toLocaleString('es-CO') + '\n' +
     '\n\n\n';
   return imprimirPdaWs(ticketPrueba);

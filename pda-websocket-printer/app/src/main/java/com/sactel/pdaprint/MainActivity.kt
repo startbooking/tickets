@@ -97,7 +97,7 @@ class MainActivity : Activity() {
         val running = PrintService.isRunning()
         val admin = esAdmin()
         status.text = "PDA Print Service\n" +
-            "estado: ${if (running) "ACTIVO (ws://127.0.0.1:8080)" else "detenido"}" +
+            "estado: ${if (running) "ACTIVO (ws://127.0.0.1:8091)" else "detenido"}" +
             (if (permisosFaltantes().isNotEmpty()) "\n(pendientes de permisos)" else "") +
             "\nprotección: ${if (admin) "sí (no eliminable)" else "no"}"
     }

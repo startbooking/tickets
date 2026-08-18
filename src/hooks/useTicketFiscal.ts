@@ -76,6 +76,8 @@ export interface UseTicketFiscalResult {
  *   4) window.print() — último recurso.
  *
  * En escritorio (no Android):
+ *   0) Servicio local WebSocket (mini-servicio "Print Service" del PC) —
+ *      imprime directo a la impresora USB local, sin diálogos.
  *   1) USB.
  *   2) Web Bluetooth directo.
  *   3) window.print().
@@ -89,9 +91,13 @@ async function imprimirConRespalado(
 ): Promise<ImpresionResultado> {
   const textoFinal = logoEscPos ? logoEscPos + texto : texto;
 
-  // 0. Servicio WebSocket local de la PDA (sin diálogos, prioridad en Android).
-  reiniciarCachePda();
-  if (isAndroidDevice() && (await servicioPdaDisponible())) {
+  // 0. Servicio WebSocket local (PDA "Print Service" en Android; mini-servicio
+  //    del escritorio en el PC). Sin diálogos; prioridad en ambos entornos.
+  //    En Android el cache se reinicia para volver a sondear el servicio (el
+  //    APK puede arrancar/pararse en mitad de la sesión); en escritorio se
+  //    cachea por sesión para no penalizar equipos sin el mini-servicio.
+  if (isAndroidDevice()) reiniciarCachePda();
+  if (await servicioPdaDisponible()) {
     try {
       await imprimirPdaWs(textoFinal);
       onResultado?.('pda');

@@ -19,7 +19,7 @@ import android.webkit.WebViewClient
 /**
  * Aplicación instalable de SACTel: carga la plataforma web (PWA) en un WebView
  * y arranca en segundo plano el servidor WebSocket local de impresión
- * (ws://127.0.0.1:8080) para que los tickets se impriman sin diálogos.
+ * (ws://127.0.0.1:8091) para que los tickets se impriman sin diálogos.
  */
 class MainActivity : Activity() {
 
@@ -50,7 +50,7 @@ class MainActivity : Activity() {
                 databaseEnabled = true
                 useWideViewPort = true
                 loadWithOverviewMode = true
-                // Permite ws://127.0.0.1:8080 del servicio local desde HTTPS.
+                // Permite ws://127.0.0.1:8091 del servicio local desde HTTPS.
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 setSupportZoom(false)
                 blockNetworkLoads = false

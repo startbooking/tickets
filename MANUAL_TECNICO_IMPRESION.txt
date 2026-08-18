@@ -42,6 +42,7 @@ Cadena en ANDROID (PDA):
   4) window.print()
 
 Cadena en ESCRITORIO:
+  0) Mini-servicio local WS (desktop-print-service/print_service.py) -> NUEVO
   1) USB (servidor pyusb/CUPS)
   2) Web Bluetooth (BLE, desktop)
   3) window.print()
@@ -70,12 +71,15 @@ cada servicio.
 ========================================================
 3. SERVICIO WEBSOCKET LOCAL (PDA PRINT SERVICE) - NUEVO
 ========================================================
-QUE ES
-- App Android ligera (Kotlin) que corre en la PDA como un
-  Foreground Service.
-- Abre un servidor WebSocket en ws://127.0.0.1:8080 (solo loopback).
-- Recibe la data base64 de los bytes y los envia a la impresora
-  integrada por Bluetooth SPP "InnerPrinter".
+QUE ES (hay DOS mini-servicios locales, mismo protocolo, puertos distintos):
+- En la PDA Android: app ligera "PDA Print Service" (Kotlin, Foreground
+  Service) que escucha en ws://127.0.0.1:8091, recibe la data base64 y la
+  envia a la impresora integrada por Bluetooth SPP "InnerPrinter".
+- En el escritorio: mini-servicio Python desktop-print-service/
+  (print_service.py) que escucha en ws://127.0.0.1:8090 y escribe los bytes
+  directo a la impresora local con win32print (cuando el backend corre en
+  hosting y la via USB no puede imprimir).
+- El puerto 8080 queda LIBRE para el servidor web/desarrollo.
 
 VENTAJAS:
 - Imprime SIN dialogos/selector de dispositivos.
@@ -83,14 +87,15 @@ VENTAJAS:
 - No depende de RawBT como aplicacion externa.
 
 LADO WEB - CLIENTE (src/services/pdaWebSocketService.ts)
-- Conecta a ws://127.0.0.1:8080.
+- Conecta segun el dispositivo: en Android a ws://127.0.0.1:8091; en el
+  escritorio a ws://127.0.0.1:8090 (getLocalWsUrl()).
 - Envia: { action: "PRINT", data: base64(bytes), copies: 1 }.
 - Lee respuesta { code: 0, message: "ok" }.
 - Expo: servicioPdaDisponible(), reiniciarCachePda(),
-  imprimirPdaWs(texto), imprimirTestPdaWs(), PDA_WS_LABEL.
+  imprimirPdaWs(texto), imprimirTestPdaWs(), getLocalWsLabel().
 
 LADO ANDROID - SERVIDOR (pda-websocket-printer/)
-- PrintService (Foreground) + WebSocketServer en 127.0.0.1:8080.
+- PrintService (Foreground) + WebSocketServer en 127.0.0.1:8091.
 - PrinterDriver imprime por Bluetooth SPP a:
     direccion fija 00:11:22:33:44:55
     UUID SPP 00001101-0000-1000-8000-00805F9B34FB
@@ -99,10 +104,16 @@ LADO ANDROID - SERVIDOR (pda-websocket-printer/)
 - Permisos MANIFEST: BLUETOOTH, BLUETOOTH_ADMIN, INTERNET,
   FOREGROUND_SERVICE, POST_NOTIFICATIONS.
 
+LADO ESCRITORIO - SERVIDOR (desktop-print-service/)
+- print_service.py + websockets + win32print, puerto 8090 estandar.
+- Autodeteccion de impresora (por defecto -> por nombre -> primera instalada).
+- Modo --mock para pruebas sin impresora (vuelca a logs/).
+
 ========================================================
 4. PROTOCOLO DEL SERVICIO LOCAL
 ========================================================
-Servidor: ws://127.0.0.1:8080  (loopback; la web DEBE correr en la PDA)
+Servidor: escritorio ws://127.0.0.1:8090  /  PDA Android ws://127.0.0.1:8091
+(loopback; la web DEBE correr en el mismo equipo que el mini-servicio)
 
 Envio  -> { "action": "PRINT", "data": "<base64 del ESC/POS>", "copies": 1 }
 Rta    -> { "code": 0, "message": "ok" }
@@ -135,6 +146,10 @@ Estrategia 'usb'. La App envia el ticket a un servidor de impresion
 de la red (backend que expone la impresora USB por HTTP).
 - URL y credenciales se configuran en .env (variables USB_*).
 - Se usa como via por defecto en escritorio y como respaldo en la PDA.
+- NOTA: cuando el backend corre en hosting (sin impresora USB local)
+  esta via responde "no disponible"; en el escritorio se prefiere el
+  mini-servicio local WS (desktop-print-service/), que imprime directo
+  a la impresora del PC con win32print sin depender del backend.
 
 ========================================================
 7. IMPRESION POR RawBT (Bluetooth SPP)
@@ -191,7 +206,10 @@ Archivo: src/utils/ticketFormatter.ts
 ========================================================
 12. CONFIGURACION DE RED Y ENTORNO
 ========================================================
-- Servicio local WS: ws://127.0.0.1:8080 (loopback, solo PDA).
+- Servicio local WS escritorio: ws://127.0.0.1:8090 (desktop-print-service).
+- Servicio local WS PDA Android: ws://127.0.0.1:8091 (app "PDA Print Service").
+- Puertos de impresion: escritorio 8090, PDA 8091. El 8080 queda libre para
+  el servidor web/desarrollo.
 - Plugin JS: puerto 7070 (SDK Sunmi).
 - Servidor USB/pyusb: variables USB_* en .env (.env/.production).
 - Las vias requieren HTTPS o localhost (seguridad navajas).
@@ -203,10 +221,10 @@ Archivo: src/utils/ticketFormatter.ts
               /        \
             si          no
       cadena:         cadena:
-   [local WS]   ->   [USB]
-   [JS USDK]    ->   [Web BT]
-   [USB]        ->   [print()]
-   [RawBT]      ->
+   [local WS]   ->   [local WS (mini-servicio PC)]
+   [JS USDK]    ->   [USB]
+   [USB]        ->   [Web BT]
+   [RawBT]      ->   [print()]
    [print()]
        \-> si todo 'error': mostrar motivo.
 

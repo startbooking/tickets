@@ -63,6 +63,13 @@ vi.mock('@/utils/escPosImage', () => ({
   limpiarCacheLogo: vi.fn(),
 }));
 
+// ── Mock del servicio WS local: en tests no hay mini-servicio en 127.0.0.1 ────
+vi.mock('@/services/pdaWebSocketService', () => ({
+  imprimirPdaWs: vi.fn().mockRejectedValue(new Error('WS no disponible')),
+  reiniciarCachePda: vi.fn(),
+  servicioPdaDisponible: vi.fn().mockResolvedValue(false),
+}));
+
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import type { TicketVenta } from '@/services/travelsoftService';
 
