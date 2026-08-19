@@ -761,11 +761,15 @@ export function horaDurationAMinutos(iso: string | null | undefined): number {
 
 /**
  * Convierte minutos desde medianoche (hora_ruta de TravelSoft) a "HH:MM".
+ * Retorna "--" si el valor es nulo, undefined, NaN o 0.
  */
 export function formatHora(minutos: number | null | undefined): string {
+  if (minutos === null || minutos === undefined || minutos === 0) {
+    return "--";
+  }
   const total = Number(minutos);
-  if (minutos === null || minutos === undefined || Number.isNaN(total)) {
-    return "—";
+  if (Number.isNaN(total)) {
+    return "--";
   }
   const h = Math.floor(total / 60).toString().padStart(2, "0");
   const m = Math.floor(total % 60).toString().padStart(2, "0");

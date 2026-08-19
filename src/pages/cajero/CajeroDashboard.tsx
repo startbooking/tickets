@@ -32,7 +32,7 @@ import {
   TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
   Send, MapPin, Plus, Banknote, CreditCard, QrCode,
   User, Phone, Mail, Armchair, CheckCircle2, Clock,
-   Menu, X, Printer, Eye, Ban,
+   Menu, X, Printer, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -758,11 +758,7 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
   const [vehiculoDetalle, setVehiculoDetalle] = useState<VehiculoSACTel | null>(null);
   const [cargandoVehiculo, setCargandoVehiculo] = useState(false);
 
-  const [despachando, setDespachando] = useState<number | null>(null);
   const [imprimiendo, setImprimiendo] = useState<number | null>(null);
-  const [vehiculoAnular, setVehiculoAnular] = useState<VehiculoEstado | null>(null);
-  const [motivoAnulacion, setMotivoAnulacion] = useState('');
-  const [anulando, setAnulando] = useState(false);
   const { imprimirTexto } = useTicketFiscal();
 
   useEffect(() => {
@@ -813,20 +809,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
     return placas;
   }, [programacion]);
 
-  const handleDespachar = async (v: VehiculoEstado) => {
-    setDespachando(v.cod_ruta);
-    try {
-      const res = await travelsoftService.despacharVehiculo(v.cod_ruta, v.fecha_ruta ?? undefined);
-      toast.success(`Vehículo ${v.placa_vehi || v.cod_ruta} despachado${res?.hora_despacho ? ` a las ${res.hora_despacho}` : ""}.`);
-      await cargar();
-      void imprimirManifiesto(v);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error al despachar el vehículo.");
-    } finally {
-      setDespachando(null);
-    }
-  };
-
   const imprimirManifiesto = async (v: VehiculoEstado) => {
     setImprimiendo(v.cod_ruta);
     try {
@@ -846,40 +828,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
       toast.error(err instanceof Error ? err.message : "No se pudo imprimir el listado de pasajeros.");
     } finally {
       setImprimiendo(null);
-    }
-  };
-
-  const confirmarDespacho = (v: VehiculoEstado) => {
-    toast(`Despachar ${v.placa_vehi || "vehículo"} hacia ${v.destino || "destino"}?`, {
-      action: {
-        label: "Despachar",
-        onClick: () => void handleDespachar(v),
-      },
-    });
-  };
-
-  const confirmarAnular = (v: VehiculoEstado) => {
-    setMotivoAnulacion('');
-    setVehiculoAnular(v);
-  };
-
-  const ejecutarAnulacion = async () => {
-    if (!vehiculoAnular) return;
-    const motivo = motivoAnulacion.trim();
-    if (!motivo) {
-      toast.error("Debe indicar el motivo de la anulación.");
-      return;
-    }
-    setAnulando(true);
-    try {
-      await travelsoftService.anularRuta(vehiculoAnular.cod_ruta, vehiculoAnular.fecha_ruta ?? undefined, motivo);
-      toast.success(`Ruta ${vehiculoAnular.placa_vehi || vehiculoAnular.cod_ruta} anulada.`);
-      setVehiculoAnular(null);
-      await cargar();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo anular la ruta.");
-    } finally {
-      setAnulando(false);
     }
   };
 
@@ -1053,28 +1001,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                                   <Ticket className="w-3.5 h-3.5" /> Vender Ticket
                                 </Button>
                               )}
-                              {enPlataforma && (
-                                <Button
-                                  size="sm"
-                                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1.5 whitespace-nowrap"
-                                  disabled={despachando === v.cod_ruta || imprimiendo === v.cod_ruta}
-                                  onClick={() => confirmarDespacho(v)}
-                                >
-                                  {despachando === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : imprimiendo === v.cod_ruta ? <Printer className="w-3.5 h-3.5 animate-pulse" /> : <Send className="w-3.5 h-3.5" />}
-                                  {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Despachar"}
-                                </Button>
-                              )}
-                              {enPlataforma && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-rose-300 text-rose-700 hover:bg-rose-50 font-bold text-[11px] gap-1.5 whitespace-nowrap"
-                                  disabled={despachando === v.cod_ruta}
-                                  onClick={() => confirmarAnular(v)}
-                                >
-                                  <Ban className="w-3.5 h-3.5" /> Anular Ruta
-                                </Button>
-                              )}
                               {enTransito && (
                                 <Button
                                   size="sm"
@@ -1124,54 +1050,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
           placasConRutaHoy={placasConRutaHoy}
           onCreada={() => void cargar()}
         />
-      )}
-
-      {vehiculoAnular && (
-        <Dialog open onOpenChange={(open) => { if (!open) setVehiculoAnular(null); }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-slate-900">
-                <Ban className="w-4 h-4 text-rose-600" /> Anular Ruta
-              </DialogTitle>
-              <DialogDescription>
-                {vehiculoAnular.orden_vehi || vehiculoAnular.placa_vehi || "SIN ORDEN"} · {vehiculoAnular.origen || "—"} → {vehiculoAnular.destino || "—"} · {formatHora(vehiculoAnular.hora_ruta)}. Al anular, NO se podrán vender tiquetes ni despachar.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-2">
-              <Label className="text-[11px] font-bold text-slate-600">Motivo de la anulación <span className="text-red-500">*</span></Label>
-              <Textarea
-                value={motivoAnulacion}
-                onChange={(e) => setMotivoAnulacion(e.target.value)}
-                placeholder="Ej: daño del vehículo, novedad de ruta, reprogramación..."
-                rows={3}
-                maxLength={255}
-                className="resize-none"
-              />
-              <p className="text-[10px] text-slate-400">{motivoAnulacion.length}/255 caracteres</p>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-[11px] font-bold"
-                onClick={() => setVehiculoAnular(null)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] gap-1.5"
-                disabled={anulando || !motivoAnulacion.trim()}
-                onClick={() => void ejecutarAnulacion()}
-              >
-                {anulando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
-                {anulando ? "Anulando..." : "Confirmar Anulación"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       )}
 
       {vehiculoConsulta && (
