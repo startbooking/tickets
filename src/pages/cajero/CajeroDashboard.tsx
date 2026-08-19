@@ -6,6 +6,7 @@ import { manifiestoListadoTexto, manifiestoTotalesTexto, EMPRESA_NOMBRE } from '
 import { buildWhatsAppCard } from '@/utils/whatsappShare';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
+import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';
 import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, DESKTOP_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
@@ -69,6 +70,7 @@ export default function CajeroDashboard() {
     setLoadingDashboard(true);
     try {
       const data = await travelsoftService.getDashboardCajero();
+      console.log(data)
       setDashboard(data);
     } catch (err) {
       setDashboard(null);
@@ -518,7 +520,7 @@ function SubViewInicio({
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <div>
-        <h2 className="text-xl font-black text-slate-900 tracking-tight">Resumen General del Día</h2>
+        <h2 className="text-xl font-black text-slate-900 tracking-tight">Resumen General del Día </h2>
         <p className="text-xs text-slate-500">
           {dashboard
             ? `Operación de vehículos al ${new Date(dashboard.fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`
@@ -1628,10 +1630,8 @@ function DialogoRegistrarLlegada({ vehiculo, onClose, onConfirm, reportando }: {
 
   useEffect(() => {
     const ahora = new Date();
-    const hh = ahora.getHours().toString().padStart(2, "0");
-    const mm = ahora.getMinutes().toString().padStart(2, "0");
-    setFechaLlegada(ahora.toISOString().slice(0, 10));
-    setHora(`${hh}:${mm}`);
+    setFechaLlegada(fechaHoyColombia(ahora));
+    setHora(horaColombiaCorta(ahora));
     setConductor(vehiculo?.conductor ?? "");
     setNovedad("");
     setEstado("EN_SITIO");
@@ -1971,6 +1971,8 @@ function SubViewVentas({
   useEffect(() => {
     void cargarDashboard();
   }, [cargarDashboard]);
+
+  // console.log(dashboard)
 
   // La taquilla vende tiquetes de los vehículos habilitados que aún están en
   // plataforma (habilitada_adicional='1' y despachada_adicional='0'). Los que

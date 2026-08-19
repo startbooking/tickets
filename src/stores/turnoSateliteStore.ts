@@ -13,6 +13,7 @@
  */
 
 import type { TurnoSateliteVenta } from '@/services/travelsoftService';
+import { fechaHoyColombia } from '@/utils/tiempo';
 
 export const TURNO_KEY = 'sateliteTurno';
 
@@ -94,7 +95,7 @@ export function limpiarTurno(): void {
   localStorage.removeItem(TURNO_KEY);
 }
 
-/** Calcula la fecha ISO de hoy (YYYY-MM-DD) según el timezone del cliente. */
+/** Calcula la fecha ISO de hoy (YYYY-MM-DD) según la zona horaria de Colombia (UTC-5). */
 export function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return fechaHoyColombia();
 }

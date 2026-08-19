@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { horaColombiaCorta } from '@/utils/tiempo';
 
 export default function SateliteDashboard() {
   const { user, logout } = useAuth();
@@ -384,7 +385,7 @@ setSillas(null);
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-800/70 rounded-lg px-2 py-1 ml-auto font-mono">
               <Clock className="w-3.5 h-3.5 text-emerald-400" />
-              {ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+              {horaColombiaCorta(ahora)}
             </div>
           </div>
 
