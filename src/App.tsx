@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { AppRol, DASHBOARD_POR_ROL } from "@/services/travelsoftService";
+import { getDashboardPorNivel } from "@/services/travelsoftService";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Logout from "./pages/Logout";
@@ -26,7 +26,7 @@ const ProtectedRoute = ({ children, allowedRole }: { children: React.ReactNode, 
   if (isLoading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white font-medium">
-        Cargando SACTel.Cloud...
+        Cargando TravelSoft.Plus ...
       </div>
     );
   }
@@ -45,7 +45,7 @@ const ProtectedRoute = ({ children, allowedRole }: { children: React.ReactNode, 
   if (allowedRoles && userRole !== 'SUPERADMIN' && !allowedRoles.includes(userRole)) {
     return userRole === 'SUPERADMIN'
       ? <Navigate to="/superadmin/dashboard" replace />
-      : <Navigate to={DASHBOARD_POR_ROL[userRole as AppRol] || "/dashboard"} replace />;
+      : <Navigate to={getDashboardPorNivel(user)} replace />;
   }
 
   return <>{children}</>;
