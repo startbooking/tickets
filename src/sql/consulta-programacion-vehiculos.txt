@@ -1,0 +1,29 @@
+-- ============================================================================
+-- CONSULTA SQL: VEHÍCULOS PROGRAMADOS Y DESPACHADOS DEL DÍA
+-- Fuente: endpoint GET /despacho/programacion
+-- Archivo: /var/www/backend.lan/travelsoft/app/api/travel.py (líneas 1209-1228)
+-- Parámetros: id_orides = id de la agencia del usuario autenticado
+--             fecha    = fecha a consultar (YYYY-MM-DD), por defecto hoy
+-- NOTA: Los "programados" (despachada_adicional = '0') y "despachados" ('1')
+--       se separan en Python después de ejecutar esta consulta.
+-- ============================================================================
+
+SELECT a.cod_adicional, a.cod_ruta, a.origen_adicional, a.placa_vehi,
+       a.inter_desti_adicional, a.destino_adicional, a.fecha_adicional,
+       a.hora_despacho, a.habilitada_adicional, a.despachada_adicional,
+       a.cedula_conduc, a.cedula_conduc2, a.cedula_auxi,
+       a.conduce_adicional,
+       COALESCE(r.hora_ruta, NULL) AS hora_ruta,
+       h.hora_horario,
+       rec.Id_recorrido AS id_recorrido,
+       rec.desc_recorrido AS desc_recorrido
+FROM adicional a
+LEFT JOIN rutas r
+  ON r.cod_ruta = a.cod_ruta AND r.fecha_ruta = a.fecha_adicional
+LEFT JOIN horario h ON h.id_horario = a.id_horario
+LEFT JOIN recorrido rec
+  ON rec.Id_recorrido = COALESCE(a.id_recorrido, r.id_recorrido)
+WHERE a.origen_adicional = %s AND a.fecha_adicional = %s
+  AND a.habilitada_adicional = '1'
+  AND a.anulada_adicional = '0'
+ORDER BY a.id_horario IS NULL, a.id_horario, a.hora_despacho

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption,   SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption, VehiculoSACTel } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, horaSalidaVehiculo, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption,   SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption, VehiculoSACTel } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
-import { manifiestoListadoTexto, manifiestoTotalesTexto, EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
+import { EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
 import { buildWhatsAppCard } from '@/utils/whatsappShare';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
@@ -480,7 +480,7 @@ export default function CajeroDashboard() {
               case 'inicio':
                 return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} />;
               case 'despacho':
-                return <SubViewDespacho permiteVenta={!esRodamiento} onVenderTicket={(v) => { setVentaInicial(v); setActiveSection('ventas'); }} />;
+                return <SubViewDespacho />;
               case 'llegadas':
                 return <SubViewLlegadas />;
               case 'ventas':
@@ -601,7 +601,7 @@ function SubViewInicio({
             >
               <CardContent className="pt-4 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">En Plataforma</span>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Por Despachar</span>
                   <h3 className="text-xl font-black text-slate-900">{resumen.en_plataforma}</h3>
                   <span className="text-[10px] font-bold text-emerald-600 group-hover:underline">Ver programación →</span>
                 </div>
@@ -640,8 +640,8 @@ function SubViewInicio({
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <ListaVehiculos
-              titulo="En Plataforma"
-              descripcion="Vendiendo tiquetes (habilitadas)"
+              titulo="Por Despachar"
+              descripcion="Vendiendo Tiquetes (habilitadas)"
               items={vehiculos.en_plataforma}
               vacio="Sin vehículos en plataforma."
               badgeClass="bg-emerald-100 text-emerald-800 border-emerald-200"
@@ -714,7 +714,7 @@ function ListaVehiculos({
                 </div>
                 <div className="text-right shrink-0">
                   <span className="text-[11px] font-bold text-slate-600 font-mono">
-                    {v.hora_despacho || formatHora(v.hora_ruta)}
+                    {horaSalidaVehiculo(v)}
                   </span>
                   {mostrarTickets && (
                     <span className="flex items-center justify-end gap-1 text-[10px] font-bold text-emerald-700 mt-0.5">
@@ -734,7 +734,7 @@ function ListaVehiculos({
 // ─────────────────────────────────────────────────────────────────────────────
 // 🚌 1b. SUBVISTA: DESPACHO DE VEHÍCULOS (solo agencia principal)
 // ─────────────────────────────────────────────────────────────────────────────
-function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta?: boolean; onVenderTicket: (v: VehiculoEstado) => void }) {
+function SubViewDespacho() {
   const [programacion, setProgramacion] = useState<ProgramacionVehiculosData | null>(null);
   const [loading, setLoading] = useState(true);
   const [dialogoNuevaRuta, setDialogoNuevaRuta] = useState(false);
@@ -759,9 +759,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
   const [vehiculoConsulta, setVehiculoConsulta] = useState<VehiculoEstado | null>(null);
   const [vehiculoDetalle, setVehiculoDetalle] = useState<VehiculoSACTel | null>(null);
   const [cargandoVehiculo, setCargandoVehiculo] = useState(false);
-
-  const [imprimiendo, setImprimiendo] = useState<number | null>(null);
-  const { imprimirTexto } = useTicketFiscal();
 
   useEffect(() => {
     setVehiculoDetalle(null);
@@ -810,28 +807,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
     });
     return placas;
   }, [programacion]);
-
-  const imprimirManifiesto = async (v: VehiculoEstado) => {
-    setImprimiendo(v.cod_ruta);
-    try {
-      const manifiesto = await travelsoftService.getManifiestoDespacho(v.cod_ruta, v.fecha_ruta ?? undefined);
-      if (!manifiesto) {
-        toast.error("No se pudo obtener el manifiesto de despacho.");
-        return;
-      }
-      toast.loading("Imprimiendo listado de pasajeros...", { id: `mani-${v.cod_ruta}` });
-      const r1 = await imprimirTexto(manifiestoListadoTexto(manifiesto));
-      toast.dismiss(`mani-${v.cod_ruta}`);
-      toast.loading("Imprimiendo informe de ventas...", { id: `mani2-${v.cod_ruta}` });
-      await imprimirTexto(manifiestoTotalesTexto(manifiesto));
-      toast.dismiss(`mani2-${v.cod_ruta}`);
-      toast.success(`Listado e informe impresos${r1 ? ` (${r1})` : ""}.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo imprimir el listado de pasajeros.");
-    } finally {
-      setImprimiendo(null);
-    }
-  };
 
   if (loading) {
     return (
@@ -898,7 +873,7 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
               )}
               onClick={() => setTabVehiculos('plataforma')}
             >
-              <Bus className="w-3.5 h-3.5" /> En Plataforma
+              <Bus className="w-3.5 h-3.5" /> Por Despachar
               <Badge className={cn("ml-1", tabVehiculos === 'plataforma' ? "bg-white/20 text-white border-white/30" : "bg-emerald-100 text-emerald-800 border-emerald-200")}> {despachables.length}</Badge>
             </Button>
             <Button
@@ -930,11 +905,10 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
                     <th className="px-3 py-2 font-bold">Nº Orden</th>
-                    <th className="px-3 py-2 font-bold">Hora Ruta</th>
+                    <th className="px-3 py-2 font-bold">Hora Despacho</th>
                     <th className="px-3 py-2 font-bold">Recorrido</th>
                     <th className="px-3 py-2 font-bold">Hora Salida</th>
                     <th className="px-3 py-2 font-bold">Estado</th>
-                    <th className="px-3 py-2 font-bold">Acciones</th>
                     <th className="px-3 py-2 font-bold text-right">Consulta</th>
                   </tr>
                 </thead>
@@ -945,7 +919,7 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                     const enPlataforma = habilitada && !despachado;
                     const enTransito = habilitada && despachado;
                     const anulada = v.anulada === '1';
-                    const estadoLabel = anulada ? "Anulada" : enTransito ? "En Tránsito" : enPlataforma ? "En Plataforma" : "No Habilitado";
+                    const estadoLabel = anulada ? "Anulada" : enTransito ? "En Tránsito" : enPlataforma ? "Por Despachar" : "No Habilitado";
                     const badgeClass = anulada
                       ? "bg-rose-100 text-rose-800 border-rose-200"
                       : enTransito
@@ -962,8 +936,8 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                           <p className="text-xs font-black text-slate-900 font-mono truncate">{v.orden_vehi || v.placa_vehi || "SIN ORDEN"}</p>
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-bold text-slate-700 font-mono whitespace-nowrap">
-                          {formatHora(v.hora_ruta)}
-                        </td>
+                            {horaSalidaVehiculo(v)}
+                          </td>
                         <td className="px-3 py-2.5 min-w-[240px]">
                           <p className="text-[11px] text-slate-600 truncate">
                             {v.origen || "—"} <span className="text-slate-400">→</span> {v.destino || "—"}
@@ -978,8 +952,8 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-bold text-slate-700 font-mono whitespace-nowrap">
-                          {v.hora_despacho || formatHora(v.hora_ruta)}
-                        </td>
+                            {formatHora(v.hora_ruta)}
+                          </td>
                         <td className="px-3 py-2.5">
                           <Badge className={cn("text-[10px] font-bold border whitespace-nowrap", badgeClass)}>
                             {estadoLabel}
@@ -988,34 +962,6 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                             <span className="block mt-1 text-[10px] font-bold text-emerald-700">
                               <Ticket className="w-3 h-3 inline mr-0.5 -mt-0.5" /> {v.tickets_vendidos ?? 0} vendidos
                             </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {!anulada && (
-                            <div className="flex items-center gap-2 shrink-0">
-                              {enPlataforma && permiteVenta && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-[11px] gap-1.5 whitespace-nowrap"
-                                  onClick={() => onVenderTicket(v)}
-                                >
-                                  <Ticket className="w-3.5 h-3.5" /> Vender Ticket
-                                </Button>
-                              )}
-                              {enTransito && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-sky-300 text-sky-700 hover:bg-sky-50 font-bold text-[11px] gap-1.5 whitespace-nowrap"
-                                  disabled={imprimiendo === v.cod_ruta}
-                                  onClick={() => void imprimirManifiesto(v)}
-                                >
-                                  {imprimiendo === v.cod_ruta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-                                  {imprimiendo === v.cod_ruta ? "Imprimiendo..." : "Imprimir Listado"}
-                                </Button>
-                              )}
-                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-right">
@@ -1105,8 +1051,8 @@ function SubViewDespacho({ permiteVenta = true, onVenderTicket }: { permiteVenta
                 {vehiculoConsulta.recorrido && (
                   <p className="text-[11px] text-slate-500">{vehiculoConsulta.recorrido}</p>
                 )}
-                <p className="text-[11px] text-slate-600">Hora Ruta: <strong className="font-mono">{formatHora(vehiculoConsulta.hora_ruta)}</strong></p>
-                <p className="text-[11px] text-slate-600">Hora Salida: <strong className="font-mono">{vehiculoConsulta.hora_despacho || formatHora(vehiculoConsulta.hora_ruta)}</strong></p>
+                <p className="text-[11px] text-slate-600">Hora Despacho: <strong className="font-mono">{horaSalidaVehiculo(vehiculoConsulta)}</strong></p>
+                <p className="text-[11px] text-slate-600">Hora Salida: <strong className="font-mono">{formatHora(vehiculoConsulta.hora_ruta)}</strong></p>
                 {vehiculoConsulta.conductor && (
                   <p className="text-[11px] text-slate-600">Conductor: <strong>{vehiculoConsulta.conductor}</strong></p>
                 )}
@@ -1344,7 +1290,7 @@ function NuevaRutaDialog({
     const horarioSel = horarios.find((x) => String(x.id_horario) === idHorario);
     const horaTime = horarioSel?.hora_time ?? null;
     const horaRuta = horaTime ? horaAMinutos(horaTime) : 0;
-    const horaProgramada = horaTime ? formatHora(horaAMinutos(horaTime)) : undefined;
+    const horaProgramada = (horarioSel?.hora_horario || '').trim() || undefined;
 
      const concedeSel = concedes.find((c) => String(c.id_conduce) === conduceId);
 

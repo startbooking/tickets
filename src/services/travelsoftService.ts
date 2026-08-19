@@ -47,6 +47,7 @@ export interface VehiculoEstado {
   despachada_ruta: string | null;
   llegada_ruta: string | null;
   hora_despacho: string | null;
+  hora_horario?: string | null;
   hora_llegada: string | null;
   conductor: string | null;
   recorrido?: string | null;
@@ -774,6 +775,28 @@ export function formatHora(minutos: number | null | undefined): string {
   const h = Math.floor(total / 60).toString().padStart(2, "0");
   const m = Math.floor(total % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
+}
+
+/**
+ * Hora de salida efectiva del vehículo programado:
+ * usa `hora_despacho` si es una hora válida; si viene '00:00' o vacía
+ * (dato sin asignar), cae al horario real (`hora_horario`) y luego a
+ * `hora_ruta` en minutos.
+ */
+export function horaSalidaVehiculo(v: {
+  hora_despacho?: string | null;
+  hora_horario?: string | null;
+  hora_ruta?: number | null;
+}): string {
+  const despacho = (v.hora_despacho || "").trim();
+  if (despacho && despacho !== "00:00") {
+    return despacho;
+  }
+  const horario = (v.hora_horario || "").trim();
+  if (horario) {
+    return horario;
+  }
+  return formatHora(v.hora_ruta);
 }
 
 /**
