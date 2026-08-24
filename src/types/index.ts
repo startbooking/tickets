@@ -142,6 +142,7 @@ export interface Usuario {
   id: number;
   id_agencia?: number;
   agenciaId?: number;
+  id_orides?: number;
   nombre?: string;
   name?: string;
   nombreCompleto?: string;

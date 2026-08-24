@@ -19,8 +19,8 @@
       "@/*": ["./src/*"]
     },
 
-    /* Tipos globales (Vitest) */
-    "types": ["vitest/globals"],
+    /* Tipos globales (Vitest + Web Bluetooth para impresión ESC/POS) */
+    "types": ["vitest/globals", "web-bluetooth"],
 
     /* Linting y verificación de tipos recomendada */
     "strict": false,

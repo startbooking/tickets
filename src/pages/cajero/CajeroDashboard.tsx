@@ -70,7 +70,6 @@ export default function CajeroDashboard() {
     setLoadingDashboard(true);
     try {
       const data = await travelsoftService.getDashboardCajero();
-      console.log(data)
       setDashboard(data);
     } catch (err) {
       setDashboard(null);
@@ -478,7 +477,7 @@ export default function CajeroDashboard() {
           {(() => {
             switch (activeSection) {
               case 'inicio':
-                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} />;
+                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} esRodamiento={esRodamiento} />;
               case 'despacho':
                 return <SubViewDespacho />;
               case 'llegadas':
@@ -492,7 +491,7 @@ export default function CajeroDashboard() {
               case 'cierre':
                 return <SubViewCierre total={totalCajaTurno} />;
               default:
-                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} />;
+                return <SubViewInicio setSeccion={setActiveSection} total={totalCajaTurno} dashboard={dashboard} loading={loadingDashboard} onRetry={cargarDashboard} esRodamiento={esRodamiento} />;
             }
           })()}
         </div>
@@ -506,13 +505,14 @@ export default function CajeroDashboard() {
 // 📊 1. SUBVISTA: INICIO / RESUMEN
 // ─────────────────────────────────────────────────────────────────────────────
 function SubViewInicio({
-  total, setSeccion, dashboard, loading, onRetry,
+  total, setSeccion, dashboard, loading, onRetry, esRodamiento,
 }: {
   total: number;
   setSeccion: (s: CajeroSection) => void;
   dashboard: DashboardCajeroData | null;
   loading: boolean;
   onRetry: () => void;
+  esRodamiento: boolean;
 }) {
   const resumen = dashboard?.resumen;
   const vehiculos = dashboard?.vehiculos;
@@ -665,13 +665,15 @@ function SubViewInicio({
         </>
       )}
 
-      <Card className="bg-gradient-to-br from-slate-950 to-slate-900 text-white p-6 border-none rounded-2xl shadow-lg">
-        <h3 className="font-bold text-sm mb-1">¿Listo para atender un cliente?</h3>
-        <p className="text-xs text-slate-400 max-w-lg mb-4">Despache pasajes de forma inmediata vinculando croquis de sillas y facturación XML directa ante la DIAN.</p>
-        <Button onClick={() => setSeccion('ventas')} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs">
-          Ir a Taquilla de Ventas
-        </Button>
-      </Card>
+      {!esRodamiento && (
+        <Card className="bg-gradient-to-br from-slate-950 to-slate-900 text-white p-6 border-none rounded-2xl shadow-lg">
+          <h3 className="font-bold text-sm mb-1">¿Listo para atender un cliente?</h3>
+          <p className="text-xs text-slate-400 max-w-lg mb-4">Despache pasajes de forma inmediata vinculando croquis de sillas y facturación XML directa ante la DIAN.</p>
+          <Button onClick={() => setSeccion('ventas')} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs">
+            Ir a Taquilla de Ventas
+          </Button>
+        </Card>
+      )}
     </div>
   );
 }
@@ -900,7 +902,7 @@ function SubViewDespacho() {
                 : 'No hay vehículos despachados hoy.'}
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[calc(100vh-20rem)] overflow-y-auto">
               <table className="w-full text-left border-collapse min-w-[720px]">
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
@@ -2105,6 +2107,7 @@ function SubViewVentas({
         telefono: telefono.trim() || undefined,
         forma_pago: formaPago,
         fecha: vehiculoSel.fecha_ruta ?? undefined,
+        consecutivo_planilla: vehiculoSel.consecutivo_planilla ?? undefined,
       });
 
       // Modo de impresión según parámetro de la compañía:
@@ -2180,7 +2183,7 @@ function SubViewVentas({
                 No hay vehículos habilitados en plataforma hoy. Adicione una ruta desde Programación para vender sus tiquetes.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[calc(100vh-26rem)] overflow-y-auto pr-1">
                 {porDespachar.map((r) => {
                   const activo = vehiculoSel?.cod_ruta === r.cod_ruta;
                   return (

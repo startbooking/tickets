@@ -294,7 +294,7 @@ function SubViewProgramacion({
   const [conductoresVehiculo, setConductoresVehiculo] = useState<ConductorOption[]>([]);
   const [cargandoConductores, setCargandoConductores] = useState(false);
   const [viajesProgramados, setViajesProgramados] = useState<
-    Array<{ id: number; cod_ruta: number; destino: string; hora: string; placa: string; ocupacion: string }>
+    Array<{ id: number; cod_ruta: number; destino: string; hora: string; placa: string; conductor: string; ocupacion: string }>
   >([]);
   const [guardando, setGuardando] = useState(false);
 
@@ -342,6 +342,7 @@ function SubViewProgramacion({
     }
     const destino = destinos.find((d) => d.id_orides === Number(destinoSel));
     const horario = horarios.find((h) => String(h.id_horario) === idHorarioSel);
+    const conductor = conductoresVehiculo.find((c) => c.cedula_conduc === conductorSel);
     const horaTime = horario?.hora_time ?? null;
     const horaRuta = horaTime ? horaAMinutos(horaTime) : 0;
     const horaProgramada = horaTime ? formatHora(horaAMinutos(horaTime)) : undefined;
@@ -363,6 +364,7 @@ function SubViewProgramacion({
         destino: destino?.desc_orides ?? String(destinoSel),
         hora: horario?.hora_horario ?? horaProgramada ?? '',
         placa: placaSel,
+        conductor: conductor?.nombre_conduc ?? conductorSel,
         ocupacion: '0 / 42 Pasajes',
       };
       setViajesProgramados([nuevo, ...viajesProgramados]);
@@ -499,7 +501,7 @@ function SubViewProgramacion({
 
       {/* Tarjetas de viajes programados (si los hay) */}
       {viajesProgramados.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
           {viajesProgramados.map((v) => (
             <Card key={v.id} className="bg-white border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500" />
@@ -512,6 +514,9 @@ function SubViewProgramacion({
                     </h3>
                     <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                       <MapPin className="w-3 h-3" /> Destino: {v.destino}
+                    </p>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <User className="w-3 h-3" /> Conductor: {v.conductor}
                     </p>
                   </div>
                   <div className="text-right">

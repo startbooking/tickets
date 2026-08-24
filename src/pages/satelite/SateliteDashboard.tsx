@@ -9,6 +9,7 @@ import {
   SateliteVehiculo,
   SateliteSegmento,
   TurnoSateliteVenta,
+  TicketVenta,
   SillasData,
   FormaPago,
   EstadoImpresora,
@@ -56,6 +57,7 @@ export default function SateliteDashboard() {
 
   const [sillas, setSillas] = useState<SillasData | null>(null);
   const [cargandoSillas, setCargandoSillas] = useState(false);
+  const [vehiculosArrivados, setVehiculosArrivados] = useState<Set<number>>(new Set());
   const [puestosSel, setPuestosSel] = useState<number[]>([]);
 
   const [documento, setDocumento] = useState('');
@@ -149,7 +151,6 @@ export default function SateliteDashboard() {
       setVehiculoSel(null);
       setSegmento(null);
       setSillas(null);
-      setPuesto(null);
       setCierreAbierto(false);
       setListaTiquetesAbierta(false);
       toast.success('Turno cerrado. Resumen guardado en el servidor.');
@@ -754,7 +755,17 @@ function EstadoVehiculoBadge({ estado }: { estado?: EstadoVehiculoSatelite | nul
   return <Badge className={cn("text-[9px] font-bold border", c.cls)}>{c.label}</Badge>;
 }
 
-function TarjetaVehiculo({ v, onTramo }: { v: SateliteVehiculo; onTramo: (s: SateliteSegmento) => void }) {
+function TarjetaVehiculo({
+  v,
+  onTramo,
+  arrivado,
+  onMarcarArribe,
+}: {
+  v: SateliteVehiculo;
+  onTramo: (s: SateliteSegmento) => void;
+  arrivado?: boolean;
+  onMarcarArribe?: () => void;
+}) {
   const llegado = v.estado === 'LLEGADO';
   return (
     <div className="rounded-xl bg-slate-800/50 border border-slate-800 overflow-hidden">

@@ -51,6 +51,7 @@ export interface VehiculoEstado {
   hora_llegada: string | null;
   conductor: string | null;
   recorrido?: string | null;
+  consecutivo_planilla?: number | null;
   capacidad: number | null;
   tickets_vendidos?: number | null;
   estado_sitio?: string | null;
@@ -431,6 +432,7 @@ export interface SillasData {
   hora_ruta: number | null;
   capacidad: number;
   valor: number | null;
+  consecutivo_planilla?: number | null;
   ocupadas: number[];
   sillas: SillaItem[];
   // Tramo origen (presente en el croquis de las agencias satélite)
@@ -456,6 +458,9 @@ export interface VentaTiqueteInput {
   origen_ruta?: number;
   destino_ruta?: number;
   valor?: number;
+  // Consecutivo de la planilla del vehículo: rellena la fila esqueleto de
+  // planillas (adicional_ruta=1) en vez de insertar una fila nueva.
+  consecutivo_planilla?: number;
 }
 
 export interface TicketVenta {
@@ -1114,12 +1119,16 @@ export const travelsoftService = {
   /** Destinos filtrados: agencia_orides='1' y desc_orides <> 'MANTENIN' */
   getDestinosFiltrados: async (): Promise<OridesOption[]> => {
     const all = await travelsoftService.getOrides();
-    return all.filter(
-      (o) =>
-        String(o.agencia_orides ?? "0") === "1" &&
-        (o.desc_orides ?? "").trim() !== "" &&
-        (o.desc_orides ?? "").trim().toUpperCase() !== "MANTENIN",
-    );
+    return all
+      .filter(
+        (o) =>
+          String(o.agencia_orides ?? "0") === "1" &&
+          (o.desc_orides ?? "").trim() !== "" &&
+          (o.desc_orides ?? "").trim().toUpperCase() !== "MANTENIN",
+      )
+      .sort((a, b) =>
+        (a.desc_orides ?? "").trim().localeCompare((b.desc_orides ?? "").trim(), "es", { sensitivity: "base" }),
+      );
   },
   /** Horarios de salida (GET /horario/) — campos hora_horario (display) y hora_time (valor HH:MM:SS) */
   getHorarios: async (): Promise<HorarioOption[]> => {
@@ -1163,7 +1172,7 @@ export const travelsoftService = {
    * POST /rutas/crear
    */
   crearRuta: async (input: RutaCreateInput): Promise<Record<string, unknown>> => {
-    const response = await apiClient.post<OperacionResponse>("/rutas/crear", input);
+    const response = await apiClient.post<OperacionResponse>("/rutas/crear", input, { timeout: 120000 });
     const payload = response.data;
     if (!payload || payload.success !== true) {
       throw new Error("No se pudo crear la ruta.");

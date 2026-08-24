@@ -1,4 +1,4 @@
-package com.sactel.tickets
+package com.travelsoft.tickets
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice

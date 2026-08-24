@@ -40,7 +40,16 @@ dev-dist
 # Memoria de sesion local (contiene credenciales)
 MEMORIA_SESION.md
 
+# Carpeta de documentación/notas sueltas movidas de la raíz
+text/
+
 # Lockfiles de LibreOffice (al editar .xlsx)
 .~lock.*#*
 .*.~lock.*#*
 .gstack/
+
+# Android local props (contiene rutas/credenciales de firma)
+local.properties
+
+# Config del agente opencode (no versionar)
+opencode.json

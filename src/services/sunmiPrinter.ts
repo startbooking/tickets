@@ -143,7 +143,8 @@ async function esperarSocketSdk(sunmi: InstanciaSunmi, timeoutMs = 5000): Promis
   const inicio = Date.now();
   while (Date.now() - inicio < timeoutMs) {
     try {
-      const socket = sunmi?.socketManager?.getSocket?.();
+      const interno = sunmi as unknown as { socketManager?: { getSocket?: () => WebSocket | null } };
+      const socket = interno?.socketManager?.getSocket?.();
       if (socket?.readyState === WebSocket.OPEN) return true;
     } catch { /* ignore */ }
     await delay(150);

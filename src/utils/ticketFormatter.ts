@@ -489,11 +489,13 @@ export async function imprimirBleEscPos(texto: string): Promise<BluetoothEscPosR
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), BLE_PRINTER.SELECTOR_TIMEOUT_MS);
     try {
+      // 'signal' es parte de la spec vigente de Web Browser pero aún no está en
+      // @types/web-bluetooth@0.0.21; la aserción evita el error de exceso de propiedades.
       device = await navigator.bluetooth!.requestDevice({
         filters: [{ services: [BLE_PRINTER.SERVICE_UUID] }],
         optionalServices: [BLE_PRINTER.SERVICE_UUID],
         signal: controller.signal,
-      });
+      } as RequestDeviceOptions);
     } finally {
       clearTimeout(timer);
     }

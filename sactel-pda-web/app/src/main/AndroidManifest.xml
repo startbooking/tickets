@@ -24,7 +24,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="SACTel Sistema de Tickets on Line"
+        android:label="Travelsoft.plus Tickets on Line"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity

@@ -1,4 +1,4 @@
-package com.sactel.tickets
+package com.travelsoft.tickets
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -15,6 +15,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.travelsoft.tickets.BuildConfig
 
 /**
  * Aplicación instalable de SACTel: carga la plataforma web (PWA) en un WebView
@@ -55,6 +56,8 @@ class MainActivity : Activity() {
                 setSupportZoom(false)
                 blockNetworkLoads = false
             }
+            // Exponer la versión del APK al frontend vía User-Agent ("SACTelAPK/x.y").
+            settings.userAgentString = "${settings.userAgentString} SACTelAPK/${BuildConfig.VERSION_NAME}"
             loadUrl(APP_URL)
         }
 

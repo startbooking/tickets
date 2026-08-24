@@ -202,7 +202,7 @@ describe('ticketATextoImpresion', () => {
   });
 
   it('usa el CUFE mock (CUFE_MOCK) cuando el ticket no trae cufe', () => {
-    const sinCufe = { ...ticketBase, cufe: undefined, cufe: undefined };
+    const sinCufe = { ...ticketBase, cufe: undefined };
     const payload = construirPayloadDian(sinCufe, { id_orides: 1 });
     expect(payload.cufe).toBe(CUFE_MOCK);
   });

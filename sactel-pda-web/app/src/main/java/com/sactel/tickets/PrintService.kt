@@ -1,4 +1,4 @@
-package com.sactel.tickets
+package com.travelsoft.tickets
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import org.java_websocket.WebSocket
 import org.java_websocket.handshake.ClientHandshake
 import org.java_websocket.server.WebSocketServer
@@ -64,19 +65,24 @@ class PrintService : Service() {
         val srv = object : WebSocketServer(InetSocketAddress("127.0.0.1", PORT)) {
             override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {}
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {}
-            override fun onError(conn: WebSocket, ex: Exception) {}
-            override fun onStart() {}
+            override fun onError(conn: WebSocket?, ex: Exception) {
+                Log.e(TAG, "WebSocketServer onError (conn=${conn != null}): ${ex.message}", ex)
+            }
+            override fun onStart() {
+                Log.i(TAG, "WebSocketServer escuchando en 127.0.0.1:$PORT")
+            }
 
             override fun onMessage(conn: WebSocket, message: String) {
                 val respuesta = manejarMensaje(message)
                 try { conn.send(respuesta.toString()) } catch (_: Exception) {}
             }
         }
+        srv.setReuseAddr(true)
         try {
             srv.start()
             server = srv
         } catch (e: Exception) {
-            // puerto ocupado o cadena no inicializable; se reintenta en onCreate()
+            Log.e(TAG, "No se pudo iniciar el servidor WS en $PORT: ${e.message}", e)
         }
     }
 
@@ -104,6 +110,7 @@ class PrintService : Service() {
         const val PORT = 8091
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "pda"
+        private const val TAG = "PrintService"
         @Volatile private var running = false
         fun isRunning() = running
     }

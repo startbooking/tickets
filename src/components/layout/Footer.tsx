@@ -1,8 +1,14 @@
 import { ExternalLink } from 'lucide-react';
+import { APP_VERSION, getApkVersion } from '../../version';
+
 export function Footer() {
   const currentYear = new Date().getFullYear();
   const developerUrl = "https://sactel.cloud"; // Reemplaza con tu URL real
   const developerName = "SACTel Cloud";
+  const apkVersion = getApkVersion();
+  const versionLabel = apkVersion
+    ? `APP v${APP_VERSION} · APK v${apkVersion}`
+    : `APP v${APP_VERSION}`;
   return (
     <footer className="border-t border-border bg-card py-4">
       <div className="container mx-auto px-4">
@@ -13,6 +19,10 @@ export function Footer() {
             <span>Todos los derechos reservados</span>
           </div>
           
+          <div className="flex items-center gap-1">
+            <span className="font-mono text-xs">{versionLabel}</span>
+          </div>
+
           <div className="flex items-center gap-1">
             <span>Desarrollado por</span>
             <a

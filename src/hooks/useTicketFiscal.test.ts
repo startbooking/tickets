@@ -73,7 +73,7 @@ vi.mock('@/services/pdaWebSocketService', () => ({
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import type { TicketVenta } from '@/services/travelsoftService';
 
-const ticketBase = (parcial: Partial<TicketVenta>): TicketVenta => ({
+const ticketBase = (parcial: Partial<TicketVenta> = {}): TicketVenta => ({
   id_planilla: 45470142,
   consecutivo_pasajero: 1,
   consecutivo_planilla: 7,
