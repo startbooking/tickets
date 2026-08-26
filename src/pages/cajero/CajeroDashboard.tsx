@@ -4,7 +4,7 @@ import { travelsoftService, formatHora, horaSalidaVehiculo, horaDurationAMinutos
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { EMPRESA_NIT, EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
 import { buildWhatsAppCard } from '@/utils/whatsappShare';
-import { type PasajeroLibro } from '@/utils/libroDeViajePdf';
+import { type PasajeroLibro } from '@/utils/ticketFormatter';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';

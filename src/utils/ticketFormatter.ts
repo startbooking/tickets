@@ -651,6 +651,16 @@ export interface InformeDespachoPasajero {
   valor?: number | null;
 }
 
+/** Pasajero del Libro de Ruta (manifest real del backend). */
+export interface PasajeroLibro {
+  nombre: string;
+  documento: string;
+  asiento: number | null;
+  tiquete: string;
+  valor: number;
+  destino: string;
+}
+
 export interface InformeDespachoData {
   empresa: string;
   nit: string;
