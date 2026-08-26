@@ -186,5 +186,13 @@ export function generarLibroDeViaje(d: LibroViajeDatos) {
   );
   doc.setTextColor(0);
 
-  doc.save(`Libro de Ruta - ${d.codigoViaje}.pdf`);
+  // Imprime directo a la impresora local (abre el PDF y dispara el diálogo de
+  // impresión del navegador, que apunta a la impresora del equipo).
+  doc.autoPrint();
+  const blobUrl = doc.output("bloburl");
+  const ventana = window.open(blobUrl, "_blank");
+  if (!ventana) {
+    // Bloqueador de pop-ups: soltar la URL para que el usuario la abra manualmente.
+    window.open(blobUrl, "_blank");
+  }
 }

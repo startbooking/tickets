@@ -1921,7 +1921,7 @@ function SubViewVentas({
       agente: user?.nombreCompleto || user?.nombre || "—",
       totalValor,
     });
-    toast.success("Libro de Ruta generado en PDF.");
+    toast.success("Libro de Ruta enviado a la impresora.");
   };
 
   // Limpia la taquilla de ventas y la regresa al estado inicial (cards de vehículos).

@@ -143,7 +143,7 @@ export function TaquillaVentaView() {
             }]
           : [],
     });
-    toast.success("Libro de Ruta generado en PDF.");
+    toast.success("Libro de Ruta enviado a la impresora.");
   };
 
   return (
