@@ -641,3 +641,97 @@ export function imprimirTestRawBt(): void {
 export function soportaBluetoothEscPos(): boolean {
   return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// INFORME DE DESPACHO (LIBRO DE RUTA) COMO RECIBO TÉRMICO ESC/POS
+// ─────────────────────────────────────────────────────────────────────────────
+export interface InformeDespachoPasajero {
+  asiento: number | null;
+  nombre: string;
+  destino?: string | null;
+  valor?: number | null;
+}
+
+export interface InformeDespachoData {
+  empresa: string;
+  nit: string;
+  agencia?: string | null;
+  planilla?: number | null;
+  numeroVehiculo?: string | number | null;
+  placa?: string;
+  rutaNro?: number | null;
+  desdeHasta?: string;
+  fecha: string;
+  horaSalida: string;
+  conductor?: string;
+  licencia?: string | null;
+  celularConductor?: string | null;
+  deudaProducidos?: number | null;
+  agente?: string;
+  pasajeros: InformeDespachoPasajero[];
+  totalValor?: number;
+}
+
+const pesosInforme = (n?: number | null): string =>
+  "$" + (n ?? 0).toLocaleString("es-CO");
+
+export function generarInformeDespachoTXT(d: InformeDespachoData): string {
+  let t = "";
+  t += ESC_POS.RESET;
+  t += ESC_POS.ALIGN_CENTER;
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion(`${d.empresa}\n`);
+  t += ESC_POS.BOLD_OFF;
+  t += normalizarImpresion(`NIT: ${d.nit}\n`);
+  t += ESC_POS.DOUBLE_SIZE;
+  t += normalizarImpresion("LIBRO DE RUTA\n");
+  t += ESC_POS.NORMAL_SIZE;
+  t += "--------------------------------\n";
+
+  t += ESC_POS.ALIGN_LEFT;
+  const campo = (label: string, valor?: string | null) => {
+    if (valor == null || valor === "") return;
+    t += normalizarImpresion(`${label} ${valor}\n`);
+  };
+  campo("AGENCIA:", d.agencia);
+  campo("PLANILLA:", d.planilla != null ? String(d.planilla) : null);
+  campo("NRO VEHICULO:", d.numeroVehiculo != null ? String(d.numeroVehiculo) : null);
+  campo("PLACA:", d.placa);
+  campo("RUTA NRO:", d.rutaNro != null ? String(d.rutaNro) : null);
+  campo("DESDE->HASTA:", d.desdeHasta);
+  campo("FECHA:", d.fecha);
+  campo("HORA:", d.horaSalida);
+  campo("CONDUCTOR:", d.conductor);
+  campo("LICENCIA NRO:", d.licencia);
+  campo("CELULAR COND:", d.celularConductor);
+  campo("DEUDA PRODUCIDOS:", d.deudaProducidos != null ? pesosInforme(d.deudaProducidos) : null);
+  campo("AGENTE:", d.agente);
+
+  t += "--------------------------------\n";
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion("MANIFIESTO DE PASAJEROS\n");
+  t += ESC_POS.BOLD_OFF;
+  if (d.pasajeros.length === 0) {
+    t += normalizarImpresion("Sin pasajeros.\n");
+  } else {
+    t += ESC_POS.ALIGN_LEFT;
+    for (const p of d.pasajeros) {
+      const dest = p.destino ?? "—";
+      const val = p.valor != null ? pesosInforme(p.valor) : "—";
+      t += normalizarImpresion(`${p.asiento != null ? "#" + p.asiento : "#?"} ${dest}\n`);
+      t += ESC_POS.ALIGN_RIGHT;
+      t += normalizarImpresion(`${val}\n`);
+      t += ESC_POS.ALIGN_LEFT;
+    }
+  }
+  t += "--------------------------------\n";
+  t += ESC_POS.ALIGN_RIGHT;
+  t += ESC_POS.BOLD_ON;
+  t += normalizarImpresion(`TOTAL: ${pesosInforme(d.totalValor ?? 0)}\n`);
+  t += ESC_POS.BOLD_OFF;
+  t += ESC_POS.ALIGN_CENTER;
+  t += normalizarImpresion(`DESPACHADO A LAS: ${new Date().toLocaleString("es-CO")}\n`);
+  t += "\n";
+  t += ESC_POS.FEED_6;
+  t += ESC_POS.CUT;
+  return t;
+}

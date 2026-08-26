@@ -4,13 +4,15 @@ import { travelsoftService, formatHora, horaSalidaVehiculo, horaDurationAMinutos
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { EMPRESA_NIT, EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
 import { buildWhatsAppCard } from '@/utils/whatsappShare';
-import { cargarLogoBase64, generarLibroDeViaje, type PasajeroLibro } from '@/utils/libroDeViajePdf';
+import { type PasajeroLibro } from '@/utils/libroDeViajePdf';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';
-import { isAndroidDevice, soportaBluetoothEscPos } from '@/utils/ticketFormatter';
+import { isAndroidDevice, soportaBluetoothEscPos, generarInformeDespachoTXT } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { useImpresoraLocal } from '@/hooks/useImpresoraLocal';
+import { imprimirLocal } from '@/services/impresoraLocal';
+import { obtenerLogoEscPos } from '@/utils/escPosImage';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1890,38 +1892,37 @@ function SubViewVentas({
     } catch {
       pasajeros = [];
     }
-    let logo: string | null = null;
-    try {
-      logo = await cargarLogoBase64();
-    } catch {
-      logo = null;
-    }
-    generarLibroDeViaje({
-      codigoViaje: r.orden_vehi || String(r.cod_ruta),
-      fecha: r.fecha_ruta || new Date().toISOString().slice(0, 10),
-      horaSalida: r.hora_ruta != null ? formatHora(r.hora_ruta) : "—",
-      ruta: r.recorrido || [r.origen, r.destino].filter(Boolean).join(" → ") || "—",
-      destino: r.destino || "—",
-      vehiculo: r.placa_vehi || r.orden_vehi || "—",
-      placa: r.placa_vehi || undefined,
-      conductor: r.conductor || conductor?.nombre_conduc || undefined,
-      cajero: user?.nombreCompleto || user?.nombre || undefined,
-      pasajeros,
-      empresaNombre: EMPRESA_NOMBRE,
+    const texto = generarInformeDespachoTXT({
+      empresa: EMPRESA_NOMBRE,
       nit: EMPRESA_NIT,
-      logo,
       agencia: nombreAgencia,
       planilla: r.consecutivo_planilla ?? null,
       numeroVehiculo: r.orden_vehi ?? null,
+      placa: r.placa_vehi || undefined,
+      rutaNro: r.cod_ruta,
+      desdeHasta: [r.origen, r.destino].filter(Boolean).join(" -> "),
+      fecha: r.fecha_ruta || new Date().toISOString().slice(0, 10),
+      horaSalida: r.hora_ruta != null ? formatHora(r.hora_ruta) : "—",
+      conductor: r.conductor || conductor?.nombre_conduc || undefined,
       licencia: conductor?.numero_licencia ?? null,
       celularConductor: conductor?.celular_conduc ?? null,
       deudaProducidos: conductor?.deuda_producidos ?? null,
-      rutaNro: r.cod_ruta,
-      desdeHasta: [r.origen, r.destino].filter(Boolean).join(" → "),
       agente: user?.nombreCompleto || user?.nombre || "—",
+      pasajeros,
       totalValor,
     });
-    toast.success("Libro de Ruta enviado a la impresora.");
+    let logo: string | null = null;
+    try {
+      logo = await obtenerLogoEscPos();
+    } catch {
+      logo = null;
+    }
+    const resultado = await imprimirLocal(texto, undefined, logo ?? undefined);
+    if (resultado === "error") {
+      toast.error("No se pudo imprimir el Libro de Ruta en ninguna impresora local.");
+    } else {
+      toast.success("Libro de Ruta enviado a la impresora.");
+    }
   };
 
   // Limpia la taquilla de ventas y la regresa al estado inicial (cards de vehículos).
