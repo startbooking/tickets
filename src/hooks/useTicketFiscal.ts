@@ -14,23 +14,7 @@ import { useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { travelsoftService } from '@/services/travelsoftService';
 import { dianService } from '@/services/dianService';
-import {
-  imprimirRawBtEscPos,
-  isAndroidDevice,
-  imprimirBleEscPos,
-  soportaBluetoothEscPos,
-} from '@/utils/ticketFormatter';
-import {
-  imprimirPdaWs,
-  reiniciarCachePda,
-  servicioPdaDisponible,
-  imprimirTicketHtml,
-} from '@/services/pdaWebSocketService';
-import {
-  esDispositivoSunmi,
-  imprimirSunmi,
-  integradaSunmiDisponible,
-} from '@/services/sunmiPrinter';
+import { soportaBluetoothEscPos } from '@/utils/ticketFormatter';
 import {
   construirPayloadDian,
   ticketATextoImpresion,
@@ -38,6 +22,7 @@ import {
   type FiscalContext,
   type ImpresionResultado,
 } from '@/services/ticketFiscalService';
+import { imprimirLocal } from '@/services/impresoraLocal';
 import { obtenerLogoEscPos } from '@/utils/escPosImage';
 import type { TicketVenta, TurnoSateliteVenta } from '@/services/travelsoftService';
 import type { TiqueteTransporteDTO } from '@/types';
@@ -66,94 +51,10 @@ export interface UseTicketFiscalResult {
 }
 
 /**
- * Cadena de respaldo de impresión unificada (SIEMPRE local al equipo que navega).
- *
- * El backend NO participa: la impresión por "USB (backend)" enviaba ESC/POS por
- * la red a la impresora del servidor, contradiciendo el requisito de imprimir en
- * la impresora local del cajero/satélite. Se eliminó ese paso.
- *
- * En Android (PDA):
- *   0) Servicio local WebSocket (App "PDA Print Service") — imprime directo a
- *      la integrada vía AIDL/SUNMIOS, sin diálogos.
- *   1) Impresora integrada Sunmi (plugin JS USDK) — impresora térmica 58 mm.
- *   2) RawBT (intent) — SPP/Bluetooth clásico (InnerPrinter).
- *   3) Web Bluetooth directo.
- *   4) window.print() — impresora del SO (local) como último recurso.
- *
- * En escritorio (no Android):
- *   0) Servicio local WebSocket (mini-servicio "Print Service" del PC) —
- *      imprime directo a la impresora USB local, sin diálogos.
- *   1) Web Bluetooth directo (Chromium).
- *   2) window.print() — impresora del SO (local) como último recurso.
- *
- * Cada salto se registra en el resultado para que el UI muestre el medio usado.
+ * Impresión unificada y SIEMPRE local (USB / Bluetooth / integrada en PDA).
+ * La lógica de detección y cadena de respaldo vive en `@/services/impresoraLocal`,
+ * que elige automáticamente la mejor impresora local disponible.
  */
-async function imprimirConRespalado(
-  texto: string,
-  onResultado?: (r: ImpresionResultado) => void,
-  logoEscPos?: string
-): Promise<ImpresionResultado> {
-  const textoFinal = logoEscPos ? logoEscPos + texto : texto;
-
-  // 0. Servicio WebSocket local (PDA "Print Service" en Android; mini-servicio
-  //    del escritorio en el PC). Sin diálogos; prioridad en ambos entornos.
-  //    En Android el cache se reinicia para volver a sondear el servicio (el
-  //    APK puede arrancar/pararse en mitad de la sesión); en escritorio se
-  //    cachea por sesión para no penalizar equipos sin el mini-servicio.
-  if (isAndroidDevice()) reiniciarCachePda();
-  if (await servicioPdaDisponible()) {
-    try {
-      await imprimirPdaWs(textoFinal);
-      onResultado?.('pda');
-      return 'pda';
-    } catch (err) {
-      console.warn('Impresión por servicio local WS falló:', err);
-    }
-  }
-
-  // 1. Impresora integrada de la PDA Sunmi (plugin JS USDK).
-  //    En PDA Android se intenta esta vía de forma prioritaria (una vez por
-  //    sesión se sonda el servicio y el resultado se cachea, para no retrasar
-  //    los tickets siguientes en equipos donde no está disponible).
-  if (esDispositivoSunmi() || isAndroidDevice()) {
-    try {
-      if (await integradaSunmiDisponible()) {
-        await imprimirSunmi(textoFinal);
-        onResultado?.('sunmi');
-        return 'sunmi';
-      }
-    } catch (err) {
-      // El plugin no está instalado o el servicio no arrancó; seguimos con la cadena.
-      console.error('Impresión en impresora integrada Sunmi falló:', err);
-    }
-  }
-
-  // 2. Android → RawBT (SPP/Bluetooth clásico, incl. InnerPrinter de Sunmi).
-  //    Va ANTES que Web Bluetooth porque los SPP no son alcanzables por BLE.
-  if (isAndroidDevice()) {
-    imprimirRawBtEscPos(textoFinal);
-    onResultado?.('rawbt');
-    return 'rawbt';
-  }
-
-  // 3. Web Bluetooth directo (escritorio Chromium / Android con BLE)
-  if (soportaBluetoothEscPos()) {
-    try {
-      await imprimirBleEscPos(textoFinal);
-      onResultado?.('ble');
-      return 'ble';
-    } catch (err) {
-      // El usuario canceló el selector o no hay dispositivo emparejado.
-      console.warn('Impresión BLE falló:', err);
-    }
-  }
-
-  // 4. Navegador (impresora del SO del equipo, 100% local, sin red)
-  imprimirTicketHtml(textoFinal);
-  onResultado?.('print');
-  return 'print';
-}
-
 export function useTicketFiscal(): UseTicketFiscalResult {
   const { user } = useAuth();
 
@@ -199,7 +100,7 @@ export function useTicketFiscal(): UseTicketFiscalResult {
   const imprimirTicket = useCallback(
     async (t: TicketVenta) => {
       const logo = await obtenerLogoEscPos();
-      return imprimirConRespalado(ticketATextoImpresion(t), undefined, logo);
+      return imprimirLocal(ticketATextoImpresion(t), undefined, logo);
     },
     []
   );
@@ -207,7 +108,7 @@ export function useTicketFiscal(): UseTicketFiscalResult {
   // ── Impresión de un documento genérico ya formateado en ESC/POS ─────────────
   const imprimirTexto = useCallback(
     async (texto: string): Promise<ImpresionResultado> => {
-      return imprimirConRespalado(texto);
+      return imprimirLocal(texto);
     },
     []
   );
@@ -216,7 +117,7 @@ export function useTicketFiscal(): UseTicketFiscalResult {
   const reimprimirVenta = useCallback(
     async (v: TurnoSateliteVenta) => {
       const logo = await obtenerLogoEscPos();
-      return imprimirConRespalado(ventaATextoImpresion(v), undefined, logo);
+      return imprimirLocal(ventaATextoImpresion(v), undefined, logo);
     },
     []
   );

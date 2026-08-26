@@ -8,9 +8,9 @@ import { generarLibroDeViaje } from '@/utils/libroDeViajePdf';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';
-import { imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
-import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
-import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, DESKTOP_WS_LABEL, reiniciarCachePda, imprimirTicketHtml } from '@/services/pdaWebSocketService';
+import { isAndroidDevice, soportaBluetoothEscPos } from '@/utils/ticketFormatter';
+import { esDispositivoSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
+import { useImpresoraLocal } from '@/hooks/useImpresoraLocal';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,20 +44,19 @@ export default function CajeroDashboard() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState<CajeroSection>('inicio');
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const [testeandoImpresora, setTesteandoImpresora] = useState(false);
-  const [impresoraPredeterminada, setImpresoraPredeterminada] = useState<string | null>(() =>
-    obtenerImpresoraPdaGuardada()
-      ?? (esDispositivoSunmi()
-        ? IMPRESORA_INTEGRADA_LABEL
-        : isAndroidDevice() || soportaBluetoothEscPos()
-          ? obtenerImpresoraBlePredeterminada()?.nombre ?? null
-          : null)
-  );
-  const [impresoraFijada, setImpresoraFijada] = useState<boolean>(() =>
-    impresoraPdaFijada()
-  );
-  // Estado en vivo del servicio local de impresión (escritorio). null = sondeando.
-  const [servicioLocalActivo, setServicioLocalActivo] = useState<boolean | null>(null);
+  const impresora = useImpresoraLocal();
+  const etiquetaImpresora = (e: typeof impresora.estado): string => {
+    switch (e) {
+      case 'pda': return 'Servicio local (PDA/PC)';
+      case 'sunmi': return 'Integrada Sunmi';
+      case 'usb': return 'Impresora USB local';
+      case 'ble': return 'Bluetooth';
+      case 'rawbt': return 'Bluetooth (RawBT)';
+      case 'print': return 'Navegador (impresora del equipo)';
+      case 'error': return 'Sin impresora';
+      default: return 'Detectando…';
+    }
+  };
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
   const [totalCajaTurno, setTotalCajaTurno] = useState<number>(145000);
@@ -143,130 +142,7 @@ export default function CajeroDashboard() {
     };
   }, [menuAbierto]);
 
-  // Sondeo en vivo del servicio local de impresión (escritorio) al cargar.
-  useEffect(() => {
-    if (isAndroidDevice()) return; // en PDA el servicio es la app; se prueba con Test
-    reiniciarCachePda();
-    servicioPdaDisponible()
-      .then(setServicioLocalActivo)
-      .catch(() => setServicioLocalActivo(false));
-  }, []);
 
-  // Validar y testear impresora local de la PDA
-  const handleTestImpresora = useCallback(async () => {
-    // En la PDA Android la impresión directa (sin diálogos) se intenta así:
-    //   1) Servicio Web Socket local (app "PDA Print Service") — prioridad.
-    //   2) Impresora integrada Sun (plugin JS USDK).
-    //   3) RawBT (SPP) — alcanza a "InnerPrinter" (SPP, no alcanzable por BLE).
-    if (esDispositivoSunmi() || isAndroidDevice()) {
-      setTesteandoImpresora(true);
-      try {
-        // 1) Servicio local WebSocket
-        reiniciarCachePda();
-        const pdaOk = await servicioPdaDisponible();
-        if (pdaOk) {
-          const r = await imprimirTestPdaWs();
-          if (r.ok) {
-            setImpresoraPredeterminada(PDA_WS_LABEL);
-            guardarImpresoraPda(PDA_WS_LABEL, true);
-            setImpresoraFijada(true);
-            toast.success(`Ticket de prueba impreso en "${r.dispositivo}".`);
-          }
-          return;
-        }
-
-        // 2) Impresora integrada (plugin JS USDK)
-        const disponible = await validarImpresoraSunmi();
-        if (disponible) {
-          const result = await imprimirTestSunmi();
-          if (result.ok) {
-            setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
-            guardarImpresoraPda(IMPRESORA_INTEGRADA_LABEL, true);
-            setImpresoraFijada(true);
-            toast.success(`Ticket de prueba impreso en "${result.dispositivo}".`);
-          }
-          return;
-        }
-
-        // 3) RawBT (SPP/InnerPrinter)
-        setImpresoraPredeterminada(IMPRESORA_INTEGRADA_LABEL);
-        guardarImpresoraPda(IMPRESORA_INTEGRADA_LABEL, true);
-        setImpresoraFijada(true);
-        imprimirTestRawBt();
-        toast.info(
-          'Prueba enviada por Bluetooth (InnerPrinter). Si se abrió la Play Store, instale la app RawBT y vuelva a probar.',
-          { duration: 7000 }
-        );
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Error al validar la impresora local.');
-      } finally {
-        setTesteandoImpresora(false);
-      }
-      return;
-    }
-
-    // Escritorio: primero el mini-servicio local WS (print-service del PC);
-    // si no está, validación a través de Web Bluetooth.
-    const desktopOk = await servicioPdaDisponible();
-    if (desktopOk) {
-      setTesteandoImpresora(true);
-      try {
-        const r = await imprimirTestPdaWs();
-        if (r.ok) {
-          setImpresoraPredeterminada(DESKTOP_WS_LABEL);
-          guardarImpresoraPda(DESKTOP_WS_LABEL, true);
-          setImpresoraFijada(true);
-          setServicioLocalActivo(true);
-          toast.success(`Ticket de prueba impreso en "${r.dispositivo}".`);
-        }
-        return;
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Error al validar la impresora local.');
-      } finally {
-        setTesteandoImpresora(false);
-      }
-      return;
-    }
-
-    // El servicio local del PC no está disponible: lo indicamos claramente
-    // (no es un error de Bluetooth/PDA) y, si el navegador soporta Web Bluetooth,
-    // ofrecemos la impresora Bluetooth como alternativa.
-    toast.error(
-      'Servicio de impresión local no disponible en este equipo. Ejecute el ' +
-      'instalador "desktop-print-service/instalar_windows.bat" y verifique que el ' +
-      'servicio esté corriendo (ws://127.0.0.1:8090). Si usa impresora Bluetooth, ' +
-      'puede emparejarla a continuación.'
-    );
-    // Sin servicio local: la prueba se imprime con el dialogo del navegador en
-    // la impresora predeterminada de Windows (100% local, sin ir a la red).
-    setServicioLocalActivo(false);
-    setTesteandoImpresora(true);
-    try {
-      imprimirTicketHtml(
-        '\x1b\x40PRUEBA DE IMPRESION\n---------------------------\n' +
-        'FLOTA SAN VICENTE S.A.\nImpresion local (navegador)\nfecha: ' +
-        new Date().toLocaleString('es-CO') + '\n\n\n'
-      );
-      toast.success('Se abrio el dialogo de impresion: elija la impresora del equipo.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al imprimir la prueba.');
-    } finally {
-      setTesteandoImpresora(false);
-    }
-    return;
-  }, []);
-
-  // Limpiar la impresora predeterminada guardada (bloqueado si está fijada)
-  const handleLimpiarImpresora = useCallback(() => {
-    if (impresoraFijada) {
-      toast.error('La impresora está configurada y no se puede eliminar.');
-      return;
-    }
-    limpiarImpresoraBlePredeterminada();
-    reiniciarCacheSunmi();
-    setImpresoraPredeterminada(null);
-    toast.info('Impresora predeterminada eliminada. Se pedirá seleccionar una nueva.');
-  }, [impresoraFijada]);
 
   return (
     <div className="flex h-screen-dyn bg-slate-100 font-sans antialiased overflow-hidden text-slate-800">
@@ -435,69 +311,42 @@ export default function CajeroDashboard() {
             </span>
           </div>
           <div className="flex items-center gap-2 border-l pl-4">
-            {/* Botón test impresora: visible en PDA Sunmi / Android / BLE */}
-            {(esDispositivoSunmi() || isAndroidDevice() || soportaBluetoothEscPos()) && (
-              <div className="flex items-center gap-1.5">
-                {impresoraPredeterminada && !esDispositivoSunmi() && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-10 px-2 gap-1 text-[9px] font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 touch-list"
-                    onClick={() => void handleLimpiarImpresora()}
-                    disabled={impresoraFijada}
-                    title={impresoraFijada
-                      ? 'Impresora configurada (no se puede eliminar)'
-                      : 'Quitar impresora predeterminada'}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {impresoraPredeterminada.length > 12
-                      ? impresoraPredeterminada.slice(0, 12) + '…'
-                      : impresoraPredeterminada}
-                  </Button>
-                )}
-                {impresoraPredeterminada && esDispositivoSunmi() && (
-                  <span
-                    className="h-10 px-2 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 rounded-md"
-                    title={`Impresora integrada activa (${IMPRESORA_INTEGRADA_LABEL})`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {impresoraPredeterminada.length > 12
-                      ? impresoraPredeterminada.slice(0, 12) + '…'
-                      : impresoraPredeterminada}
-                  </span>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-10 px-2 gap-1 text-[9px] font-bold text-slate-600 border-slate-300 hover:bg-slate-100 touch-list"
-                  onClick={() => void handleTestImpresora()}
-                  disabled={testeandoImpresora}
-                  title="Validar impresora local de la PDA"
-                >
-                  {testeandoImpresora ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-                  Test Impresora
-                </Button>
-              </div>
-            )}
-            {!isAndroidDevice() && (
+            {/* Estado de impresion local (autodeteccion) */}
+            <div className="flex items-center gap-1.5">
               <span
                 className={`h-10 px-2 inline-flex items-center gap-1 text-[9px] font-bold rounded-md border ${
-                  servicioLocalActivo === null
+                  impresora.detectando
                     ? 'text-slate-500 border-slate-200 bg-slate-50'
-                    : servicioLocalActivo
-                    ? 'text-emerald-700 border-emerald-200 bg-emerald-50'
-                    : 'text-amber-700 border-amber-200 bg-amber-50'
+                    : impresora.disponible
+                      ? 'text-emerald-700 border-emerald-200 bg-emerald-50'
+                      : 'text-amber-700 border-amber-200 bg-amber-50'
                 }`}
                 title={
-                  servicioLocalActivo
-                    ? 'Servicio local de impresión activo: impresión silenciosa en la impresora del equipo.'
-                    : 'Servicio local NO disponible: la impresión usará el diálogo del navegador (impresora del equipo).'
+                  impresora.disponible
+                    ? `Impresora local detectada: ${etiquetaImpresora(impresora.estado)}`
+                    : 'No se detecto impresora local. Verifique el servicio de impresion o el Bluetooth del equipo.'
                 }
               >
-                <span className={`w-2 h-2 rounded-full ${servicioLocalActivo ? 'bg-emerald-500' : 'bg-amber-500'} ${servicioLocalActivo === null ? 'animate-pulse' : ''}`} />
-                {servicioLocalActivo === null ? 'Impresión…' : servicioLocalActivo ? 'Local OK' : 'Sin servicio local'}
+                <span className={`w-2 h-2 rounded-full ${impresora.disponible ? 'bg-emerald-500' : 'bg-amber-500'} ${impresora.detectando ? 'animate-pulse' : ''}`} />
+                {impresora.detectando
+                  ? 'Impresion…'
+                  : impresora.disponible
+                    ? etiquetaImpresora(impresora.estado)
+                    : 'Sin impresora local'}
               </span>
-            )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-10 px-2 gap-1 text-[9px] font-bold text-slate-600 border-slate-300 hover:bg-slate-100 touch-list"
+                onClick={() => void impresora.test()}
+                disabled={impresora.testeando}
+                title="Probar la impresora local detectada"
+              >
+                {impresora.testeando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                Test Impresora
+              </Button>
+            </div>
+
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
             <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-600">
               Caja: ${totalCajaTurno.toLocaleString('es-CO')}
@@ -1939,22 +1788,7 @@ function SubViewVentas({
     void cargarEstadoImpresora();
   }, [cargarEstadoImpresora]);
 
-  // Impresión 100% local: un tiquete sólo se genera si hay una impresora
-  // local disponible (servicio WS en el equipo, o impresora integrada/Bluetooth
-  // en la PDA). Sin esto no se permite vender (el cajero no podría entregar el
-  // tiquete físico).
-  const [impresoraLocalLista, setImpresoraLocalLista] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      let ok = await servicioPdaDisponible();
-      if (!ok && isAndroidDevice()) {
-        ok = esDispositivoSunmi() || soportaBluetoothEscPos();
-      }
-      if (!cancelled) setImpresoraLocalLista(ok);
-    })();
-    return () => { cancelled = true; };
-  }, []);
+
 
   const cargarDashboard = useCallback(async () => {
     setLoadingDashboard(true);
@@ -2161,7 +1995,7 @@ function SubViewVentas({
   };
 
   const handleGenerar = async () => {
-    if (impresoraLocalLista !== true) {
+    if (impresora.disponible !== true) {
       toast.error('Conecte una impresora local para generar el tiquete (PC: servicio de impresión; PDA: impresora integrada/Bluetooth).');
       return;
     }
@@ -2574,20 +2408,20 @@ function SubViewVentas({
 
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-12 mt-3 gap-2 touch-list"
-              disabled={generando || impresoraLocalLista !== true}
+              disabled={generando || impresora.disponible !== true}
               onClick={() => void handleGenerar()}
             >
               {generando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
               GENERAR TICKET DE VENTA
             </Button>
 
-            {impresoraLocalLista === false && (
+            {impresora.disponible === false && (
               <p className="mt-2 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded-lg p-2 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 Impresora local no detectada. Conecte el servicio de impresión (PC) o la impresora de la PDA para poder generar tiquetes.
               </p>
             )}
-            {impresoraLocalLista === null && (
+            {impresora.disponible === null && (
               <p className="mt-2 text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 Verificando impresora local…

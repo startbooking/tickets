@@ -16,9 +16,7 @@ import {
   EstadoVehiculoSatelite,
 } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
-import { servicioPdaDisponible } from '@/services/pdaWebSocketService';
-import { isAndroidDevice, soportaBluetoothEscPos } from '@/utils/ticketFormatter';
-import { esDispositivoSunmi } from '@/services/sunmiPrinter';
+import { useImpresoraLocal } from '@/hooks/useImpresoraLocal';
 import {
   cargarTurno,
   guardarTurno,
@@ -78,20 +76,8 @@ export default function SateliteDashboard() {
   const [valor, setValor] = useState('');
   const [generando, setGenerando] = useState(false);
 
-  // Impresión 100% local: no se genera tiquete sin una impresora local
-  // disponible (servicio WS en el equipo, o impresora integrada/Bluetooth en la PDA).
-  const [impresoraLocalLista, setImpresoraLocalLista] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      let ok = await servicioPdaDisponible();
-      if (!ok && isAndroidDevice()) {
-        ok = esDispositivoSunmi() || soportaBluetoothEscPos();
-      }
-      if (!cancelled) setImpresoraLocalLista(ok);
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const impresora = useImpresoraLocal();
+
 
   const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
   const [cierreAbierto, setCierreAbierto] = useState(false);
@@ -331,7 +317,7 @@ setSillas(null);
   );
 
   const handleGenerar = async () => {
-    if (impresoraLocalLista !== true) {
+    if (impresora.disponible !== true) {
       toast.error('Conecte una impresora local para generar el tiquete (PC: servicio de impresión; PDA: impresora integrada/Bluetooth).');
       return;
     }
@@ -780,13 +766,13 @@ setSillas(null);
                   />
                 </div>
 
-                {impresoraLocalLista === false && (
+                {impresora.disponible === false && (
                   <p className="text-[11px] font-bold text-amber-300 bg-amber-950/40 border border-amber-700 rounded-lg p-2 flex items-center gap-1.5">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                     Impresora local no detectada. Conecte el servicio de impresión (PC) o la impresora de la PDA para poder generar tiquetes.
                   </p>
                 )}
-                {impresoraLocalLista === null && (
+                {impresora.disponible === null && (
                   <p className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     Verificando impresora local…
@@ -794,7 +780,7 @@ setSillas(null);
                 )}
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm h-12 gap-2"
-                  disabled={generando || impresoraLocalLista !== true}
+                  disabled={generando || impresora.disponible !== true}
                   onClick={() => void handleGenerar()}
                 >
                   {generando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
