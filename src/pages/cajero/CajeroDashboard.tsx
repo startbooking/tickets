@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { travelsoftService, formatHora, horaSalidaVehiculo, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption,   SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption, VehiculoSACTel } from '@/services/travelsoftService';
+import { travelsoftService, formatHora, horaSalidaVehiculo, horaDurationAMinutos, DashboardCajeroData, VehiculoEstado, ProgramacionVehiculosData, EnTransitoItem, OridesOption, ConductorOption, VehiculoOption,   SillasData, TicketVenta, FormaPago, EstadoImpresora, EstadoSitio, ESTADO_SITIO_LABEL, RutaTipoOption, VentaCajero, HorarioOption, VehiculoConductoresRespuesta, ConduceOption, RecorridoOption,   VehiculoSACTel, ConductorSACTel } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
-import { EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
+import { EMPRESA_NIT, EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
 import { buildWhatsAppCard } from '@/utils/whatsappShare';
-import { generarLibroDeViaje } from '@/utils/libroDeViajePdf';
+import { cargarLogoBase64, generarLibroDeViaje, type PasajeroLibro } from '@/utils/libroDeViajePdf';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';
@@ -1751,6 +1751,7 @@ function SubViewVentas({
   onVentaInicialConsumida?: () => void;
 }) {
   const { user } = useAuth();
+  const nombreAgencia = String(user?.agencia ?? "") || "Agencia";
   const [programacion, setProgramacion] = useState<ProgramacionVehiculosData | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
@@ -1857,38 +1858,70 @@ function SubViewVentas({
 
   // Despachar el vehículo y generar el "Libro de Ruta" en PDF (jsPDF).
   const handleDespacharLibroRuta = async (r: VehiculoEstado) => {
-    let pasajeros = [];
+    let pasajeros: PasajeroLibro[] = [];
+    let totalValor = 0;
+    let conductor: ConductorSACTel | null = null;
     try {
       const manifiesto = await travelsoftService.getManifiestoDespacho(
         r.cod_ruta,
         r.fecha_ruta || undefined
       );
-      if (manifiesto?.pasajeros?.length) {
-        pasajeros = manifiesto.pasajeros
-          .map((p) => ({
-            nombre: p.nombre || '—',
-            documento: p.documento || '—',
-            asiento: p.puesto ?? null,
-            tiquete: p.consecutivo_pasajero != null ? String(p.consecutivo_pasajero) : '—',
-          }))
-          .sort((a, b) => (a.asiento ?? 0) - (b.asiento ?? 0));
+      const destino = manifiesto?.destino || r.destino || "—";
+      const cedula = manifiesto?.conductores?.[0]?.cedula;
+      if (cedula) {
+        try {
+          conductor = await travelsoftService.getConductor(cedula);
+        } catch {
+          conductor = null;
+        }
       }
+      const lista = manifiesto?.pasajeros ?? [];
+      pasajeros = lista
+        .map((p) => ({
+          nombre: p.nombre || "—",
+          documento: p.documento || "—",
+          asiento: p.puesto ?? null,
+          tiquete: p.consecutivo_pasajero != null ? String(p.consecutivo_pasajero) : "—",
+          valor: p.valor ?? 0,
+          destino,
+        }))
+        .sort((a, b) => (a.asiento ?? 0) - (b.asiento ?? 0));
+      totalValor = lista.reduce((s, p) => s + (p.valor ?? 0), 0);
     } catch {
       pasajeros = [];
+    }
+    let logo: string | null = null;
+    try {
+      logo = await cargarLogoBase64();
+    } catch {
+      logo = null;
     }
     generarLibroDeViaje({
       codigoViaje: r.orden_vehi || String(r.cod_ruta),
       fecha: r.fecha_ruta || new Date().toISOString().slice(0, 10),
-      horaSalida: r.hora_ruta != null ? formatHora(r.hora_ruta) : '—',
-      ruta: r.recorrido || [r.origen, r.destino].filter(Boolean).join(' → ') || '—',
-      destino: r.destino || '—',
-      vehiculo: r.placa_vehi || r.orden_vehi || '—',
+      horaSalida: r.hora_ruta != null ? formatHora(r.hora_ruta) : "—",
+      ruta: r.recorrido || [r.origen, r.destino].filter(Boolean).join(" → ") || "—",
+      destino: r.destino || "—",
+      vehiculo: r.placa_vehi || r.orden_vehi || "—",
       placa: r.placa_vehi || undefined,
-      conductor: r.conductor || undefined,
+      conductor: r.conductor || conductor?.nombre_conduc || undefined,
       cajero: user?.nombreCompleto || user?.nombre || undefined,
       pasajeros,
+      empresaNombre: EMPRESA_NOMBRE,
+      nit: EMPRESA_NIT,
+      logo,
+      agencia: nombreAgencia,
+      planilla: r.consecutivo_planilla ?? null,
+      numeroVehiculo: r.orden_vehi ?? null,
+      licencia: conductor?.numero_licencia ?? null,
+      celularConductor: conductor?.celular_conduc ?? null,
+      deudaProducidos: conductor?.deuda_producidos ?? null,
+      rutaNro: r.cod_ruta,
+      desdeHasta: [r.origen, r.destino].filter(Boolean).join(" → "),
+      agente: user?.nombreCompleto || user?.nombre || "—",
+      totalValor,
     });
-    toast.success('Libro de Ruta generado en PDF.');
+    toast.success("Libro de Ruta generado en PDF.");
   };
 
   // Limpia la taquilla de ventas y la regresa al estado inicial (cards de vehículos).
@@ -2175,7 +2208,7 @@ function SubViewVentas({
                         }}
                         className="mt-2 w-full flex items-center justify-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black py-1.5 shadow-sm"
                       >
-                        <FileDown className="w-3.5 h-3.5" /> Despachar (Libro de Ruta)
+                        <FileDown className="w-3.5 h-3.5" /> Despachar vehiculo
                       </button>
                     </div>
                   );

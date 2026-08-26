@@ -277,6 +277,8 @@ export interface ConductorSACTel {
   nombre_conduc: string;
   telefono_conduc?: string | null;
   celular_conduc?: string | null;
+  numero_licencia?: string | null;
+  deuda_producidos?: number | null;
   correo_conduc?: string | null;
   estado_conduc?: string;
 }

@@ -206,7 +206,7 @@ export function TaquillaVentaView() {
                     onClick={handleDespacharViaje}
                     className="w-full h-9 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs tracking-wide shadow flex items-center justify-center gap-2"
                   >
-                    <FileDown className="w-4 h-4" /> Despachar (Generar Libro de Ruta)
+                    <FileDown className="w-4 h-4" /> Despachar vehiculo
                   </Button>
                 </div>
               )}
