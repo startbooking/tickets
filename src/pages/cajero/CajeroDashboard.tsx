@@ -1773,6 +1773,8 @@ function SubViewVentas({
   const [mostrarErrores, setMostrarErrores] = useState(false);
   const impresoRef = useRef(false);
 
+  const impresora = useImpresoraLocal();
+
   const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
 
   // Estado de la impresora térmica USB del servidor (pyusb, sin intervención).
