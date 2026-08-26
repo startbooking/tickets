@@ -24,6 +24,7 @@ import {
   imprimirPdaWs,
   reiniciarCachePda,
   servicioPdaDisponible,
+  imprimirTicketHtml,
 } from '@/services/pdaWebSocketService';
 import {
   esDispositivoSunmi,
@@ -65,22 +66,25 @@ export interface UseTicketFiscalResult {
 }
 
 /**
- * Cadena de respaldo de impresión unificada.
+ * Cadena de respaldo de impresión unificada (SIEMPRE local al equipo que navega).
+ *
+ * El backend NO participa: la impresión por "USB (backend)" enviaba ESC/POS por
+ * la red a la impresora del servidor, contradiciendo el requisito de imprimir en
+ * la impresora local del cajero/satélite. Se eliminó ese paso.
  *
  * En Android (PDA):
  *   0) Servicio local WebSocket (App "PDA Print Service") — imprime directo a
  *      la integrada vía AIDL/SUNMIOS, sin diálogos.
  *   1) Impresora integrada Sunmi (plugin JS USDK) — impresora térmica 58 mm.
- *   2) USB (servidor CUPS / pyusb) — impresión silenciosa.
- *   3) RawBT (intent) — SPP/Bluetooth clásico (InnerPrinter).
- *   4) window.print() — último recurso.
+ *   2) RawBT (intent) — SPP/Bluetooth clásico (InnerPrinter).
+ *   3) Web Bluetooth directo.
+ *   4) window.print() — impresora del SO (local) como último recurso.
  *
  * En escritorio (no Android):
  *   0) Servicio local WebSocket (mini-servicio "Print Service" del PC) —
  *      imprime directo a la impresora USB local, sin diálogos.
- *   1) USB.
- *   2) Web Bluetooth directo.
- *   3) window.print().
+ *   1) Web Bluetooth directo (Chromium).
+ *   2) window.print() — impresora del SO (local) como último recurso.
  *
  * Cada salto se registra en el resultado para que el UI muestre el medio usado.
  */
@@ -124,16 +128,7 @@ async function imprimirConRespalado(
     }
   }
 
-  // 2. USB (backend)
-  try {
-    await travelsoftService.imprimirTicketEscPos(textoFinal);
-    onResultado?.('usb');
-    return 'usb';
-  } catch (err) {
-    console.error('Impresión USB falló:', err);
-  }
-
-  // 3. Android → RawBT (SPP/Bluetooth clásico, incl. InnerPrinter de Sunmi).
+  // 2. Android → RawBT (SPP/Bluetooth clásico, incl. InnerPrinter de Sunmi).
   //    Va ANTES que Web Bluetooth porque los SPP no son alcanzables por BLE.
   if (isAndroidDevice()) {
     imprimirRawBtEscPos(textoFinal);
@@ -141,7 +136,7 @@ async function imprimirConRespalado(
     return 'rawbt';
   }
 
-  // 4. Web Bluetooth directo (escritorio Chromium)
+  // 3. Web Bluetooth directo (escritorio Chromium / Android con BLE)
   if (soportaBluetoothEscPos()) {
     try {
       await imprimirBleEscPos(textoFinal);
@@ -153,8 +148,8 @@ async function imprimirConRespalado(
     }
   }
 
-  // 5. Navegador
-  window.print();
+  // 4. Navegador (impresora del SO del equipo, 100% local, sin red)
+  imprimirTicketHtml(textoFinal);
   onResultado?.('print');
   return 'print';
 }

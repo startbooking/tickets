@@ -34,8 +34,11 @@ vi.mock('@/services/dianService', () => ({
   dianService: { emitirTiqueteTransporte: (...args: unknown[]) => mockEmitir(...args) },
 }));
 
-// ── Mock del backend: impresión USB "exitosa" ────────────────────────────────
+// ── Mock del backend: impresión USB (ya no es el primer medio de la cadena) ───
 const mockImprimir = vi.fn().mockResolvedValue({ impresora: 'TMU' });
+// ── Mock del respaldo local en navegador (impresora del SO, sin red) ──────────
+// vi.hoisted para que esté disponible cuando se hoista vi.mock.
+const { mockImprimirHtml } = vi.hoisted(() => ({ mockImprimirHtml: vi.fn() }));
 vi.mock('@/services/travelsoftService', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/travelsoftService')>();
   return {
@@ -66,6 +69,7 @@ vi.mock('@/utils/escPosImage', () => ({
 // ── Mock del servicio WS local: en tests no hay mini-servicio en 127.0.0.1 ────
 vi.mock('@/services/pdaWebSocketService', () => ({
   imprimirPdaWs: vi.fn().mockRejectedValue(new Error('WS no disponible')),
+  imprimirTicketHtml: mockImprimirHtml,
   reiniciarCachePda: vi.fn(),
   servicioPdaDisponible: vi.fn().mockResolvedValue(false),
 }));
@@ -143,10 +147,10 @@ describe('useTicketFiscal (con auth mockeada)', () => {
     expect(adv[0]).toMatch(/Core DIAN no respondió/);
   });
 
-  it('imprimirTicket usa USB como primer medio exitoso', async () => {
+  it('imprimirTicket usa el navegador (print) como respaldo local cuando no hay servicio ni BLE', async () => {
     const { result } = renderHook(() => useTicketFiscal());
     const r = await result.current.imprimirTicket(ticketBase());
-    expect(r).toBe('usb');
-    expect(mockImprimir).toHaveBeenCalled();
+    expect(r).toBe('print');
+    expect(mockImprimirHtml).toHaveBeenCalled();
   });
 });

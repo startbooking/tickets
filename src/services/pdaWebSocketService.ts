@@ -38,6 +38,11 @@ export function getLocalWsLabel(): string {
 
 let socket: WebSocket | null = null;
 let disponibleCache: boolean | null = null;
+// En escritorio un primer sondeo fallido NO bloquea la sesión: se reintenta
+// tras este TTL para que, si el mini-servicio arranca después, la impresión
+// local (requisito: imprimir en la impresora del equipo) se recupere.
+let cacheNegativoHasta: number = 0;
+const TTL_NEGATIVO_MS = 15000;
 
 /** Convierte un Uint8Array a base64 (por lotes para no desbordar la pila). */
 function bytesABase64(bytes: Uint8Array): string {
@@ -49,46 +54,64 @@ function bytesABase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-/** Establece conexión al servidor WebSocket local de la PDA. */
+/** URL alternativas (127.0.0.1 <-> localhost) por si el navegador bloquea una. */
+function urlAlternativas(): string[] {
+  const u = getLocalWsUrl();
+  const alt = u.includes('127.0.0.1') ? u.replace('127.0.0.1', 'localhost') : u.replace('localhost', '127.0.0.1');
+  return alt === u ? [u] : [u, alt];
+}
+
+/** Establece conexión al servidor WebSocket local (prueba 127.0.0.1 y localhost). */
 function conectar(timeoutMs = CONNECT_TIMEOUT): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof WebSocket === 'undefined') { resolve(false); return; }
     if (socket && socket.readyState === WebSocket.OPEN) { resolve(true); return; }
 
-    let ws: WebSocket | null = null;
+    const urls = urlAlternativas();
+    let idx = 0;
     let zanjado = false;
-    const terminar = (ok: boolean) => {
-      if (zanjado) return;
-      zanjado = true;
-      clearTimeout(timer);
-      if (!ok) { try { ws?.close(); } catch { /* ignore */ } }
-      resolve(ok);
-    };
-    const timer = setTimeout(() => terminar(false), timeoutMs);
-    try {
-      ws = new WebSocket(getLocalWsUrl());
-      ws.onopen = () => { socket = ws; terminar(true); };
-      ws.onerror = () => terminar(false);
-      ws.onclose = () => {
-        if (socket === ws) socket = null;
-        disponibleCache = null;
+    const intentar = () => {
+      if (idx >= urls.length) { resolve(false); return; }
+      const url = urls[idx++];
+      let ws: WebSocket | null = null;
+      const terminar = (ok: boolean) => {
+        if (zanjado) return;
+        zanjado = true;
+        clearTimeout(timer);
+        if (!ok) { try { ws?.close(); } catch { /* ignore */ } if (idx < urls.length) intentar(); else resolve(false); }
+        else { socket = ws; resolve(true); }
       };
-    } catch {
-      terminar(false);
-    }
+      const timer = setTimeout(() => terminar(false), timeoutMs);
+      try {
+        ws = new WebSocket(url);
+        ws.onopen = () => terminar(true);
+        ws.onerror = () => terminar(false);
+        ws.onclose = () => {
+          if (socket === ws) socket = null;
+          disponibleCache = null;
+          if (!zanjado) terminar(false);
+        };
+      } catch {
+        terminar(false);
+      }
+    };
+    intentar();
   });
 }
 
-/** Sonda el servicio PDA (resultado cacheado por sesión). */
+/** Sonda el servicio local (positivo cacheado por sesión; negativo con TTL). */
 export async function servicioPdaDisponible(): Promise<boolean> {
-  if (disponibleCache !== null) return disponibleCache;
+  if (disponibleCache === true) return true;
+  if (disponibleCache === false && Date.now() < cacheNegativoHasta) return false;
   disponibleCache = await conectar();
+  if (disponibleCache === false) cacheNegativoHasta = Date.now() + TTL_NEGATIVO_MS;
   return disponibleCache;
 }
 
-/** Borra la caché de disponibilidad del servicio PDA. */
+/** Borra la caché de disponibilidad del servicio local (fuerza re-sondeo). */
 export function reiniciarCachePda(): void {
   disponibleCache = null;
+  cacheNegativoHasta = 0;
 }
 
 export interface ResultadoPdaWs {
@@ -101,17 +124,47 @@ export interface ResultadoPdaWs {
  * Lanza un Error si el servicio no está disponible en la PDA.
  */
 export async function imprimirPdaWs(texto: string): Promise<ResultadoPdaWs> {
-  const conectado = await conectar();
-  if (!conectado || !socket || socket.readyState !== WebSocket.OPEN) {
-    disponibleCache = false;
-    throw new Error(
-      'Servicio de impresión local no disponible. Active el mini-servicio del equipo (' + getLocalWsUrl() + ').'
-    );
-  }
-  disponibleCache = true;
+  const url = getLocalWsUrl();
   const b64 = bytesABase64(encodarEscPos(texto));
-  socket.send(JSON.stringify({ action: 'PRINT', data: b64, copies: 1 }));
-  return { ok: true, dispositivo: getLocalWsLabel() };
+  // Conexión propia por impresión: así leemos la RESPUESTA del servicio y
+  // propagamos el error real (p. ej. "win32print" no disponible) en vez de
+  // creer que imprimió cuando el servicio falla localmente.
+  return await new Promise<ResultadoPdaWs>((resolve, reject) => {
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch (e) {
+      disponibleCache = false;
+      cacheNegativoHasta = Date.now() + TTL_NEGATIVO_MS;
+      reject(new Error('No se pudo conectar al servicio local (' + url + '): ' + (e as Error).message));
+      return;
+    }
+    let terminado = false;
+    const finalizar = (ok: boolean, err?: string) => {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* ignore */ }
+      if (ok) resolve({ ok: true, dispositivo: getLocalWsLabel() });
+      else { disponibleCache = false; cacheNegativoHasta = Date.now() + TTL_NEGATIVO_MS; reject(new Error(err || 'Error de impresión local.')); }
+    };
+    const timer = setTimeout(
+      () => finalizar(false, 'Tiempo de espera agotado conectando al servicio local (' + url + '). ¿Está corriendo el mini-servicio en este PC?'),
+      CONNECT_TIMEOUT + 4000
+    );
+    ws.onopen = () => { ws.send(JSON.stringify({ action: 'PRINT', data: b64, copies: 1 })); };
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(String(ev.data));
+        if (msg && msg.code === 0) finalizar(true);
+        else finalizar(false, msg?.message || 'El servicio local devolvió un error al imprimir.');
+      } catch {
+        finalizar(false, 'Respuesta inválida del servicio local de impresión.');
+      }
+    };
+    ws.onerror = () => finalizar(false, 'No se pudo conectar al servicio local (' + url + '). Active el mini-servicio en este PC (desktop-print-service).');
+    ws.onclose = () => { if (!terminado) finalizar(false, 'El servicio local cerró la conexión antes de responder.'); };
+  });
 }
 
 /** Ticket de prueba por el servicio WS local (botón "Test Impresora"). */
@@ -125,4 +178,41 @@ export async function imprimirTestPdaWs(): Promise<ResultadoPdaWs> {
     'fecha: ' + new Date().toLocaleString('es-CO') + '\n' +
     '\n\n\n';
   return imprimirPdaWs(ticketPrueba);
+}
+
+/**
+ * Fallback 100% LOCAL: abre el dialogo de impresion del navegador y manda el
+ * ticket a la impresora PREDETERMINADA DEL SISTEMA (la del equipo), sin pasar
+ * por la red ni por el servicio WS. Limpia los comandos ESC/POS para que el
+ * texto se lea como un recibo. Util cuando el mini-servicio no esta disponible.
+ */
+export function imprimirTicketHtml(textoEscPos: string): void {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+  const limpio = textoEscPos
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u001b\u001d][\u0000-\u007f]?/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  const escapeHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title><style>' +
+    '@page{margin:4mm;}body{margin:0;font-family:"Courier New",monospace;font-size:12px;}' +
+    'pre{margin:0;white-space:pre-wrap;word-break:break-word;}</style></head>' +
+    '<body><pre>' + escapeHtml(limpio) + '</pre></body></html>';
+  const frame = document.createElement('iframe');
+  frame.setAttribute('style', 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;');
+  document.body.appendChild(frame);
+  const doc = frame.contentWindow?.document;
+  if (!doc) { window.print(); return; }
+  doc.open();
+  doc.write(html);
+  doc.close();
+  const w = frame.contentWindow;
+  if (!w) { frame.remove(); return; }
+  w.focus();
+  setTimeout(() => {
+    w.print();
+    setTimeout(() => frame.remove(), 800);
+  }, 300);
 }

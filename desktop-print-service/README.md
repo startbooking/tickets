@@ -38,6 +38,20 @@ El backend se detecta automáticamente; `--printer` fuerza uno.
 
 ## Instalación (Windows / Linux)
 
+### Instaladores automáticos (recomendado)
+
+Dejan el servicio arrancando solo en cada inicio de sesión:
+
+- **Windows:** ejecuta `instalar_windows.bat` (doble clic). Instala dependencias
+  y crea un acceso directo en el Inicio que corre el servicio sin ventana
+  (`pythonw`). Pide el nombre de impresora (opcional) y el puerto (default 8090).
+- **Linux:** ejecuta `./instalar_linux.sh`. Instala `websockets` y registra una
+  unidad `systemd --user` (`desktop-print-service.service`) que arranca al iniciar
+  sesión y se reinicia si falla. Habilita `linger` para que sobreviva sin sesión
+  gráfica. Pide impresora (opcional) y puerto.
+
+### Instalación manual
+
 1. Instala Python 3 (en Windows marca "Add to PATH").
 2. Abre terminal en esta carpeta:
    ```
@@ -58,8 +72,9 @@ El backend se detecta automáticamente; `--printer` fuerza uno.
 
 ### Arranque automático al iniciar Windows
 
-Crea un acceso directo a `print_service.py` (usa `pythonw` para que no abra
-ventana) y cópialo en `shell:startup` (`Win+R` → `shell:startup`).
+El instalador `instalar_windows.bat` ya lo hace; manualmente: crea un acceso
+directo a `print_service.py` (usa `pythonw` para que no abra ventana) y cópialo
+en `shell:startup` (`Win+R` → `shell:startup`).
 
 ## Modo pruebas (sin impresora / sin cuarto OS)
 

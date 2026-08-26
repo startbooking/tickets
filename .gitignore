@@ -53,3 +53,6 @@ local.properties
 
 # Config del agente opencode (no versionar)
 opencode.json
+
+# Copias de seguridad locales (no versionar)
+backups/

@@ -4,12 +4,13 @@ import { travelsoftService, formatHora, horaSalidaVehiculo, horaDurationAMinutos
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
 import { EMPRESA_NOMBRE } from '@/services/ticketFiscalService';
 import { buildWhatsAppCard } from '@/utils/whatsappShare';
+import { generarLibroDeViaje } from '@/utils/libroDeViajePdf';
 
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';
-import { detectarImpresoraBle, imprimirTestBle, imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
+import { imprimirTestRawBt, isAndroidDevice, soportaBluetoothEscPos, obtenerImpresoraBlePredeterminada, limpiarImpresoraBlePredeterminada, obtenerImpresoraPdaGuardada, impresoraPdaFijada, guardarImpresoraPda } from '@/utils/ticketFormatter';
 import { esDispositivoSunmi, imprimirTestSunmi, validarImpresoraSunmi, reiniciarCacheSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
-import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, DESKTOP_WS_LABEL, reiniciarCachePda } from '@/services/pdaWebSocketService';
+import { imprimirTestPdaWs, servicioPdaDisponible, PDA_WS_LABEL, DESKTOP_WS_LABEL, reiniciarCachePda, imprimirTicketHtml } from '@/services/pdaWebSocketService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ import {
   TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
   Send, MapPin, Plus, Banknote, CreditCard, QrCode,
   User, Phone, Mail, Armchair, CheckCircle2, Clock,
-   Menu, X, Printer, Eye,
+   Menu, X, Printer, Eye, FileDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -55,6 +56,8 @@ export default function CajeroDashboard() {
   const [impresoraFijada, setImpresoraFijada] = useState<boolean>(() =>
     impresoraPdaFijada()
   );
+  // Estado en vivo del servicio local de impresión (escritorio). null = sondeando.
+  const [servicioLocalActivo, setServicioLocalActivo] = useState<boolean | null>(null);
 
   // ─── ESTADOS DE CAJA Y TIQUETERÍA ───
   const [totalCajaTurno, setTotalCajaTurno] = useState<number>(145000);
@@ -140,6 +143,15 @@ export default function CajeroDashboard() {
     };
   }, [menuAbierto]);
 
+  // Sondeo en vivo del servicio local de impresión (escritorio) al cargar.
+  useEffect(() => {
+    if (isAndroidDevice()) return; // en PDA el servicio es la app; se prueba con Test
+    reiniciarCachePda();
+    servicioPdaDisponible()
+      .then(setServicioLocalActivo)
+      .catch(() => setServicioLocalActivo(false));
+  }, []);
+
   // Validar y testear impresora local de la PDA
   const handleTestImpresora = useCallback(async () => {
     // En la PDA Android la impresión directa (sin diálogos) se intenta así:
@@ -204,6 +216,7 @@ export default function CajeroDashboard() {
           setImpresoraPredeterminada(DESKTOP_WS_LABEL);
           guardarImpresoraPda(DESKTOP_WS_LABEL, true);
           setImpresoraFijada(true);
+          setServicioLocalActivo(true);
           toast.success(`Ticket de prueba impreso en "${r.dispositivo}".`);
         }
         return;
@@ -215,31 +228,32 @@ export default function CajeroDashboard() {
       return;
     }
 
-    if (!soportaBluetoothEscPos()) {
-      toast.error('Este navegador no soporta impresión en local (Bluetooth).');
-      return;
-    }
+    // El servicio local del PC no está disponible: lo indicamos claramente
+    // (no es un error de Bluetooth/PDA) y, si el navegador soporta Web Bluetooth,
+    // ofrecemos la impresora Bluetooth como alternativa.
+    toast.error(
+      'Servicio de impresión local no disponible en este equipo. Ejecute el ' +
+      'instalador "desktop-print-service/instalar_windows.bat" y verifique que el ' +
+      'servicio esté corriendo (ws://127.0.0.1:8090). Si usa impresora Bluetooth, ' +
+      'puede emparejarla a continuación.'
+    );
+    // Sin servicio local: la prueba se imprime con el dialogo del navegador en
+    // la impresora predeterminada de Windows (100% local, sin ir a la red).
+    setServicioLocalActivo(false);
     setTesteandoImpresora(true);
     try {
-      // 2) Detectar impresora emparejada
-      const deteccion = await detectarImpresoraBle();
-      toast(deteccion.mensaje);
-      // 3) Actualizar estado de predeterminada
-      setImpresoraPredeterminada(deteccion.impresoraConectada && deteccion.dispositivo
-        ? deteccion.dispositivo
-        : (obtenerImpresoraBlePredeterminada()?.nombre ?? null));
-      // 4) Si está conectada, imprimir ticket de prueba
-      if (deteccion.impresoraConectada) {
-        const result = await imprimirTestBle();
-        if (result.ok) {
-          toast.success(`Ticket de prueba impreso en "${result.dispositivo ?? 'Impresora Térmica'}".`);
-        }
-      }
+      imprimirTicketHtml(
+        '\x1b\x40PRUEBA DE IMPRESION\n---------------------------\n' +
+        'FLOTA SAN VICENTE S.A.\nImpresion local (navegador)\nfecha: ' +
+        new Date().toLocaleString('es-CO') + '\n\n\n'
+      );
+      toast.success('Se abrio el dialogo de impresion: elija la impresora del equipo.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al validar impresora.');
+      toast.error(err instanceof Error ? err.message : 'Error al imprimir la prueba.');
     } finally {
       setTesteandoImpresora(false);
     }
+    return;
   }, []);
 
   // Limpiar la impresora predeterminada guardada (bloqueado si está fijada)
@@ -464,6 +478,25 @@ export default function CajeroDashboard() {
                   Test Impresora
                 </Button>
               </div>
+            )}
+            {!isAndroidDevice() && (
+              <span
+                className={`h-10 px-2 inline-flex items-center gap-1 text-[9px] font-bold rounded-md border ${
+                  servicioLocalActivo === null
+                    ? 'text-slate-500 border-slate-200 bg-slate-50'
+                    : servicioLocalActivo
+                    ? 'text-emerald-700 border-emerald-200 bg-emerald-50'
+                    : 'text-amber-700 border-amber-200 bg-amber-50'
+                }`}
+                title={
+                  servicioLocalActivo
+                    ? 'Servicio local de impresión activo: impresión silenciosa en la impresora del equipo.'
+                    : 'Servicio local NO disponible: la impresión usará el diálogo del navegador (impresora del equipo).'
+                }
+              >
+                <span className={`w-2 h-2 rounded-full ${servicioLocalActivo ? 'bg-emerald-500' : 'bg-amber-500'} ${servicioLocalActivo === null ? 'animate-pulse' : ''}`} />
+                {servicioLocalActivo === null ? 'Impresión…' : servicioLocalActivo ? 'Local OK' : 'Sin servicio local'}
+              </span>
             )}
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
             <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-600">
@@ -1868,6 +1901,7 @@ function SubViewVentas({
   ventaInicial?: VehiculoEstado | null;
   onVentaInicialConsumida?: () => void;
 }) {
+  const { user } = useAuth();
   const [programacion, setProgramacion] = useState<ProgramacionVehiculosData | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
@@ -1904,6 +1938,23 @@ function SubViewVentas({
   useEffect(() => {
     void cargarEstadoImpresora();
   }, [cargarEstadoImpresora]);
+
+  // Impresión 100% local: un tiquete sólo se genera si hay una impresora
+  // local disponible (servicio WS en el equipo, o impresora integrada/Bluetooth
+  // en la PDA). Sin esto no se permite vender (el cajero no podría entregar el
+  // tiquete físico).
+  const [impresoraLocalLista, setImpresoraLocalLista] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let ok = await servicioPdaDisponible();
+      if (!ok && isAndroidDevice()) {
+        ok = esDispositivoSunmi() || soportaBluetoothEscPos();
+      }
+      if (!cancelled) setImpresoraLocalLista(ok);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const cargarDashboard = useCallback(async () => {
     setLoadingDashboard(true);
@@ -1966,6 +2017,42 @@ function SubViewVentas({
     if (!ruta) return;
     setVehiculoSel(ruta);
     void cargarSillas(ruta);
+  };
+
+  // Despachar el vehículo y generar el "Libro de Ruta" en PDF (jsPDF).
+  const handleDespacharLibroRuta = async (r: VehiculoEstado) => {
+    let pasajeros = [];
+    try {
+      const manifiesto = await travelsoftService.getManifiestoDespacho(
+        r.cod_ruta,
+        r.fecha_ruta || undefined
+      );
+      if (manifiesto?.pasajeros?.length) {
+        pasajeros = manifiesto.pasajeros
+          .map((p) => ({
+            nombre: p.nombre || '—',
+            documento: p.documento || '—',
+            asiento: p.puesto ?? null,
+            tiquete: p.consecutivo_pasajero != null ? String(p.consecutivo_pasajero) : '—',
+          }))
+          .sort((a, b) => (a.asiento ?? 0) - (b.asiento ?? 0));
+      }
+    } catch {
+      pasajeros = [];
+    }
+    generarLibroDeViaje({
+      codigoViaje: r.orden_vehi || String(r.cod_ruta),
+      fecha: r.fecha_ruta || new Date().toISOString().slice(0, 10),
+      horaSalida: r.hora_ruta != null ? formatHora(r.hora_ruta) : '—',
+      ruta: r.recorrido || [r.origen, r.destino].filter(Boolean).join(' → ') || '—',
+      destino: r.destino || '—',
+      vehiculo: r.placa_vehi || r.orden_vehi || '—',
+      placa: r.placa_vehi || undefined,
+      conductor: r.conductor || undefined,
+      cajero: user?.nombreCompleto || user?.nombre || undefined,
+      pasajeros,
+    });
+    toast.success('Libro de Ruta generado en PDF.');
   };
 
   // Limpia la taquilla de ventas y la regresa al estado inicial (cards de vehículos).
@@ -2074,6 +2161,10 @@ function SubViewVentas({
   };
 
   const handleGenerar = async () => {
+    if (impresoraLocalLista !== true) {
+      toast.error('Conecte una impresora local para generar el tiquete (PC: servicio de impresión; PDA: impresora integrada/Bluetooth).');
+      return;
+    }
     if (errores.length > 0) {
       setMostrarErrores(true);
       toast.error(errores[0]);
@@ -2117,7 +2208,13 @@ function SubViewVentas({
         // Emisión fiscal ante la DIAN (CUFE + QR). Si el Core no responde,
         // el tiquete se imprime igualmente con la numeración de la resolución local.
         const ticketFinal = await emitirConDian(venta.data, (msg) => toast.warning(msg));
-        void imprimirTicket(ticketFinal);
+        await imprimirTicket(ticketFinal).then((medio) => {
+          if (medio === 'pda') toast.success('Ticket impreso en impresora local (silenciosa).');
+          else if (medio === 'print') toast.info('Abriendo diálogo de impresión del navegador (impresora del equipo).');
+          else if (medio === 'ble') toast.success('Ticket impreso en impresora Bluetooth.');
+          else if (medio === 'sunmi') toast.success('Ticket impreso en impresora integrada (PDA).');
+          else if (medio === 'rawbt') toast.success('Ticket impreso vía RawBT (PDA).');
+        });
         setTicket(ticketFinal);
         if (venta.total) setTotalCaja((p) => p + venta.total);
         toast.success(`${venta.cantidad} tiquete(s) generados, imprimiendo...`);
@@ -2125,7 +2222,13 @@ function SubViewVentas({
         // Un tiquete por cada silla vendida.
         for (const t of venta.tiquetes) {
           const ticketFinal = await emitirConDian(t, (msg) => toast.warning(msg));
-          void imprimirTicket(ticketFinal);
+          await imprimirTicket(ticketFinal).then((medio) => {
+          if (medio === 'pda') toast.success('Ticket impreso en impresora local (silenciosa).');
+          else if (medio === 'print') toast.info('Abriendo diálogo de impresión del navegador (impresora del equipo).');
+          else if (medio === 'ble') toast.success('Ticket impreso en impresora Bluetooth.');
+          else if (medio === 'sunmi') toast.success('Ticket impreso en impresora integrada (PDA).');
+          else if (medio === 'rawbt') toast.success('Ticket impreso vía RawBT (PDA).');
+        });
         }
         setTicket(venta.tiquetes[0] ?? venta.data);
         if (venta.total) setTotalCaja((p) => p + venta.total);
@@ -2187,10 +2290,17 @@ function SubViewVentas({
                 {porDespachar.map((r) => {
                   const activo = vehiculoSel?.cod_ruta === r.cod_ruta;
                   return (
-                    <button
+                    <div
                       key={r.cod_ruta}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleSeleccionarVehiculo(r.cod_ruta)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSeleccionarVehiculo(r.cod_ruta);
+                        }
+                      }}
                       className={cn(
                         "rounded-xl border p-3 text-left transition-all min-h-[72px] sm:min-h-[80px] touch-list",
                         activo
@@ -2221,7 +2331,17 @@ function SubViewVentas({
                           ) : null}
                         </div>
                       </div>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDespacharLibroRuta(r);
+                        }}
+                        className="mt-2 w-full flex items-center justify-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black py-1.5 shadow-sm"
+                      >
+                        <FileDown className="w-3.5 h-3.5" /> Despachar (Libro de Ruta)
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -2454,12 +2574,25 @@ function SubViewVentas({
 
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-12 mt-3 gap-2 touch-list"
-              disabled={generando}
+              disabled={generando || impresoraLocalLista !== true}
               onClick={() => void handleGenerar()}
             >
               {generando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
               GENERAR TICKET DE VENTA
             </Button>
+
+            {impresoraLocalLista === false && (
+              <p className="mt-2 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded-lg p-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                Impresora local no detectada. Conecte el servicio de impresión (PC) o la impresora de la PDA para poder generar tiquetes.
+              </p>
+            )}
+            {impresoraLocalLista === null && (
+              <p className="mt-2 text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Verificando impresora local…
+              </p>
+            )}
 
             {ticket && (
               <Button variant="outline" className="w-full text-xs font-bold mt-2 gap-2" onClick={reiniciar}>

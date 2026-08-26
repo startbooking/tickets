@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SPA fallback para Hostinger (Apache)
+# React Router usa rutas del lado del cliente; cualquier ruta que no sea un
+# archivo real debe servir index.html para que la app arranque.
+# ─────────────────────────────────────────────────────────────────────────────
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Cache de los assets con hash generados por Vite
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 week"
+  ExpiresByType application/javascript "access plus 1 week"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/svg+xml "access plus 1 month"
+  ExpiresByType application/manifest+json "access plus 1 week"
+</IfModule>
+
+# El service worker y el manifest no deben cachearse agresivamente
+<FilesMatch "(sw\.js|workbox-.*\.js|manifest\.webmanifest)$">
+  Header set Cache-Control "no-cache"
+</FilesMatch>

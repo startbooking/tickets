@@ -125,7 +125,7 @@ export interface SateliteSegmento {
   valor: number | null;
 }
 
-export type EstadoVehiculoSatelite = 'POR_DESPACHAR' | 'EN_TRANSITO' | 'LLEGADO';
+export type EstadoVehiculoSatelite = 'POR_DESPACHAR' | 'EN_TRANSITO' | 'SALIO_SATELITE' | 'LLEGADO';
 
 export interface SateliteVehiculo {
   cod_ruta: number;
@@ -144,6 +144,7 @@ export interface SateliteVehiculo {
   destino: string | null;
   capacidad: number | null;
   tickets_vendidos: number | null;
+  consecutivo_planilla?: number | null;
   segmentos: SateliteSegmento[];
   segmento_post_parada?: {
     origen_ruta: number;
@@ -907,6 +908,40 @@ export const travelsoftService = {
     const payload = response.data;
     if (!payload || payload.success !== true || !payload.data) {
       throw new Error("No se pudieron cargar los vehículos de la agencia satélite.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * Vehículos ya despachados por la agencia principal que pasan por este
+   * satélite y aún no han salido de él (en tránsito).
+   * GET /despacho/satelite/despachados?fecha=YYYY-MM-DD
+   */
+  getDespachosSatelite: async (fecha?: string): Promise<SateliteDashboardData> => {
+    const response = await apiClient.get<{ success: boolean; data: SateliteDashboardData }>(
+      "/despacho/satelite/despachados",
+      { params: fecha ? { fecha } : undefined }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudieron cargar los vehículos despachados del satélite.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * El satélite confirma la salida del vehículo hacia el destino final.
+   * Solo para rutas donde intermedio_ruta = esta agencia (la ruta del satélite).
+   * POST /despacho/satelite/salida
+   */
+  despacharSalidaSatelite: async (cod_ruta: number, fecha?: string): Promise<{ cod_ruta: number; estado: string }> => {
+    const response = await apiClient.post<{ success: boolean; data: { cod_ruta: number; estado: string } }>(
+      "/despacho/satelite/salida",
+      { cod_ruta, fecha }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudo registrar la salida del vehículo.");
     }
     return payload.data;
   },

@@ -552,7 +552,9 @@ export async function detectarImpresoraBle(): Promise<DeteccionImpresoraResult> 
         bluetoothDisponible: false,
         esAndroid: isAndroidDevice(),
         impresoraConectada: false,
-        mensaje: 'Bluetooth desactivado en la PDA. Actívelo e intente nuevamente.',
+        mensaje: isAndroidDevice()
+          ? 'Bluetooth desactivado en la PDA. Actívelo e intente nuevamente.'
+          : 'Bluetooth desactivado en este equipo. Actívelo e intente nuevamente.',
       };
     }
   } catch {

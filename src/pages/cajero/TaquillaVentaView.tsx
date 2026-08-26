@@ -6,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { 
   Search, UserCheck, Armchair, CreditCard, Ticket, 
-  FileCheck, ShieldAlert, Coins, Landmark, ReceiptText 
+  FileCheck, ShieldAlert, Coins, Landmark, ReceiptText, FileDown
 } from "lucide-react";
 import { toast } from "sonner";
+import { generarLibroDeViaje } from "@/utils/libroDeViajePdf";
 
 // Interfaces del Dominio de Taquilla
 interface Pasajero {
@@ -119,6 +120,32 @@ export function TaquillaVentaView() {
     toast.info(`Cierre procesado. Total recaudado en el turno: $${totalCajaTurno.toLocaleString('es-CO')} COP. Imprimiendo tirilla Z...`);
   };
 
+  // 🚌 Despachar el vehículo y generar el "Libro de Viaje" en PDF
+  const handleDespacharViaje = () => {
+    if (!viajeSeleccionado) {
+      toast.error("Primero consulte y seleccione un viaje disponible.");
+      return;
+    }
+    generarLibroDeViaje({
+      codigoViaje: viajeSeleccionado.id,
+      fecha: fecha || new Date().toISOString().slice(0, 10),
+      horaSalida: viajeSeleccionado.hora,
+      ruta: viajeSeleccionado.ruta,
+      destino: viajeSeleccionado.destino,
+      vehiculo: viajeSeleccionado.vehiculo,
+      pasajeros:
+        pasajero && asientoSeleccionado
+          ? [{
+              nombre: pasajero.nombre,
+              documento: pasajero.documento,
+              asiento: asientoSeleccionado,
+              tiquete: facturaEmitida?.tiqueteId ?? "—",
+            }]
+          : [],
+    });
+    toast.success("Libro de Ruta generado en PDF.");
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 bg-slate-50 min-h-screen text-slate-800 font-sans antialiased">
       
@@ -174,6 +201,13 @@ export function TaquillaVentaView() {
                   </div>
                   <p className="text-slate-600 font-medium">{viajeSeleccionado.ruta}</p>
                   <p className="text-slate-400 font-mono text-[10px]">{viajeSeleccionado.vehiculo}</p>
+                  <Button
+                    type="button"
+                    onClick={handleDespacharViaje}
+                    className="w-full h-9 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs tracking-wide shadow flex items-center justify-center gap-2"
+                  >
+                    <FileDown className="w-4 h-4" /> Despachar (Generar Libro de Ruta)
+                  </Button>
                 </div>
               )}
             </CardContent>

@@ -16,6 +16,9 @@ import {
   EstadoVehiculoSatelite,
 } from '@/services/travelsoftService';
 import { useTicketFiscal } from '@/hooks/useTicketFiscal';
+import { servicioPdaDisponible } from '@/services/pdaWebSocketService';
+import { isAndroidDevice, soportaBluetoothEscPos } from '@/utils/ticketFormatter';
+import { esDispositivoSunmi } from '@/services/sunmiPrinter';
 import {
   cargarTurno,
   guardarTurno,
@@ -52,6 +55,10 @@ export default function SateliteDashboard() {
   const [loading, setLoading] = useState(false);
   const [errorRed, setErrorRed] = useState<string | null>(null);
 
+  const [vista, setVista] = useState<'en_ruta' | 'despachados'>('en_ruta');
+  const [despachados, setDespachados] = useState<SateliteDashboardData | null>(null);
+  const [cargandoDespachados, setCargandoDespachados] = useState(false);
+
   const [vehiculoSel, setVehiculoSel] = useState<SateliteVehiculo | null>(null);
   const [segmento, setSegmento] = useState<SateliteSegmento | null>(null);
 
@@ -70,6 +77,21 @@ export default function SateliteDashboard() {
   const [formaPago, setFormaPago] = useState<FormaPago>('EFECTIVO');
   const [valor, setValor] = useState('');
   const [generando, setGenerando] = useState(false);
+
+  // Impresión 100% local: no se genera tiquete sin una impresora local
+  // disponible (servicio WS en el equipo, o impresora integrada/Bluetooth en la PDA).
+  const [impresoraLocalLista, setImpresoraLocalLista] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let ok = await servicioPdaDisponible();
+      if (!ok && isAndroidDevice()) {
+        ok = esDispositivoSunmi() || soportaBluetoothEscPos();
+      }
+      if (!cancelled) setImpresoraLocalLista(ok);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
   const [cierreAbierto, setCierreAbierto] = useState(false);
@@ -105,6 +127,29 @@ export default function SateliteDashboard() {
     }
   }, [navigate, user]);
 
+  const cargarDespachados = useCallback(async (fecha?: string) => {
+    setCargandoDespachados(true);
+    try {
+      const data = await travelsoftService.getDespachosSatelite(fecha ?? undefined);
+      setDespachados(data);
+    } catch {
+      setDespachados(null);
+    } finally {
+      setCargandoDespachados(false);
+    }
+  }, []);
+
+  const despacharSalida = async (cod_ruta: number) => {
+    try {
+      await travelsoftService.despacharSalidaSatelite(cod_ruta, fechaSel);
+      toast.success('Salida del satélite registrada.');
+      void cargarDashboard(fechaSel);
+      if (vista === 'despachados') void cargarDespachados(fechaSel);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo registrar la salida.');
+    }
+  };
+
   const cargarEstadoImpresora = useCallback(async () => {
     try {
       setImpresoraInfo(await travelsoftService.getEstadoImpresora());
@@ -120,6 +165,10 @@ export default function SateliteDashboard() {
   useEffect(() => {
     if (turno) void cargarDashboard(fechaSel);
   }, [turno, cargarDashboard, fechaSel]);
+
+  useEffect(() => {
+    if (turno && vista === 'despachados') void cargarDespachados(fechaSel);
+  }, [turno, vista, fechaSel, cargarDespachados]);
 
    // ─── Turno ────────────────────────────────────────────────────────────────
    // El operador ya no se pide al usuario: se toma del usuario autenticado.
@@ -282,6 +331,10 @@ setSillas(null);
   );
 
   const handleGenerar = async () => {
+    if (impresoraLocalLista !== true) {
+      toast.error('Conecte una impresora local para generar el tiquete (PC: servicio de impresión; PDA: impresora integrada/Bluetooth).');
+      return;
+    }
     if (!vehiculoSel || !segmento || !sillas) {
       toast.error('Seleccione el vehículo y el destino del tramo.');
       return;
@@ -318,6 +371,7 @@ setSillas(null);
         origen_ruta: segmento.origen_ruta ?? vehiculoSel.origen_ruta ?? undefined,
         destino_ruta: segmento.destino_ruta,
         valor: valorNum,
+        consecutivo_planilla: vehiculoSel.consecutivo_planilla ?? undefined,
       });
 
       // Modo de impresión según parámetro de la compañía:
@@ -429,9 +483,9 @@ setSillas(null);
         <main className="flex-1 overflow-y-auto p-3 space-y-3">
           {!vehiculoSel ? (
             <>
-              {/* Encabezado de lista */}
-              <div className="flex items-center justify-between">
-                <div>
+              {/* Encabezado de lista + pestañas */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
                   <h2 className="text-sm font-black text-white">
                     {fechaSel === hoyISO() ? 'Vehículos de hoy' : 'Vehículos del día'}
                   </h2>
@@ -439,47 +493,110 @@ setSillas(null);
                     Los que pasan por {nombreAgencia} · {new Date(fechaSel + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" className="h-9 w-9 p-0 border-slate-700 text-slate-300" onClick={() => void cargarDashboard(fechaSel)} title="Actualizar">
-                  <RefreshCcw className={cn("w-4 h-4", loading && "animate-spin")} />
+                <Button variant="outline" size="sm" className="h-9 w-9 p-0 border-slate-700 text-slate-300" onClick={() => {
+                  if (vista === 'despachados') void cargarDespachados(fechaSel);
+                  else void cargarDashboard(fechaSel);
+                }} title="Actualizar">
+                  <RefreshCcw className={cn("w-4 h-4", (loading || cargandoDespachados) && "animate-spin")} />
                 </Button>
               </div>
 
-              {loading && (
-                <div className="py-12 flex flex-col items-center gap-2 text-slate-400">
-                  <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
-                  <span className="text-[11px] font-bold">Consultando vehículos...</span>
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setVista('en_ruta')}
+                  className={cn(
+                    "py-2 rounded-xl border text-[11px] font-black transition-all",
+                    vista === 'en_ruta'
+                      ? "border-emerald-500 bg-emerald-950/50 text-emerald-300"
+                      : "border-slate-700 bg-slate-900 text-slate-400 active:bg-slate-800"
+                  )}
+                >
+                  En ruta
+                </button>
+                <button
+                  onClick={() => setVista('despachados')}
+                  className={cn(
+                    "py-2 rounded-xl border text-[11px] font-black transition-all",
+                    vista === 'despachados'
+                      ? "border-sky-500 bg-sky-950/50 text-sky-300"
+                      : "border-slate-700 bg-slate-900 text-slate-400 active:bg-slate-800"
+                  )}
+                >
+                  Despachados que pasan por aquí
+                </button>
+              </div>
 
-              {!loading && errorRed && (
-                <div className="rounded-xl border border-red-800 bg-red-950/40 p-4 text-center">
-                  <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
-                  <p className="text-[11px] text-red-300 font-semibold">{errorRed}</p>
-                  <Button size="sm" variant="outline" className="mt-3 text-[11px] border-red-800 text-red-300" onClick={() => void cargarDashboard(fechaSel)}>
-                    <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
-                  </Button>
-                </div>
-              )}
+              {vista === 'en_ruta' ? (
+                <>
+                  {loading && (
+                    <div className="py-12 flex flex-col items-center gap-2 text-slate-400">
+                      <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                      <span className="text-[11px] font-bold">Consultando vehículos...</span>
+                    </div>
+                  )}
 
-              {!loading && !errorRed && dashboard && dashboard.vehiculos.length === 0 && (
-                <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-6 text-center">
-                  <Bus className="w-7 h-7 text-slate-500 mx-auto mb-2" />
-                  <p className="text-xs text-slate-300 font-bold">No hay vehículos programados para esta fecha</p>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Las rutas que pasan por {nombreAgencia} se programan en la agencia principal.
-                  </p>
-                </div>
-              )}
+                  {!loading && errorRed && (
+                    <div className="rounded-xl border border-red-800 bg-red-950/40 p-4 text-center">
+                      <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                      <p className="text-[11px] text-red-300 font-semibold">{errorRed}</p>
+                      <Button size="sm" variant="outline" className="mt-3 text-[11px] border-red-800 text-red-300" onClick={() => void cargarDashboard(fechaSel)}>
+                        <RefreshCcw className="w-3.5 h-3.5" /> Reintentar
+                      </Button>
+                    </div>
+                  )}
 
-              {dashboard?.vehiculos.map((v) => (
-                <TarjetaVehiculo
-                  key={v.cod_ruta}
-                  v={v}
-                  arrivado={vehiculosArrivados.has(v.cod_ruta)}
-                  onTramo={(s) => void seleccionarTramo(v, s)}
-                  onMarcarArribe={() => marcarArribe(v.cod_ruta)}
-                />
-              ))}
+                  {!loading && !errorRed && dashboard && dashboard.vehiculos.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-6 text-center">
+                      <Bus className="w-7 h-7 text-slate-500 mx-auto mb-2" />
+                      <p className="text-xs text-slate-300 font-bold">No hay vehículos programados para esta fecha</p>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Las rutas que pasan por {nombreAgencia} se programan en la agencia principal.
+                      </p>
+                    </div>
+                  )}
+
+                  {dashboard?.vehiculos.map((v) => (
+                    <TarjetaVehiculo
+                      key={v.cod_ruta}
+                      v={v}
+                      arrivado={vehiculosArrivados.has(v.cod_ruta)}
+                      onTramo={(s) => void seleccionarTramo(v, s)}
+                      onMarcarArribe={() => marcarArribe(v.cod_ruta)}
+                      onDespacharSalida={() => void despacharSalida(v.cod_ruta)}
+                    />
+                  ))}
+                </>
+              ) : (
+                <>
+                  {cargandoDespachados && (
+                    <div className="py-12 flex flex-col items-center gap-2 text-slate-400">
+                      <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
+                      <span className="text-[11px] font-bold">Consultando despachados...</span>
+                    </div>
+                  )}
+
+                  {!cargandoDespachados && despachados && despachados.vehiculos.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-6 text-center">
+                      <Bus className="w-7 h-7 text-slate-500 mx-auto mb-2" />
+                      <p className="text-xs text-slate-300 font-bold">No hay vehículos despachados en tránsito</p>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Aparecen aquí los buses ya despachados por la principal que pasan por {nombreAgencia} y aún no salen del satélite.
+                      </p>
+                    </div>
+                  )}
+
+                  {despachados?.vehiculos.map((v) => (
+                    <TarjetaVehiculo
+                      key={v.cod_ruta}
+                      v={v}
+                      arrivado={vehiculosArrivados.has(v.cod_ruta)}
+                      onTramo={(s) => void seleccionarTramo(v, s)}
+                      onMarcarArribe={() => marcarArribe(v.cod_ruta)}
+                      onDespacharSalida={() => void despacharSalida(v.cod_ruta)}
+                    />
+                  ))}
+                </>
+              )}
             </>
           ) : (
             <>
@@ -663,9 +780,21 @@ setSillas(null);
                   />
                 </div>
 
+                {impresoraLocalLista === false && (
+                  <p className="text-[11px] font-bold text-amber-300 bg-amber-950/40 border border-amber-700 rounded-lg p-2 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    Impresora local no detectada. Conecte el servicio de impresión (PC) o la impresora de la PDA para poder generar tiquetes.
+                  </p>
+                )}
+                {impresoraLocalLista === null && (
+                  <p className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Verificando impresora local…
+                  </p>
+                )}
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm h-12 gap-2"
-                  disabled={generando}
+                  disabled={generando || impresoraLocalLista !== true}
                   onClick={() => void handleGenerar()}
                 >
                   {generando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
@@ -749,6 +878,7 @@ function EstadoVehiculoBadge({ estado }: { estado?: EstadoVehiculoSatelite | nul
   const cfg: Record<EstadoVehiculoSatelite, { label: string; cls: string }> = {
     POR_DESPACHAR: { label: 'Por despachar', cls: 'bg-slate-900 text-slate-300 border-slate-700' },
     EN_TRANSITO: { label: 'En tránsito', cls: 'bg-amber-900/40 text-amber-300 border-amber-700' },
+    SALIO_SATELITE: { label: 'Salió del satélite', cls: 'bg-sky-900/40 text-sky-300 border-sky-700' },
     LLEGADO: { label: 'Ya llegó', cls: 'bg-emerald-900/40 text-emerald-300 border-emerald-700' },
   };
   const c = cfg[estado];
@@ -760,13 +890,16 @@ function TarjetaVehiculo({
   onTramo,
   arrivado,
   onMarcarArribe,
+  onDespacharSalida,
 }: {
   v: SateliteVehiculo;
   onTramo: (s: SateliteSegmento) => void;
   arrivado?: boolean;
   onMarcarArribe?: () => void;
+  onDespacharSalida?: () => void;
 }) {
   const llegado = v.estado === 'LLEGADO';
+  const enTransito = v.estado === 'EN_TRANSITO';
   return (
     <div className="rounded-xl bg-slate-800/50 border border-slate-800 overflow-hidden">
       <div className="p-3 pb-2 flex items-center justify-between gap-2">
@@ -779,15 +912,26 @@ function TarjetaVehiculo({
           <p className="text-[10px] text-slate-400 truncate mt-0.5">{v.conductor || '—'}</p>
         </div>
         {v.estado === 'EN_TRANSITO' && !arrivado && !llegado && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-[10px] font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-800"
-            onClick={onMarcarArribe}
-          >
-            <MapPin className="w-3 h-3 mr-1" />
-            Arrivó
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[10px] font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-800"
+              onClick={onMarcarArribe}
+            >
+              <MapPin className="w-3 h-3 mr-1" />
+              Arrivó
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[10px] font-bold text-sky-300 hover:text-sky-200 hover:bg-sky-950/40 border border-sky-800"
+              onClick={onDespacharSalida}
+            >
+              <Bus className="w-3 h-3 mr-1" />
+              Despachar salida
+            </Button>
+          </div>
         )}
         <div className="text-right shrink-0">
           <span className="block text-[9px] uppercase font-bold text-slate-500">Hora</span>
