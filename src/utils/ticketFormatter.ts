@@ -690,7 +690,11 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
   t += ESC_POS.ALIGN_LEFT;
   const campo = (label: string, valor?: string | null) => {
     if (valor == null || valor === "") return;
-    t += normalizarImpresion(`${label} ${valor}\n`);
+    const prefijo = `${label} `;
+    const ancho = Math.max(10, 32 - prefijo.length);
+    wordWrap(valor, ancho).forEach((ln, i) => {
+      t += normalizarImpresion((i === 0 ? prefijo : " ".repeat(prefijo.length)) + ln + "\n");
+    });
   };
   campo("AGENCIA:", d.agencia);
   campo("PLANILLA:", d.planilla != null ? String(d.planilla) : null);
@@ -717,7 +721,11 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
     for (const p of d.pasajeros) {
       const dest = p.destino ?? "—";
       const val = p.valor != null ? pesosInforme(p.valor) : "—";
-      t += normalizarImpresion(`${p.asiento != null ? "#" + p.asiento : "#?"} ${dest}\n`);
+      const cabeza = p.asiento != null ? `#${p.asiento} ` : "#? ";
+      const anchoDest = Math.max(10, 32 - cabeza.length);
+      wordWrap(dest, anchoDest).forEach((ln, i) => {
+        t += normalizarImpresion((i === 0 ? cabeza : " ".repeat(cabeza.length)) + ln + "\n");
+      });
       t += ESC_POS.ALIGN_RIGHT;
       t += normalizarImpresion(`${val}\n`);
       t += ESC_POS.ALIGN_LEFT;
