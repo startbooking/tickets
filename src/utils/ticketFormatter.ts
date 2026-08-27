@@ -734,7 +734,10 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
       const dest = p.destino ?? "—";
       const val = p.valor != null ? pesosInforme(p.valor) : "—";
       const cabeza = p.asiento != null ? `#${p.asiento} ` : "#? ";
-      t += normalizarImpresion(`${cabeza}${dest}  ${val}\n`);
+      const sep = "  ";
+      const maxDest = 32 - cabeza.length - sep.length - val.length;
+      const destRecortado = maxDest > 0 && dest.length > maxDest ? dest.slice(0, maxDest) : dest;
+      t += normalizarImpresion(`${cabeza}${destRecortado}${sep}${val}\n`);
     }
   }
   t += "--------------------------------\n";
