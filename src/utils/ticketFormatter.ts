@@ -724,6 +724,7 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
   t += ESC_POS.BOLD_ON;
   t += normalizarImpresion("MANIFIESTO DE PASAJEROS\n");
   t += ESC_POS.BOLD_OFF;
+  t += normalizarImpresion("Silla - Destino - Valor\n");
   if (d.pasajeros.length === 0) {
     t += normalizarImpresion("Sin pasajeros.\n");
   } else {
