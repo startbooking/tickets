@@ -734,13 +734,7 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
       const dest = p.destino ?? "—";
       const val = p.valor != null ? pesosInforme(p.valor) : "—";
       const cabeza = p.asiento != null ? `#${p.asiento} ` : "#? ";
-      const anchoDest = Math.max(10, 32 - cabeza.length);
-      wordWrap(dest, anchoDest).forEach((ln, i) => {
-        t += normalizarImpresion((i === 0 ? cabeza : " ".repeat(cabeza.length)) + ln + "\n");
-      });
-      t += ESC_POS.ALIGN_RIGHT;
-      t += normalizarImpresion(`${val}\n`);
-      t += ESC_POS.ALIGN_LEFT;
+      t += normalizarImpresion(`${cabeza}${dest}  ${val}\n`);
     }
   }
   t += "--------------------------------\n";
@@ -753,8 +747,9 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
   campo("DEUDA DE PRODUCIDOS:", d.deudaProducidos != null ? pesosInforme(d.deudaProducidos) : null);
   t += "\n";
   campo("HORA DESPACHO:", d.horaDespachoVehiculo || null);
+  t += "\n";
   t += ESC_POS.ALIGN_CENTER;
-  t += normalizarImpresion(`DESPACHADO A LAS: ${new Date().toLocaleString("es-CO")}\n`);
+  t += normalizarImpresion(`FECHA / HORA DE IMPRESION: ${new Date().toLocaleString("es-CO")}\n`);
   t += "\n";
   t += ESC_POS.FEED_6;
   t += ESC_POS.CUT;
