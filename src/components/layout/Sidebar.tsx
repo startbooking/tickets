@@ -38,21 +38,19 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
   return (
     <aside
-      className={cn(
+       className={cn(
         'h-screen bg-sidebar text-sidebar-foreground flex flex-col transition-all duration-300',
         collapsed ? 'w-16' : 'w-64'
       )}
     >
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-              <Bus className="w-5 h-5 text-sidebar-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg">TransTicket</span>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
+            <img src="/images/travelsoft.jpg" alt="TravelSoft.plus" className="w-full h-full object-cover" />
           </div>
-        )}
+          {!collapsed && <span className="font-bold text-lg">TravelSoft.plus</span>}
+        </div>
         <Button
           variant="ghost"
           size="icon"
