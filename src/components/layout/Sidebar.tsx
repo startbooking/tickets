@@ -47,7 +47,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
-            <img src="/images/travelsoft.jpg" alt="TravelSoft.plus" className="w-full h-full object-cover" />
+            <img src="/images/logo.png" alt="TravelSoft.plus" className="w-full h-full object-cover" />
           </div>
           {!collapsed && <span className="font-bold text-lg">TravelSoft.plus</span>}
         </div>

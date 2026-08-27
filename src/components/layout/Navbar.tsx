@@ -11,7 +11,7 @@ export function Navbar({ onLoginClick }: NavbarProps) {
       {/* Logo y nombre de la app */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg overflow-hidden bg-white flex items-center justify-center">
-          <img src="/images/travelsoft.jpg" alt="TravelSoft.plus" className="w-full h-full object-cover" />
+          <img src="/images/logo.png" alt="TravelSoft.plus" className="w-full h-full object-cover" />
         </div>
         <div className="flex flex-col">
           <span className="text-lg font-bold text-foreground leading-tight">TravelSoft.plus</span>
