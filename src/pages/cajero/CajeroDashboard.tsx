@@ -1908,6 +1908,7 @@ function SubViewVentas({
       celularConductor: conductor?.celular_conduc ?? null,
       deudaProducidos: conductor?.deuda_producidos ?? null,
       agente: user?.nombreCompleto || user?.nombre || "—",
+      horaDespachoVehiculo: r.hora_despacho,
       pasajeros,
       totalValor,
     });

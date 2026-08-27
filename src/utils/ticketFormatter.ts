@@ -677,6 +677,7 @@ export interface InformeDespachoData {
   celularConductor?: string | null;
   deudaProducidos?: number | null;
   agente?: string;
+  horaDespachoVehiculo?: string | null;
   pasajeros: InformeDespachoPasajero[];
   totalValor?: number;
 }
@@ -747,6 +748,11 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
   t += ESC_POS.BOLD_ON;
   t += normalizarImpresion(`TOTAL: ${pesosInforme(d.totalValor ?? 0)}\n`);
   t += ESC_POS.BOLD_OFF;
+  t += ESC_POS.ALIGN_LEFT;
+  t += "\n";
+  campo("DEUDA DE PRODUCIDOS:", d.deudaProducidos != null ? pesosInforme(d.deudaProducidos) : null);
+  t += "\n";
+  campo("HORA DESPACHO:", d.horaDespachoVehiculo || null);
   t += ESC_POS.ALIGN_CENTER;
   t += normalizarImpresion(`DESPACHADO A LAS: ${new Date().toLocaleString("es-CO")}\n`);
   t += "\n";
