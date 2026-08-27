@@ -14,6 +14,7 @@ import { esDispositivoSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiP
 import { useImpresoraLocal } from '@/hooks/useImpresoraLocal';
 import { imprimirLocal } from '@/services/impresoraLocal';
 import { obtenerLogoEscPos } from '@/utils/escPosImage';
+import { setSaleInProgress } from '@/services/saleStatus';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1854,6 +1855,13 @@ function SubViewVentas({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ventaInicial, porDespachar]);
+
+  // Avisa al registro PWA si hay una venta en curso, para no recargar la PDA
+  // a mitad de una transacción (emisión del tiquete o tiquete ya abierto).
+  useEffect(() => {
+    setSaleInProgress(generando || ticket !== null);
+    return () => setSaleInProgress(false);
+  }, [generando, ticket]);
 
   const cargarSillas = useCallback(async (ruta: VehiculoEstado) => {
     setCargandoSillas(true);
