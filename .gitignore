@@ -56,3 +56,7 @@ opencode.json
 
 # Copias de seguridad locales (no versionar)
 backups/
+
+# Binarios/drivers externos (no fuente)
+desktop-print-service.zip
+drivers/
