@@ -9,6 +9,7 @@ import { type PasajeroLibro } from '@/utils/ticketFormatter';
 import { hoyISO, FORMA_PAGO_LABEL } from '@/stores/turnoSateliteStore';
 import { fechaHoyColombia, horaColombiaCorta } from '@/utils/tiempo';
 import { isAndroidDevice, soportaBluetoothEscPos, generarInformeDespachoTXT } from '@/utils/ticketFormatter';
+import { ConfigurarImpresoraBluetooth } from '@/components/impresora/ConfigurarImpresoraBluetooth';
 import { esDispositivoSunmi, IMPRESORA_INTEGRADA_LABEL } from '@/services/sunmiPrinter';
 import { useImpresoraLocal } from '@/hooks/useImpresoraLocal';
 import { imprimirLocal } from '@/services/impresoraLocal';
@@ -31,7 +32,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Ticket, CalendarDays, BarChart3, LogOut, 
+  Ticket, CalendarDays, BarChart3, LogOut, Bluetooth, 
   Coins, ArrowUpRight, Building2, BookmarkCheck,
   TrendingUp, Bus, Loader2, AlertTriangle, RefreshCcw,
   Send, MapPin, Plus, Banknote, CreditCard, QrCode,
@@ -347,6 +348,16 @@ export default function CajeroDashboard() {
                 {impresora.testeando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
                 Test Impresora
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-10 px-2 gap-1 text-[9px] font-bold text-sky-600 border-slate-300 hover:bg-slate-100 touch-list"
+                onClick={() => setConfigImpresoraAbierto(true)}
+                title="Configurar impresora Bluetooth local"
+              >
+                <Bluetooth className="w-3.5 h-3.5" />
+                Configurar
+              </Button>
             </div>
 
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -380,6 +391,10 @@ export default function CajeroDashboard() {
           })()}
         </div>
       </main>
+
+      {configImpresoraAbierto && (
+        <ConfigurarImpresoraBluetooth onCerrar={() => setConfigImpresoraAbierto(false)} />
+      )}
 
     </div>
   );
@@ -1779,6 +1794,7 @@ function SubViewVentas({
   const impresora = useImpresoraLocal();
 
   const [impresoraInfo, setImpresoraInfo] = useState<EstadoImpresora | null>(null);
+  const [configImpresoraAbierto, setConfigImpresoraAbierto] = useState(false);
 
   // Estado de la impresora térmica USB del servidor (pyusb, sin intervención).
   const cargarEstadoImpresora = useCallback(async () => {

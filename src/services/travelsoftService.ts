@@ -125,7 +125,7 @@ export interface SateliteSegmento {
   valor: number | null;
 }
 
-export type EstadoVehiculoSatelite = 'POR_DESPACHAR' | 'EN_TRANSITO' | 'SALIO_SATELITE' | 'LLEGADO';
+export type EstadoVehiculoSatelite = 'POR_DESPACHAR' | 'EN_TRANSITO' | 'ARRIBO_SATELITE' | 'SALIO_SATELITE' | 'LLEGADO';
 
 export interface SateliteVehiculo {
   cod_ruta: number;
@@ -136,6 +136,7 @@ export interface SateliteVehiculo {
   hora_despacho: string | null;
   despachada_ruta?: string | null;
   llegada_ruta?: string | null;
+  arribo_satelite?: string | null;
   estado?: EstadoVehiculoSatelite | null;
   conductor: string | null;
   origen_ruta: number | null;
@@ -944,6 +945,23 @@ export const travelsoftService = {
     const payload = response.data;
     if (!payload || payload.success !== true || !payload.data) {
       throw new Error("No se pudo registrar la salida del vehículo.");
+    }
+    return payload.data;
+  },
+
+  /**
+   * El satélite confirma la llegada física del vehículo a su parada.
+   * Solo para rutas donde intermedio_ruta = esta agencia (la ruta del satélite).
+   * POST /despacho/satelite/llegada
+   */
+  reportarArriboSatelite: async (cod_ruta: number, fecha?: string): Promise<{ cod_ruta: number; estado: string }> => {
+    const response = await apiClient.post<{ success: boolean; data: { cod_ruta: number; estado: string } }>(
+      "/despacho/satelite/llegada",
+      { cod_ruta, fecha }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true || !payload.data) {
+      throw new Error("No se pudo registrar la llegada del vehículo.");
     }
     return payload.data;
   },

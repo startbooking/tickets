@@ -86,15 +86,19 @@ export async function detectarImpresoraLocal(): Promise<EstadoImpresoraLocal | n
     }
   }
 
-  // 3) Bluetooth (RawBT en Android, Web Bluetooth en el resto).
-  if (isAndroidDevice()) {
-    return { metodo: 'rawbt', etiqueta: ETIQUETAS.rawbt };
-  }
+  // 3) Bluetooth (Web Bluetooth BLE en cualquier plataforma con soporte:
+  //    Android Chrome, escritorio Chromium, tablet. Es la vía local que no
+  //    depende de la red ni de un backend con impresora conectada).
   if (soportaBluetoothEscPos()) {
     return { metodo: 'ble', etiqueta: ETIQUETAS.ble };
   }
 
-  // 4) Diálogo del navegador → impresora del sistema (siempre local).
+  // 4) Android sin Web Bluetooth → RawBT (SPP/Bluetooth clásico, InnerPrinter).
+  if (isAndroidDevice()) {
+    return { metodo: 'rawbt', etiqueta: ETIQUETAS.rawbt };
+  }
+
+  // 5) Diálogo del navegador → impresora del sistema (siempre local).
   return { metodo: 'print', etiqueta: ETIQUETAS.print };
 }
 
@@ -134,14 +138,8 @@ export async function imprimirLocal(
     }
   }
 
-  // 3) Android → RawBT (SPP/Bluetooth clásico, incl. InnerPrinter de Sunmi).
-  if (isAndroidDevice()) {
-    imprimirRawBtEscPos(textoFinal);
-    onMetodo?.('rawbt');
-    return 'rawbt';
-  }
-
-  // 4) Web Bluetooth directo (escritorio Chromium).
+  // 3) Web Bluetooth directo (Android Chrome / escritorio Chromium / tablet).
+  //    Es la impresión local por Bluetooth: no depende de red ni de backend.
   if (soportaBluetoothEscPos()) {
     try {
       await imprimirBleEscPos(textoFinal);
@@ -150,6 +148,13 @@ export async function imprimirLocal(
     } catch (err) {
       console.warn('Impresión BLE falló:', err);
     }
+  }
+
+  // 4) Android sin Web Bluetooth → RawBT (SPP/Bluetooth clásico, InnerPrinter).
+  if (isAndroidDevice()) {
+    imprimirRawBtEscPos(textoFinal);
+    onMetodo?.('rawbt');
+    return 'rawbt';
   }
 
   // 5) Navegador → impresora del sistema del equipo (100% local, sin red).

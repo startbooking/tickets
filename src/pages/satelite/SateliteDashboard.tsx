@@ -28,6 +28,7 @@ import {
   type TurnoSatelite,
 } from '@/stores/turnoSateliteStore';
 import { Button } from "@/components/ui/button";
+import { ConfigurarImpresoraBluetooth } from "@/components/impresora/ConfigurarImpresoraBluetooth";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +84,7 @@ export default function SateliteDashboard() {
   const [cierreAbierto, setCierreAbierto] = useState(false);
   const [listaTiquetesAbierta, setListaTiquetesAbierta] = useState(false);
   const [guardandoCierre, setGuardandoCierre] = useState(false);
+  const [configImpresoraAbierto, setConfigImpresoraAbierto] = useState(false);
 
   const [fechaSel, setFechaSel] = useState(hoyISO);
 
@@ -144,6 +146,9 @@ export default function SateliteDashboard() {
     }
   }, []);
 
+  // La impresión es LOCAL (Bluetooth/USB del dispositivo). El estado de la
+  // impresora que importa es el del equipo (useImpresoraLocal), no el del
+  // backend. Se consulta el backend solo como información adicional.
   useEffect(() => {
     void cargarEstadoImpresora();
   }, [cargarEstadoImpresora]);
@@ -232,8 +237,8 @@ export default function SateliteDashboard() {
 
   // ─── Selección de vehículo y tramo ────────────────────────────────────────
   const seleccionarTramo = async (v: SateliteVehiculo, s: SateliteSegmento) => {
-    if (v.estado === 'LLEGADO') {
-      toast.error('Este vehículo ya llegó a su destino final; no se puede vender en este tramo.');
+    if (v.estado === 'LLEGADO' || v.estado === 'SALIO_SATELITE') {
+      toast.error('Este vehículo ya salió del satélite; no se puede vender en este tramo.');
       return;
     }
     setVehiculoSel(v);
@@ -258,10 +263,17 @@ export default function SateliteDashboard() {
     }
   };
 
-  // Marca un vehículo como "llegado a esta agencia satélite"
-  const marcarArribe = (cod_ruta: number) => {
-    setVehiculosArrivados(prev => new Set(prev).add(cod_ruta));
-    toast.info('Vehículo marcado como llegado. Ya puede vender tiquetes desde esta agencia hasta el destino final.');
+  // Marca un vehículo como "llegado a esta agencia satélite" (persistido en el backend).
+  const marcarArribe = async (cod_ruta: number) => {
+    try {
+      await travelsoftService.reportarArriboSatelite(cod_ruta, fechaSel);
+      setVehiculosArrivados(prev => new Set(prev).add(cod_ruta));
+      toast.success('Llegada registrada. Ya puede vender tiquetes desde esta agencia hasta el destino final.');
+      void cargarDashboard(fechaSel);
+      if (vista === 'despachados') void cargarDespachados(fechaSel);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo registrar la llegada.');
+    }
   };
 
   const reiniciarVenta = () => {
@@ -411,6 +423,9 @@ setSillas(null);
               <h1 className="font-black text-sm text-white truncate">SACTel.Cloud · {nombreAgencia}</h1>
               <p className="text-[11px] text-emerald-400 font-bold uppercase tracking-widest">Agencia Satélite</p>
             </div>
+            <Button variant="ghost" size="sm" onClick={() => setConfigImpresoraAbierto(true)} className="text-[11px] text-sky-300 hover:text-sky-200 hover:bg-sky-950/40 gap-1 h-9 px-2 font-bold" title="Configurar impresora Bluetooth">
+              <Printer className="w-3.5 h-3.5" />
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => setCierreAbierto(true)} className="text-[11px] text-red-300 hover:text-red-200 hover:bg-red-950/40 gap-1 h-9 px-2 font-bold">
               <Coins className="w-3.5 h-3.5" /> Cerrar Turno
             </Button>
@@ -545,9 +560,9 @@ setSillas(null);
                     <TarjetaVehiculo
                       key={v.cod_ruta}
                       v={v}
-                      arrivado={vehiculosArrivados.has(v.cod_ruta)}
+                      arrivado={vehiculosArrivados.has(v.cod_ruta) || v.arribo_satelite === '1'}
                       onTramo={(s) => void seleccionarTramo(v, s)}
-                      onMarcarArribe={() => marcarArribe(v.cod_ruta)}
+                      onMarcarArribe={() => void marcarArribe(v.cod_ruta)}
                       onDespacharSalida={() => void despacharSalida(v.cod_ruta)}
                     />
                   ))}
@@ -575,9 +590,9 @@ setSillas(null);
                     <TarjetaVehiculo
                       key={v.cod_ruta}
                       v={v}
-                      arrivado={vehiculosArrivados.has(v.cod_ruta)}
+                      arrivado={vehiculosArrivados.has(v.cod_ruta) || v.arribo_satelite === '1'}
                       onTramo={(s) => void seleccionarTramo(v, s)}
-                      onMarcarArribe={() => marcarArribe(v.cod_ruta)}
+                      onMarcarArribe={() => void marcarArribe(v.cod_ruta)}
                       onDespacharSalida={() => void despacharSalida(v.cod_ruta)}
                     />
                   ))}
@@ -599,12 +614,12 @@ setSillas(null);
                 </div>
                 <Badge className={cn(
                   "text-[9px] font-bold border shrink-0",
-                  impresoraInfo?.detectada
+                  impresora.disponible
                     ? "bg-emerald-900/40 text-emerald-300 border-emerald-700"
                     : "bg-amber-900/40 text-amber-300 border-amber-700"
                 )}>
-                  {impresoraInfo?.detectada ? <Printer className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                  {impresoraInfo?.detectada ? 'Impresora' : 'Sin impresora'}
+                  {impresora.disponible ? <Printer className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                  {impresora.disponible ? (impresora.estado?.etiqueta ?? 'Impresora') : 'Sin impresora'}
                 </Badge>
               </div>
 
@@ -803,6 +818,11 @@ setSillas(null);
           />
         )}
 
+        {/* Configuración de impresora Bluetooth local */}
+        {configImpresoraAbierto && (
+          <ConfigurarImpresoraBluetooth onCerrar={() => setConfigImpresoraAbierto(false)} />
+        )}
+
         {/* Lista de tiquetes del turno (reimpresión rápida) */}
         {listaTiquetesAbierta && !cierreAbierto && (
           <ListaTiquetes
@@ -864,6 +884,7 @@ function EstadoVehiculoBadge({ estado }: { estado?: EstadoVehiculoSatelite | nul
   const cfg: Record<EstadoVehiculoSatelite, { label: string; cls: string }> = {
     POR_DESPACHAR: { label: 'Por despachar', cls: 'bg-slate-900 text-slate-300 border-slate-700' },
     EN_TRANSITO: { label: 'En tránsito', cls: 'bg-amber-900/40 text-amber-300 border-amber-700' },
+    ARRIBO_SATELITE: { label: 'En agencia', cls: 'bg-emerald-900/40 text-emerald-300 border-emerald-700' },
     SALIO_SATELITE: { label: 'Salió del satélite', cls: 'bg-sky-900/40 text-sky-300 border-sky-700' },
     LLEGADO: { label: 'Ya llegó', cls: 'bg-emerald-900/40 text-emerald-300 border-emerald-700' },
   };
@@ -884,8 +905,10 @@ function TarjetaVehiculo({
   onMarcarArribe?: () => void;
   onDespacharSalida?: () => void;
 }) {
-  const llegado = v.estado === 'LLEGADO';
-  const enTransito = v.estado === 'EN_TRANSITO';
+  const llegado = v.estado === 'LLEGADO' || v.estado === 'SALIO_SATELITE';
+  const enTransito = v.estado === 'EN_TRANSITO' || v.estado === 'ARRIBO_SATELITE';
+  const salioSatelite = v.estado === 'SALIO_SATELITE';
+  const postParada = v.segmento_post_parada;
   return (
     <div className="rounded-xl bg-slate-800/50 border border-slate-800 overflow-hidden">
       <div className="p-3 pb-2 flex items-center justify-between gap-2">
@@ -897,26 +920,34 @@ function TarjetaVehiculo({
           </div>
           <p className="text-[10px] text-slate-400 truncate mt-0.5">{v.conductor || '—'}</p>
         </div>
-        {v.estado === 'EN_TRANSITO' && !arrivado && !llegado && (
+        {!llegado && (
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-[10px] font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-800"
-              onClick={onMarcarArribe}
-            >
-              <MapPin className="w-3 h-3 mr-1" />
-              Arrivó
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-[10px] font-bold text-sky-300 hover:text-sky-200 hover:bg-sky-950/40 border border-sky-800"
-              onClick={onDespacharSalida}
-            >
-              <Bus className="w-3 h-3 mr-1" />
-              Despachar salida
-            </Button>
+            {arrivado ? (
+              <Badge className="h-7 px-2 text-[10px] font-bold text-emerald-300 border-emerald-700 bg-emerald-950/40 gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Llegó
+              </Badge>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-800"
+                onClick={onMarcarArribe}
+              >
+                <MapPin className="w-3 h-3 mr-1" />
+                Marcar llegada
+              </Button>
+            )}
+            {enTransito && !salioSatelite && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] font-bold text-sky-300 hover:text-sky-200 hover:bg-sky-950/40 border border-sky-800"
+                onClick={onDespacharSalida}
+              >
+                <Bus className="w-3 h-3 mr-1" />
+                Despachar salida
+              </Button>
+            )}
           </div>
         )}
         <div className="text-right shrink-0">
@@ -964,6 +995,33 @@ function TarjetaVehiculo({
           </button>
         ))}
       </div>
+
+      {postParada && (
+        <div className="px-3 pb-3 -mt-1">
+          <button
+            disabled={llegado || !arrivado}
+            onClick={() => onTramo({
+              origen_ruta: postParada.origen_ruta,
+              destino_ruta: postParada.destino_ruta,
+              destino: postParada.destino ?? undefined,
+              valor: postParada.valor ?? undefined,
+            })}
+            title={arrivado ? undefined : "Marque la llegada para habilitar la venta desde esta agencia"}
+            className={cn(
+              "w-full rounded-xl border p-2.5 text-left transition-colors",
+              llegado || !arrivado
+                ? "border-slate-800 bg-slate-900 opacity-50 cursor-not-allowed"
+                : "border-emerald-600 bg-emerald-950/40 active:bg-emerald-950"
+            )}
+          >
+            <span className="block text-[9px] uppercase font-bold text-emerald-400/80">Desde {postParada.origen || 'esta agencia'}</span>
+            <span className="block text-[11px] font-black text-white truncate">→ {postParada.destino || '—'}</span>
+            <span className="block text-[13px] font-black text-emerald-400 mt-0.5">
+              {postParada.valor ? `$${postParada.valor.toLocaleString('es-CO')}` : 'Tarifa manual'}
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
