@@ -747,7 +747,7 @@ export function generarInformeDespachoTXT(d: InformeDespachoData): string {
   t += ESC_POS.BOLD_OFF;
   t += ESC_POS.ALIGN_LEFT;
   t += "\n";
-  campo("DEUDA DE PRODUCIDOS:", d.deudaProducidos != null ? pesosInforme(d.deudaProducidos) : null);
+  t += normalizarImpresion(`Deuda de Producidos: ${d.deudaProducidos != null ? pesosInforme(d.deudaProducidos) : "—"}\n`);
   t += "\n";
   campo("HORA DESPACHO:", d.horaDespachoVehiculo || null);
   t += "\n";
