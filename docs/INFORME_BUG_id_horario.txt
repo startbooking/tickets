@@ -1,0 +1,90 @@
+================================================================================
+INFORME DE ANÁLISIS – BUG id_horario (ruta de creación de despacho)
+================================================================================
+Fecha de análisis : 2026-08-27
+Módulo afectado    : TravelSoft Backend (FastAPI) – endpoint POST /api/v1/rutas/crear
+Base de datos      : u609569776_travelsoftDB (Hostinger, producción)
+Destinatario       : AdminDB (administrador de base de datos)
+================================================================================
+
+1. SÍNTOMA
+--------------------------------------------------------------------------------
+Al crear una ruta/despacho desde el backend, la operación falla con:
+
+    mysql.connector.errors.DataError: 1264 (22003):
+    Out of range value for column 'id_horario' at row 1
+
+El error se origina en la sentencia:
+
+    UPDATE conductores
+       SET id_recorrido = %s,
+           fecha_ultimo_despacho = %s,
+           id_horario = %s,                 <-- valor rechazado
+           placa_vehi_ultimo_despacho = %s
+     WHERE cedula_conduc = %s
+
+(igualmente afecta al UPDATE sobre la tabla `vehiculo`).
+
+La operación es un INSERT/UPDATE RECHAZADO; no llega a persistir registro, por
+lo que NO existe un "ID de registro con error". El valor problemático es el
+`id_horario` que se intenta escribir.
+
+
+2. ANÁLISIS / CAUSA RAÍZ
+--------------------------------------------------------------------------------
+- La tabla `horario` contiene valores NEGATIVOS en su PK `id_horario`
+  (rango -50 … -1; 21 registros). Son horarios legítimos que el frontend
+  muestra en el selector de "horario de salida" (p.ej. 12:30 am = -50).
+
+- En HOSTINGER, las columnas que reciben ese valor son UNSIGNED:
+
+      Tabla        Columna        Tipo actual (Hostinger)   Acepta negativos?
+      ------------ -------------- ------------------------- ------------------
+      horario      id_horario     int(11)                  SÍ
+      adicional    id_horario     int(11)                  SÍ
+      rutas        id_horario     int(11)                  SÍ
+      conductores  id_horario     int(10) unsigned         NO  <-- falla
+      vehiculo     id_horario     int(10) unsigned         NO  <-- falla
+
+- MySQL rechaza escribir un valor negativo en una columna UNSIGNED →
+  "Out of range value for column 'id_horario'".
+
+- En el entorno LOCAL (travellocal) la columna `conductores.id_horario` es
+  `int` FIRMADO, por lo que el mismo flujo funciona en local y sólo falla en
+  producción (Hostinger). Es una inconsistencia de esquema entre ambientes.
+
+
+3. CAMBIO REQUERIDO (para AdminDB)
+--------------------------------------------------------------------------------
+Alinear el tipo de las dos columnas en Hostinger al tipo firmado, igual que en
+local, para que puedan almacenar los `id_horario` negativos de `horario`.
+
+    ALTER TABLE conductores MODIFY id_horario INT NULL;
+    ALTER TABLE vehiculo    MODIFY id_horario INT NULL;
+
+Notas:
+  * Las columnas son NULLABLE y NO tienen índices propios (el único índice con
+    `id_horario` es la PK de `horario`), por lo que el ALTER no reconstruye
+    índices y es de bajo riesgo.
+  * El cambio es de "ensanchamiento" (unsigned -> signed); NO hay pérdida de
+    datos (los valores existentes son pequeños: 0 … ~345).
+  * No requiere ningún cambio de código en el backend.
+
+
+4. VERIFICACIÓN
+--------------------------------------------------------------------------------
+Tras aplicar el ALTER, validar que la sentencia antes fallida ahora ejecuta:
+
+    UPDATE conductores SET id_horario = -50 WHERE cedula_conduc = '<una_cedula>';
+    -- Debe retornar: OK (0 o 1 fila afectada), sin error 1264.
+
+Y probar en el frontend la creación de una ruta seleccionando un horario con
+`id_horario` negativo (p.ej. "12:30 am" = -50).
+
+
+5. ESTADO
+--------------------------------------------------------------------------------
+[ ] Pendiente aplicación por AdminDB
+[ ] Aplicado y verificado
+
+================================================================================
