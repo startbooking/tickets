@@ -14,10 +14,12 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-lan
 dist-ssr
 dev-dist
 *.local
 .env
+.env.lan
 .env.production
 .env.development
 .env.staging

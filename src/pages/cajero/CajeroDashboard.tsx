@@ -71,6 +71,9 @@ export default function CajeroDashboard() {
   // Vehículo seleccionado en Despacho para saltar a la Taquilla a vender ticket
   const [ventaInicial, setVentaInicial] = useState<VehiculoEstado | null>(null);
 
+  // Diálogo de configuración de impresora Bluetooth local (cabecera)
+  const [configImpresoraAbierto, setConfigImpresoraAbierto] = useState(false);
+
   const cargarDashboard = useCallback(async () => {
     setLoadingDashboard(true);
     try {
