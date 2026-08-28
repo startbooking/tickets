@@ -2,14 +2,13 @@
 REM =============================================================================
 REM Instalador del Desktop Print Service (Windows)
 REM -----------------------------------------------------------------------------
-REM  - Instala las dependencias de Python (websockets + pywin32).
-REM  - Crea un acceso directo en el Inicio (shell:startup) que arranca el
-REM    servicio SIN ventana (pythonw) cada vez que el usuario entra a sesion.
-REM  - El servicio escucha en ws://127.0.0.1:8090 y vuelca ESC/POS en la
-REM    impresora termica del PC del cajero/satelite.
+REM  - Valida la instalacion de Python 3.
+REM  - Instala dependencias via pip (websockets, pywin32, pyinstaller).
+REM  - Crea launcher silencioso y acceso directo en el Inicio (shell:startup).
+REM  - Inicia el servicio inmediatamente y valida el puerto WebSocket.
 REM =============================================================================
 
-setlocal
+setlocal enabledelayedexpansion
 set "DIR=%~dp0"
 set "LAUNCHER=%DIR%iniciar_print_service.bat"
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
@@ -18,103 +17,120 @@ echo.
 echo == Desktop Print Service - Instalador (Windows) ==
 echo.
 
-REM ---- 1) Validar que Python 3 esta instalado y ejecuta ----
-where pythonw >nul 2>nul && set "PYRUN=pythonw" || (
-  where py >nul 2>nul && set "PYRUN=py -3" || (
-    where python >nul 2>nul && set "PYRUN=python" || (
-      set "PYRUN="
-    )
-  )
+REM ---- 1) Validar interprete de Python ----
+set "PYCMD="
+py -3 -c "import sys" >nul 2>&1 && set "PYCMD=py -3"
+if "%PYCMD%"=="" (
+    python -c "import sys; sys.exit(0 if sys.version_info[0]==3 else 1)" >nul 2>&1 && set "PYCMD=python"
 )
-if "%PYRUN%"=="" (
-  echo [X] Python no esta instalado en este equipo.
-  echo     Descargue e instale Python 3 desde https://python.org
-  echo     (marque "Add Python to PATH" durante la instalacion) y vuelva a ejecutar.
-  pause
-  exit /b 1
-)
-REM Confirma que el interprete detectado es Python 3 y puede ejecutar codigo
-%PYRUN% -c "import sys; sys.exit(0 if sys.version_info[0]==3 else 1)" >nul 2>nul
-if errorlevel 1 (
-  echo [X] El interprete detectado (%PYRUN%) no es Python 3 o no ejecuta.
-  echo     Instale Python 3 desde https://python.org (marque "Add Python to PATH").
-  pause
-  exit /b 1
-)
-for /f "delims=" %%i in ('%PYRUN% -c "import sys;print(sys.version.split()[0])"') do set PYVER=%%i
-echo [OK] Python %PYVER% validado y disponible (%PYRUN%).
 
-REM ---- 2) Dependencias ----
-echo.
-echo == Instalando dependencias ==
-REM Bootstrap de pip por si el interprete no lo trae (p.ej. Python de la Store)
-%PYRUN% -m ensurepip --upgrade >nul 2>nul
-%PYRUN% -m pip install --upgrade pip >nul 2>nul
-echo -- websockets --
-%PYRUN% -m pip install websockets
-echo -- pywin32 (solo Windows; si falla, la impresion lo avisara) --
-%PYRUN% -m pip install pywin32 >nul 2>nul
-%PYRUN% -m pywin32_postinstall -install >nul 2>nul
-REM Verifica que websockets quedo instalado en ESTE interprete
-%PYRUN% -c "import websockets" >nul 2>nul
-if errorlevel 1 (
-  echo [X] No se pudo instalar 'websockets'. Verifique su conexion y permisos.
-  echo     Puede intentarlo manualmente: %PYRUN% -m pip install websockets
-  pause
-  exit /b 1
+if "%PYCMD%"=="" (
+    echo [X] Python 3 no se encuentra instalado o no esta agregado al PATH.
+    echo     Descargue e instale Python 3 desde https://python.org
+    echo     Asegurese de marcar "Add Python to PATH" durante la instalacion.
+    pause
+    exit /b 1
 )
-echo [OK] Dependencias instaladas (websockets OK).
 
-REM ---- 3) Impresora (opcional) y puerto ----
+for /f "delims=" %%i in ('%PYCMD% -c "import sys; print(sys.version.split()[0])"') do set "PYVER=%%i"
+echo [OK] Python %PYVER% detectado correctamente (%PYCMD%).
+
+REM ---- 2) Instalacion y verificacion de dependencias Pip ----
 echo.
+echo == Instalando dependencias requeridas ==
+
+echo -- Actualizando pip --
+%PYCMD% -m pip install --upgrade pip >nul 2>&1
+
+echo -- Instalando websockets, pywin32 y pyinstaller --
+%PYCMD% -m pip install websockets pywin32 pyinstaller
+
+REM Ejecutar script de post-instalacion de pywin32 si aplica
+%PYCMD% -m pywin32_postinstall -install >nul 2>&1
+
+REM ---- Validacion de paquetes ----
+echo.
+echo == Verificando instalacion de modulos ==
+
+%PYCMD% -c "import websockets" >nul 2>&1
+if errorlevel 1 (
+    echo [X] Fallo la verificacion de 'websockets'.
+    pause
+    exit /b 1
+) else (
+    echo [OK] 'websockets' instalado correctamente.
+)
+
+%PYCMD% -c "import win32print" >nul 2>&1
+if errorlevel 1 (
+    echo [!] Advertencia: 'pywin32' no pudo cargarse correctamente.
+) else (
+    echo [OK] 'pywin32' instalado correctamente.
+)
+
+%PYCMD% -m PyInstaller --version >nul 2>&1
+if errorlevel 1 (
+    echo [!] Advertencia: 'pyinstaller' no esta disponible en la linea de comandos.
+) else (
+    echo [OK] 'pyinstaller' instalado correctamente.
+)
+
+REM ---- 3) Impresora y puerto ----
+echo.
+set "PRINTER_NAME="
+set /p PRINTER_NAME=Nombre de la impresora (Enter para autodetectar): 
 set "PRINTER_ARG="
-set /p PRINTER=Nombre de la impresora (Enter para autodetectar): 
-if not "%PRINTER%"=="" set "PRINTER_ARG=--printer "%PRINTER%""
+if not "%PRINTER_NAME%"=="" set "PRINTER_ARG=--printer "%PRINTER_NAME%""
 
-set "PORT_ARG=--port 8090"
-set /p PORT=Puerto (Enter = 8090): 
-if not "%PORT%"=="" set "PORT_ARG=--port %PORT%"
+set "PORT_NUM=8090"
+set /p PORT_INPUT=Puerto (Enter = 8090): 
+if not "%PORT_INPUT%"=="" set "PORT_NUM=%PORT_INPUT%"
 
-REM ---- 4) Launcher que arranca sin ventana (pythonw) y registra log ----
+REM ---- 4) Creacion del Launcher ----
 echo.
 echo == Creando launcher %LAUNCHER% ==
+
+set "PYWCMD=pythonw"
+where pythonw >nul 2>&1 || set "PYWCMD=%PYCMD%"
+
 (
   echo @echo off
-  echo REM Generado por instalar_windows.bat - no editar manualmente.
-  echo start "" %PYRUN% "%DIR%print_service.py" %PORT_ARG% %PRINTER_ARG% ^> "%DIR%print_service.log" 2^>^&1
+  echo REM Generado automaticamente por instalar_windows.bat
+  echo start "" %PYWCMD% "%DIR%print_service.py" --port %PORT_NUM% %PRINTER_ARG% ^> "%DIR%print_service.log" 2^>^&1
 ) > "%LAUNCHER%"
-echo [OK] Launcher creado.
+echo [OK] Launcher generado.
 
-REM ---- 5) Acceso directo en el Inicio ----
+REM ---- 5) Crear Acceso Directo en Startup ----
 if not exist "%STARTUP%" mkdir "%STARTUP%"
+
 powershell -NoProfile -Command ^
   "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%STARTUP%\Desktop Print Service.lnk');" ^
   "$s.TargetPath='%LAUNCHER%';" ^
   "$s.WorkingDirectory='%DIR%';" ^
-  "$s.Description='Servicio de impresion local travelsoft (escritorio)';" ^
+  "$s.Description='Servicio de impresion local';" ^
   "$s.WindowStyle=7;" ^
   "$s.Save()"
+
 if errorlevel 1 (
-  echo [!] No se pudo crear el acceso directo automaticamente.
-  echo     Agregue manualmente "%LAUNCHER%" al Inicio (shell:startup).
+    echo [!] No se pudo crear el acceso directo en Inicio automáticamente.
 ) else (
-  echo [OK] Acceso directo creado en el Inicio: %STARTUP%\Desktop Print Service.lnk
+    echo [OK] Acceso directo registrado en Startup.
 )
 
-REM ---- 6) Arrancar el servicio AHORA (no esperar al reinicio) ----
+REM ---- 6) Arrancar el Servicio ----
 echo.
-echo == Arrancando el servicio en esta sesion ==
-start "" %PYRUN% "%DIR%print_service.py" %PORT_ARG% %PRINTER_ARG% > "%DIR%print_service.log" 2>&1
-timeout /t 2 >nul
+echo == Iniciando servicio de impresion ==
+start "" %PYWCMD% "%DIR%print_service.py" --port %PORT_NUM% %PRINTER_ARG% > "%DIR%print_service.log" 2>&1
+
+timeout /t 3 /nobreak >nul
+
 powershell -NoProfile -Command ^
-  "$ok=Test-NetConnection -ComputerName 127.0.0.1 -Port %PORT_ARG:--port =% -InformationLevel Quiet -WarningAction SilentlyContinue;" ^
-  "if($ok){'[OK] Servicio escuchando en 127.0.0.1:%PORT_ARG:--port =% (WebSocket local).'}else{'[!] El servicio no responde en el puerto. Revise print_service.log en esta carpeta.'}"
-echo     Use el boton "Test Impresora" de la app para confirmar la impresion.
+  "$ok=Test-NetConnection -ComputerName 127.0.0.1 -Port %PORT_NUM% -InformationLevel Quiet -WarningAction SilentlyContinue;" ^
+  "if($ok){ write-host '[OK] Servicio activo y escuchando en ws://127.0.0.1:' %PORT_NUM% } else { write-host '[!] El servicio no responde en el puerto. Verifique print_service.log' }"
 
 echo.
-echo == Listo. El servicio arrancara solo al iniciar sesion. ==
-echo    Para probarlo ahora: abra la app y use "Test Impresora".
-echo    Para detenerlo: Borre el acceso directo del Inicio o cierre el proceso pythonw.
+echo == Instalacion Finalizada ==
+echo    El servicio iniciara automaticamente al abrir sesion.
 echo.
 pause
 endlocal

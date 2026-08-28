@@ -2,41 +2,57 @@
 REM =============================================================================
 REM Desinstalador del Desktop Print Service (Windows)
 REM -----------------------------------------------------------------------------
-REM   1) Detiene el servicio (proceso de print_service.py en este PC).
+REM   1) Detiene el proceso activo de Python (print_service.py).
 REM   2) Elimina el acceso directo del Inicio (shell:startup).
-REM   3) Borra la carpeta desktop-print-service.
+REM   3) Elimina el script launcher generado (iniciar_print_service.bat).
+REM   4) Auto-elimina la carpeta del proyecto de forma segura.
 REM =============================================================================
-setlocal
+
+setlocal enabledelayedexpansion
 set "DIR=%~dp0"
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+set "SHORTCUT=%STARTUP%\Desktop Print Service.lnk"
+set "LAUNCHER=%DIR%iniciar_print_service.bat"
 
 echo.
 echo == Desktop Print Service - Desinstalador (Windows) ==
 echo.
 
-REM ---- 1) Detener el servicio (por linea de comando, sin matar otro pythonw) ----
-echo [1/3] Deteniendo el servicio...
-powershell -NoProfile -Command ^
-  "$ps=Get-CimInstance Win32_Process | Where-Object{$_.CommandLine -like '*print_service.py*'} | Select-Object -ExpandProperty ProcessId -Unique;" ^
-  "if($ps){$ps | ForEach-Object{Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue}; '[OK] Proceso print_service detenido.'}else{'[i] No se encontro un proceso print_service en ejecucion.'}"
+REM ---- 1) Detener el proceso activo de impresion ----
+echo [1/3] Deteniendo el servicio de impresion...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*print_service.py*' };" ^
+  "if ($procs) { $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Write-Host '[OK] Proceso print_service detenido.' } else { Write-Host '[i] No hay procesos de print_service en ejecucion.' }"
 
-REM ---- 2) Quitar el acceso directo del Inicio ----
-echo [2/3] Eliminando acceso directo del Inicio...
-if exist "%STARTUP%\Desktop Print Service.lnk" (
-  del /f /q "%STARTUP%\Desktop Print Service.lnk"
-  echo "[OK] Acceso directo eliminado: %STARTUP%\Desktop Print Service.lnk"
+REM ---- 2) Remover el acceso directo del Inicio ----
+echo.
+echo [2/3] Eliminando acceso directo de Inicio...
+if exist "%SHORTCUT%" (
+    del /f /q "%SHORTCUT%" >nul 2>&1
+    if not exist "%SHORTCUT%" (
+        echo [OK] Acceso directo eliminado correctamente.
+    ) else (
+        echo [!] No se pudo eliminar el acceso directo de Inicio.
+    )
 ) else (
-  echo "[i] No existia el acceso directo en el Inicio."
+    echo [i] No se encontro el acceso directo en Startup.
 )
 
-REM ---- 3) Eliminar la carpeta (se borra tras cerrar esta ventana) ----
-echo [3/3] Eliminando carpeta...
-echo "   La carpeta se eliminara sola al cerrar: %DIR%"
-start "" cmd /c "timeout /t 2 >nul & rmdir /s /q \"%DIR%\" & exit"
+REM ---- 3) Remover el archivo launcher ----
+if exist "%LAUNCHER%" (
+    del /f /q "%LAUNCHER%" >nul 2>&1
+)
 
+REM ---- 4) Programar auto-eliminacion de la carpeta ----
 echo.
-echo == Desinstalacion completada. ==
-echo    (Si la carpeta no se borra automaticamente, eliminela manualmente).
+echo [3/3] Finalizando limpieza...
+echo [i] La carpeta %DIR% se eliminara al finalizar esta ventana.
+echo.
+
+REM Proceso en segundo plano que espera a que se cierre la consola Batch para eliminar el directorio
+start "" /b cmd /c "timeout /t 2 /nobreak >nul & rmdir /s /q \"%DIR%\" >nul 2>&1"
+
+echo == Desinstalacion completada exitosamente. ==
 echo.
 pause
 endlocal

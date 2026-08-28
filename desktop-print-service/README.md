@@ -1,97 +1,137 @@
 # Desktop Print Service (WebSocket local → impresora térmica del PC)
 
-Mini-servicio para el **escritorio** (Windows y Linux). Reemplaza el fallback
-"USB (servidor pyusb/CUPS)" cuando el backend corre en hosting y no tiene
-acceso a la impresora USB local: la app React de tickets se conecta a
-`ws://127.0.0.1:8090` y este proceso escribe los bytes ESC/POS directamente a
-la impresora térmica instalada en el PC del cajero.
+Mini-servicio multiplataforma de impresión local de alto rendimiento para **escritorio** (Windows y Linux). 
 
-Es la contraparte de escritorio de `pda-websocket-printer/` (la app Android
-que hace lo mismo en la PDA Sunmi). Usa el mismo protocolo y el mismo cliente
-`src/services/pdaWebSocketService.ts`.
+Sustituye el fallback "USB (servidor pyusb/CUPS)" cuando el backend corre en la nube o hosting (sin acceso a la impresora USB local): la app React de tickets/POS se conecta a `ws://127.0.0.1:8090` y este servicio escribe los bytes **ESC/POS (RAW)** directamente a la impresora térmica instalada en el equipo del cajero.
 
-## Cómo funciona
+Es la contraparte para escritorio de `pda-websocket-printer/` (app Android para PDAs Sunmi), compartiendo la misma especificidad de protocolo y cliente en React (`src/services/pdaWebSocketService.ts`).
 
-1. El PC corre `print_service.py`, que abre un servidor WebSocket solo en
-   loopback (`127.0.0.1:8090`).
-2. La app React envía el ticket ESC/POS como base64 por WebSocket.
-3. El servicio escribe los bytes RAW a la impresora del equipo.
+---
 
-### Backend de impresión por SO
+## 🚀 Novedades y Mejoras Recientes
 
-| SO | Método | Comentario |
-|----|--------|-----------|
-| Windows | `win32print` RAW | `pip install pywin32`; autodetección por nombre. |
-| Linux | CUPS (`lp -d ... -o raw`) | Colas `TMU`, `TICKET`, etc. |
-| Linux | `/dev/usb/lp*` directo | Fallback sin CUPS; usar grupo `lp`: `sudo usermod -aG lp $USER`. |
+- **Filtro de Impresoras Virtuales:** Autodetección inteligente en Windows que descarta automáticamente dispositivos no físicos (*Microsoft Print to PDF, XPS, OneNote, Fax*).
+- **Aislamiento por Entorno Virtual (`.venv` en Linux):** Instalador de Linux adaptado a estándares **PEP 668** (compatibilidad garantizada con Ubuntu 24.04+, Debian 12+, Fedora, etc.).
+- **Instalación y Manejo de Dependencias Robusto:** Soporte nativo para `pyinstaller` y gestión condicional por plataforma (`sys_platform`) en `requirements.txt`.
+- **Ejecución Silenciosa y Autoreinicio:** 
+  - **Windows:** Ejecución desacoplada mediante `pythonw` sin ventanas flotantes y enlace en `shell:startup`.
+  - **Linux:** Servicio de usuario `systemd` (`desktop-print-service.service`) con política `on-failure` y persistencia `loginctl linger`.
+- **Desinstaladores Limpios:** Scripts dedicados (`desinstalar_windows.bat` y `desinstalar_linux.sh`) para remoción total de servicios, accesos directos y carpetas temporales.
 
-El backend se detecta automáticamente; `--printer` fuerza uno.
+---
 
-## Protocolo (idéntico a la app Android)
+## 🛠️ Requisitos del Sistema
 
-```
-→ { "action": "PRINT", "data": "<base64 del ESC/POS>", "copies": 1 }
-← { "code": 0, "message": "ok" }   (code != 0 => error con detalle)
-→ { "action": "PING" }
-← { "code": 0, "message": "pong" }
-```
+- **Python:** 3.8 o superior (en Windows marcar *"Add Python to PATH"* durante la instalación).
+- **Librerías / Dependencias (`requirements.txt`):**
+  - `websockets>=12.0` (Servidor WebSocket ligero y asíncrono)
+  - `pywin32>=306` (Exclusivo para Windows: interacción con la API de Spooler `win32print`)
+  - `pyinstaller>=6.0.0` (Exclusivo para Windows: empaquetado a ejecutable independiente `.exe`)
 
-## Instalación (Windows / Linux)
+---
 
-### Instaladores automáticos (recomendado)
+## 📋 Arquitectura y Backend por SO
 
-Dejan el servicio arrancando solo en cada inicio de sesión:
+| Plataforma | Método / Backend | Descripción / Observaciones |
+| :--- | :--- | :--- |
+| **Windows** | `win32print` RAW | Spooler directo de Windows. Soporta autodetección por keywords (`TM-`, `XPRINTER`, `TICKET`, etc.) o asignación por `--printer`. |
+| **Linux (CUPS)** | `lp -d <cola> -o raw` | Impresión asíncrona mediante colas RAW en el servidor de impresión local CUPS. |
+| **Linux (RAW Directo)** | `/dev/usb/lp*` | Fallback cuando CUPS no está instalado. Requiere permisos en grupo: `sudo usermod -aG lp $USER`. |
+| **Mock (Pruebas)** | `logs/ultimo_ticket.bin` | Vuelco local de bytes en disco sin requerir una impresora física conectada. |
 
-- **Windows:** ejecuta `instalar_windows.bat` (doble clic). Instala dependencias
-  y crea un acceso directo en el Inicio que corre el servicio sin ventana
-  (`pythonw`). Pide el nombre de impresora (opcional) y el puerto (default 8090).
-- **Linux:** ejecuta `./instalar_linux.sh`. Instala `websockets` y registra una
-  unidad `systemd --user` (`desktop-print-service.service`) que arranca al iniciar
-  sesión y se reinicia si falla. Habilita `linger` para que sobreviva sin sesión
-  gráfica. Pide impresora (opcional) y puerto.
+---
 
-### Instalación manual
+## 💬 Protocolo WebSocket
 
-1. Instala Python 3 (en Windows marca "Add to PATH").
-2. Abre terminal en esta carpeta:
+El protocolo es 100% equivalente al de la aplicación Android PDA Print Service:
+
+### 1. Enviar Trabajo de Impresión (PRINT)
+- **Petición:**
+  ```json
+  {
+    "action": "PRINT",
+    "data": "<cadena base64 de los bytes ESC/POS>",
+    "copies": 1
+  }
+  ```
+- **Respuesta (Éxito):**
+  ```json
+  { "code": 0, "message": "ok" }
+  ```
+- **Respuesta (Error):**
+  ```json
+  { "code": 1, "message": "Fallo al imprimir en Windows ('EPSON'): Error..." }
+  ```
+
+### 2. Comprobación de Estado (PING)
+- **Petición:** `{ "action": "PING" }`
+- **Respuesta:** `{ "code": 0, "message": "pong" }`
+
+---
+
+## 📦 Instalación y Desinstalación
+
+### Opción A: Instaladores Automáticos (Recomendado)
+
+#### Windows (`instalar_windows.bat`)
+1. Haz doble clic en `instalar_windows.bat`.
+2. El script detectará Python, actualizará `pip`, instalará las dependencias de `requirements.txt` (`websockets`, `pywin32`, `pyinstaller`), solicitará opcionalmente el nombre de la impresora y creará el acceso directo de inicio automático sin ventana (`pythonw`).
+3. Validará la disponibilidad del puerto WebSocket en `ws://127.0.0.1:8090`.
+
+*Para desinstalar:* Ejecuta `desinstalar_windows.bat` (elimina el acceso directo de `Startup`, detiene el proceso `print_service.py` y remueve los archivos).
+
+#### Linux (`./instalar_linux.sh`)
+1. Otorga permisos de ejecución y ejecuta:
+   ```bash
+   chmod +x instalar_linux.sh
+   ./instalar_linux.sh
    ```
-   pip install -r requirements.txt
+2. Crea automáticamente un entorno virtual en `.venv`, instala `websockets` y registra una unidad `systemd --user`.
+3. El servicio iniciará de inmediato y sobrevivirá a los reinicios de sesión.
+
+*Para desinstalar:* Ejecuta `./desinstalar_linux.sh`.
+
+---
+
+### Opción B: Instalación Manual
+
+1. Clonar / Copiar los archivos del proyecto a la carpeta local.
+2. Instalar las dependencias según el sistema operativo:
+   ```bash
+   py -m pip install -r requirements.txt
    ```
-   - En Windows instala `websockets` + `pywin32`.
-   - En Linux basta `pip install websockets` (pywin32 no es necesario; el
-     import falla de forma segura y se usan CUPS o `/dev/usb/lp*`).
+3. Ejecutar el servicio desde la consola:
+   ```bash
+   # Autodetección de impresora
+   python print_service.py
 
-3. Arranque:
+   # Impresora específica en Windows
+   python print_service.py --printer "EPSON TM-T20III"
+
+   # Cola CUPS específica en Linux
+   python print_service.py --printer TMU --port 8090
    ```
-   python print_service.py                # autodetección de impresora
-   python print_service.py --printer "EPSON TM-T70"   # Windows: impresora específica
-   python print_service.py --printer TMU  # Linux: cola CUPS específica
-   ```
-4. Prueba con el botón "Test Impresora" de la app (en el escritorio la cadena
-   de impresión intenta este servicio como primer medio).
 
-### Arranque automático al iniciar Windows
+---
 
-El instalador `instalar_windows.bat` ya lo hace; manualmente: crea un acceso
-directo a `print_service.py` (usa `pythonw` para que no abra ventana) y cópialo
-en `shell:startup` (`Win+R` → `shell:startup`).
+## 🧪 Modo Pruebas (Mock Mode)
 
-## Modo pruebas (sin impresora / sin cuarto OS)
+Si estás desarrollando y no dispones de una impresora física conectada:
 
-```
+```bash
 python print_service.py --mock
 ```
 
-En `--mock` no se imprime: los bytes se vuelcan a `logs/ultimo_ticket.bin`.
-Útil para validar el flujo en desarrollo sin una impresora conectada.
+En este modo, el servidor responderá exitosamente a la app React y volcará el contenido del ticket recibido directamente en el archivo `logs/ultimo_ticket.bin`.
 
-## Notas
+---
 
-- El servidor solo escucha en `127.0.0.1` (loopback); la web debe correr en el
-  mismo PC.
-- Los bytes ESC/POS los genera la app React (`encodarEscPos`); el servicio no
-  formatea nada.
-- Puertos de impresión: escritorio 8090, PDA Android 8091. El 8080 queda libre
-  para el servidor web/desarrollo (Vite).
-- En Linux: si no hay CUPS ni `lp`, el fallback escribe directamente a
-  `/dev/usb/lp0`; si el permiso falla, agrega tu usuario al grupo `lp`.
+## 🛠️ Diagnóstico y Errores Frecuentes
+
+- **Error: *"No se encontró una impresora"***
+  - Verifica que la impresora esté encendida y visible en Windows (**Configuración > Impresoras y escáneres**).
+  - En PowerShell, obtén el nombre exacto con `Get-Printer | Select-Object Name` e inícialo usando `--printer "NOMBRE_EXACTO"`.
+- **Error: *"pip no se reconoce como un comando interno"***
+  - Utiliza el lanzador nativo de Python: `py -m pip install -r requirements.txt`.
+- **Permiso denegado en `/dev/usb/lp0` (Linux):**
+  - Agrega tu usuario al grupo lp: `sudo usermod -aG lp $USER` y vuelve a iniciar sesión.
