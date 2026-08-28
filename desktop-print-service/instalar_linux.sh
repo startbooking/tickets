@@ -60,7 +60,7 @@ echo
 read -r -p "Nombre de la cola/impresora CUPS (Enter para autodetectar): " PRINTER
 PRINTER_ARG=""
 if [ -n "${PRINTER:-}" ]; then
-  PRINTER_ARG="--printer \"$PRINTER\""
+  PRINTER_ARG="--printer $PRINTER"
 fi
 
 PORT="8090"
@@ -82,7 +82,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$DIR
-ExecStart=$VENV_PY$DIR/print_service.py --port $PORT$PRINTER_ARG
+ExecStart=$VENV_PY $DIR/print_service.py --port $PORT $PRINTER_ARG
 Restart=on-failure
 RestartSec=3
 
