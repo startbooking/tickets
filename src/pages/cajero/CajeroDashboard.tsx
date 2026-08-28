@@ -265,7 +265,7 @@ export default function CajeroDashboard() {
               </div>
 
               {/* Menú de Navegación */}
-              <nav className="p-3 space-y-1">
+              <nav className="p-1 space-y-1">
                 {navItems.map((item) => (
                   <button
                     key={item.id}
@@ -372,7 +372,7 @@ export default function CajeroDashboard() {
         </header>
 
         {/* Inyección de Subvistas */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-8 bg-slate-50/50 touch-list">
+        <div className="flex-1 overflow-y-auto sm:p-4 bg-slate-50/50 touch-list">
           {(() => {
             switch (activeSection) {
               case 'inicio':
@@ -462,7 +462,7 @@ function SubViewInicio({
         <Card className="bg-gradient-to-br from-slate-950 to-slate-900 text-white p-6 border-none rounded-2xl shadow-lg">
           <CardContent className="p-0">
             <div className="flex items-start gap-4">
-              <div className="p-3 bg-slate-800 text-amber-400 rounded-xl shrink-0"><Building2 className="w-6 h-6" /></div>
+              <div className="p-1 bg-slate-800 text-amber-400 rounded-xl shrink-0"><Building2 className="w-6 h-6" /></div>
               <div>
                 <h3 className="font-bold text-sm mb-1">Agencia satélite — solo venta de tiquetes</h3>
                 <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
@@ -494,7 +494,7 @@ function SubViewInicio({
                   <h3 className="text-xl font-black text-slate-900">{resumen.programados}</h3>
                   <span className="text-[10px] font-bold text-emerald-600 group-hover:underline">Ver programación →</span>
                 </div>
-                <div className="p-3 bg-slate-50 text-slate-500 rounded-xl"><Clock className="w-5 h-5" /></div>
+                <div className="p-1 bg-slate-50 text-slate-500 rounded-xl"><Clock className="w-5 h-5" /></div>
               </CardContent>
             </button>
             <button
@@ -508,7 +508,7 @@ function SubViewInicio({
                   <h3 className="text-xl font-black text-slate-900">{resumen.en_plataforma}</h3>
                   <span className="text-[10px] font-bold text-emerald-600 group-hover:underline">Ver programación →</span>
                 </div>
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Bus className="w-5 h-5" /></div>
+                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-xl"><Bus className="w-5 h-5" /></div>
               </CardContent>
             </button>
             <button
@@ -522,7 +522,7 @@ function SubViewInicio({
                   <h3 className="text-xl font-black text-slate-900">{resumen.proximos}</h3>
                   <span className="text-[10px] font-bold text-amber-600 group-hover:underline">Ver programación →</span>
                 </div>
-                <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
+                <div className="p-1 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
               </CardContent>
             </button>
             <button
@@ -536,7 +536,7 @@ function SubViewInicio({
                   <h3 className="text-xl font-black text-emerald-400">{resumen.despachados}</h3>
                   <span className="text-[10px] font-bold text-emerald-400 group-hover:underline">Ver programación →</span>
                 </div>
-                <div className="p-3 bg-slate-800 text-emerald-400 rounded-xl"><ArrowUpRight className="w-5 h-5" /></div>
+                <div className="p-1 bg-slate-800 text-emerald-400 rounded-xl"><ArrowUpRight className="w-5 h-5" /></div>
               </CardContent>
             </button>
           </div>
@@ -918,7 +918,7 @@ function SubViewDespacho() {
             </DialogHeader>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-1.5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-1 space-y-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vehículo</p>
                 {cargandoVehiculo ? (
                   <div className="flex items-center gap-2 text-[11px] text-slate-500 py-1">
@@ -948,7 +948,7 @@ function SubViewDespacho() {
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-1.5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-1 space-y-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ruta</p>
                 <p className="text-[11px] text-slate-700">
                   {vehiculoConsulta.origen || "—"} <span className="text-slate-400">→</span> {vehiculoConsulta.destino || "—"}
@@ -1244,7 +1244,7 @@ function NuevaRutaDialog({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {mostrarErrores && erroresRuta.length > 0 && (
-              <div className="md:col-span-2 p-3 bg-red-50 border border-red-300 rounded-lg text-[11px] font-semibold text-red-700 space-y-1">
+              <div className="md:col-span-2 p-1 bg-red-50 border border-red-300 rounded-lg text-[11px] font-semibold text-red-700 space-y-1">
                 <div className="flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-red-600" />
                   Complete la siguiente información:
@@ -2200,7 +2200,7 @@ function SubViewVentas({
                         }
                       }}
                       className={cn(
-                        "rounded-xl border p-3 text-left transition-all min-h-[72px] sm:min-h-[80px] touch-list",
+                        "rounded-xl border p-1 text-left transition-all min-h-[72px] sm:min-h-[80px] touch-list",
                         activo
                           ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20"
                           : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50"
@@ -2434,7 +2434,7 @@ function SubViewVentas({
                   key={f.id}
                   onClick={() => setFormaPago(f.id)}
                   className={cn(
-                    "p-3 rounded-xl border-2 text-center transition-all min-h-[72px]",
+                    "p-1 rounded-xl border-2 text-center transition-all min-h-[72px]",
                     formaPago === f.id
                       ? "border-emerald-600 bg-emerald-50"
                       : "border-slate-200 bg-white hover:border-slate-300"
@@ -2449,7 +2449,7 @@ function SubViewVentas({
               ))}
             </div>
 
-            <div className="mt-4 p-3 bg-slate-900 text-slate-100 rounded-lg text-xs flex justify-between items-center">
+            <div className="mt-4 p-1 bg-slate-900 text-slate-100 rounded-lg text-xs flex justify-between items-center">
               <span className="font-bold">Total Pasaje:</span>
               <span className="text-base font-black text-emerald-400">
                 ${(sillas?.valor ?? 0).toLocaleString('es-CO')}
@@ -2457,7 +2457,7 @@ function SubViewVentas({
             </div>
 
             {mostrarErrores && errores.length > 0 && (
-              <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg text-[11px] font-semibold text-red-700 space-y-1.5">
+              <div className="mt-3 p-1 bg-red-50 border border-red-300 rounded-lg text-[11px] font-semibold text-red-700 space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-red-600" />
                   Complete la siguiente información para generar el tiquete:
@@ -2610,17 +2610,17 @@ function SubViewReservas() {
       </CardHeader>
       <CardContent>
         <div className="border rounded-xl overflow-hidden text-xs">
-          <div className="bg-slate-50 p-3 font-bold border-b grid grid-cols-3 text-slate-500">
+          <div className="bg-slate-50 p-1 font-bold border-b grid grid-cols-3 text-slate-500">
             <span>Cliente</span>
             <span>Ruta</span>
             <span>Vencimiento</span>
           </div>
-          <div className="p-3 grid grid-cols-3 border-b items-center bg-white">
+          <div className="p-1 grid grid-cols-3 border-b items-center bg-white">
             <span className="font-semibold text-slate-900">Mariana Restrepo</span>
             <span className="text-slate-600">Bogotá a Cali</span>
             <Badge className="bg-amber-100 text-amber-800 w-fit text-[10px] font-bold border-amber-200">Faltan 15m</Badge>
           </div>
-          <div className="p-3 grid grid-cols-3 items-center bg-white">
+          <div className="p-1 grid grid-cols-3 items-center bg-white">
             <span className="font-semibold text-slate-900">Jorge Barón</span>
             <span className="text-slate-600">Bogotá a Ibagué</span>
             <Badge className="bg-red-100 text-red-800 w-fit text-[10px] font-bold border-red-200">Expirado</Badge>
@@ -2650,7 +2650,7 @@ function SubViewInformes() {
             <Progress className="h-2 bg-slate-100" value={72} />
           </div>
 
-          <div className="p-3 rounded-lg border bg-slate-50 text-xs space-y-1">
+          <div className="p-1 rounded-lg border bg-slate-50 text-xs space-y-1">
             <p className="font-bold text-slate-700">Métricas Consolidadas:</p>
             <p className="text-slate-500">• Transacciones Exitosas DIAN: <strong className="text-slate-900">14 XML</strong></p>
             <p className="text-slate-500">• Ticket Promedio del Turno: <strong className="text-slate-900">$85,000 COP</strong></p>
@@ -3001,7 +3001,7 @@ function SubViewCierre({ total }: { total: number }) {
               <h4 className="text-xs font-black text-slate-700 mb-2">TOTAL GENERAL POR FORMA DE PAGO</h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {porFormaPago.filter((f) => f.cantidad > 0).map((f) => (
-                  <div key={f.forma} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div key={f.forma} className="p-1 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {f.forma === 'EFECTIVO' && <Banknote className="w-4 h-4 text-emerald-600" />}
                       {f.forma === 'TARJETA' && <CreditCard className="w-4 h-4 text-blue-600" />}
@@ -3015,7 +3015,7 @@ function SubViewCierre({ total }: { total: number }) {
                   </div>
                 ))}
               </div>
-              <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+              <div className="mt-3 p-1 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
                 <span className="text-xs font-black text-emerald-800">TOTAL GENERAL</span>
                 <span className="font-mono font-black text-emerald-700">${totalGeneral.toLocaleString('es-CO')}</span>
               </div>
