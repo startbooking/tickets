@@ -9,7 +9,8 @@ import {
   ChevronDown,
   Menu,
   X,
-  Scale
+  Scale,
+  Ticket
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -28,8 +29,9 @@ import { SuperRoutesView } from './views/SuperRoutesView';
 import { SuperFleetView } from './views/SuperFleetView';
 import { PassengersManagementView } from './views/PassengersManagementView';
 import NotasContablesView from './views/NotasContablesView';
+import TicketsVendidosView from './views/TicketsVendidosView';
 
-type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros' | 'notascontables';
+type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros' | 'notascontables' | 'ticketsvendidos';
 
 export default function SuperAdminDashboard() {
   const { user, logout } = useAuth();
@@ -53,6 +55,7 @@ export default function SuperAdminDashboard() {
 
   const contabilidadSubItems = [
     { id: 'notascontables', label: 'Notas contables', icon: <FileText className="w-4 h-4" /> },
+    { id: 'ticketsvendidos', label: 'Tickets vendidos', icon: <Ticket className="w-4 h-4" /> },
   ] as const;
 
   const configSubItems = [
@@ -78,6 +81,7 @@ export default function SuperAdminDashboard() {
       case 'rutas':return <SuperRoutesView />;
       case 'pasajeros': return <PassengersManagementView />;
       case 'notascontables': return <NotasContablesView />;
+      case 'ticketsvendidos': return <TicketsVendidosView />;
       case 'empresa': return <GeneralSettingsView />;
       default: return <SuperAdminHome />;
     }
@@ -107,6 +111,10 @@ export default function SuperAdminDashboard() {
   }, [menuAbierto]);
 
   const isConfigSection = ['empresa', 'usuarios', 'resoluciones', 'agencias', 'vehiculos', 'conductores'].includes(activeSection);
+
+  const seccionLabel =
+    ({ notascontables: 'Notas contables', ticketsvendidos: 'Tickets vendidos' } as Record<string, string>)[activeSection] ||
+    activeSection;
 
   return (
     <div className="flex h-screen-dyn bg-slate-100 font-sans antialiased overflow-hidden">
@@ -207,7 +215,7 @@ export default function SuperAdminDashboard() {
                 onClick={() => setContabilidadOpen(!contabilidadOpen)}
                 className={cn(
                   "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150",
-                  activeSection === 'notascontables'
+                  activeSection === 'notascontables' || activeSection === 'ticketsvendidos'
                     ? "text-red-400 font-semibold"
                     : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                 )}
@@ -373,7 +381,7 @@ export default function SuperAdminDashboard() {
                     onClick={() => setContabilidadOpen(!contabilidadOpen)}
                     className={cn(
                       "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 touch-list min-h-[44px]",
-                      activeSection === 'notascontables'
+                      activeSection === 'notascontables' || activeSection === 'ticketsvendidos'
                         ? "text-red-400 font-semibold"
                         : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                     )}
@@ -443,7 +451,7 @@ export default function SuperAdminDashboard() {
             <LayoutDashboard className="w-4 h-4 text-slate-400 hidden md:inline" />
             <span className="hidden md:inline">Panel de Control</span>
             <span className="hidden md:inline">/</span>
-            <span className="text-slate-800 capitalize font-semibold truncate">{activeSection}</span>
+            <span className="text-slate-800 capitalize font-semibold truncate">{seccionLabel}</span>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">

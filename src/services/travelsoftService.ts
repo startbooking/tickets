@@ -549,6 +549,31 @@ export interface VentaCajero {
   };
 }
 
+/** Tiquete vendido en un rango de fechas (reporte global de Contabilidad). */
+export interface TicketVendido {
+  id_planilla: number;
+  consecutivo_pasajero?: number | null;
+  consecutivo_planilla?: number | null;
+  cod_ruta?: number | null;
+  fecha_ruta?: string | null;
+  hora_tiquete?: string | null;
+  placa_vehi?: string | null;
+  marca_vehi?: string | null;
+  tipo_vehi?: string | null;
+  origen?: string | null;
+  destino?: string | null;
+  puesto?: number | null;
+  valor?: number | null;
+  forma_pago?: string | null;
+  numero_factura?: string | null;
+  cajero?: string | null;
+  cajero_nombre?: string | null;
+  pasajero?: {
+    nombre?: string | null;
+    documento?: string | null;
+  } | null;
+}
+
 export interface ManifiestoPasajero {
   puesto: number | null;
   consecutivo_pasajero: number | null;
@@ -1022,6 +1047,22 @@ export const travelsoftService = {
       throw new Error("No se pudieron cargar las ventas del cajero.");
     }
     return payload.data ?? [];
+  },
+
+  /**
+   * Reporte global de tiquetes vendidos en un rango de fechas (Contabilidad).
+   * GET /ventas?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+   */
+  getVentasRango: async (fechaInicio: string, fechaFin: string): Promise<{ tickets: TicketVendido[]; total: number }> => {
+    const response = await apiClient.get<{ success: boolean; data: TicketVendido[]; total?: number }>(
+      "/ventas",
+      { params: { fecha_inicio: fechaInicio, fecha_fin: fechaFin } }
+    );
+    const payload = response.data;
+    if (!payload || payload.success !== true) {
+      throw new Error("No se pudieron cargar los tiquetes vendidos.");
+    }
+    return { tickets: payload.data ?? [], total: Number(payload.total ?? 0) };
   },
 
   /**
