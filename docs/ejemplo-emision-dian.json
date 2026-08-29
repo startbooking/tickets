@@ -1,0 +1,98 @@
+{
+  "tipoDocumento": "21",
+  "descripcionTipoDocumento": "Documento Equivalente Electrónico Tiquete de Transporte de Pasajeros",
+  "versionEstructura": "1.0",
+  "ambiente": "2",
+  "prefijo": "FSV",
+  "numeroConsecutivo": 123,
+  "cude": null,
+  "fechaEmision": "2026-08-29",
+  "horaEmision": "14:30-05:00",
+  "divisa": "COP",
+  "formaPago": "1",
+  "medioPago": "48",
+  "emisor": {
+    "nit": "860022105",
+    "dv": "1",
+    "razonSocial": "FLOTA SAN VICENTE S.A.",
+    "nombreComercial": "FLOTA SAN VICENTE",
+    "tipoOrganizacion": "1",
+    "regimenTributario": "48",
+    "responsabilidadFiscal": "O-13;O-15;O-47",
+    "direccion": {
+      "municipioNombre": "BOGOTA",
+      "direccion": "Calle 24 A No. 44-35, Quinta Paredes, Bogotá D.C."
+    },
+    "contacto": {
+      "telefono": "(601) 368 2390",
+      "email": "fsv@flotasanvicente.co"
+    }
+  },
+  "adquirente": {
+    "tipoIdentificacion": "13",
+    "numeroIdentificacion": "12345678",
+    "nombres": "PEDRO",
+    "apellidos": "PEREZ",
+    "direccion": { "municipioNombre": "BOGOTA" },
+    "contacto": {
+      "telefono": "+573001112233",
+      "email": "pedro.perez@correo.com"
+    }
+  },
+  "detallesServicioTransporte": {
+    "modoTransporte": "Terrestre",
+    "tipoServicio": "Pasajeros Intermunicipal",
+    "origen": { "nombre": "BOGOTA" },
+    "destino": { "nombre": "MEDELLIN" },
+    "vehiculo": {
+      "placa": "ABC123",
+      "numeroInterno": "10",
+      "empresaAfiliada": "FLOTA SAN VICENTE S.A.",
+      "nitEmpresaAfiliada": "860022105"
+    },
+    "viaje": {
+      "fechaSalida": "2026-08-29",
+      "horaSalida": "14:30",
+      "puestos": "12",
+      "numeroPuestos": 1
+    }
+  },
+  "lineasDetalle": [
+    {
+      "numeroLinea": 1,
+      "codigoProducto": "SERV-TRP-PAS",
+      "descripcion": "Tiquete de transporte terrestre intermunicipal BOGOTA - MEDELLIN (silla 12)",
+      "cantidad": 1,
+      "unidadMedida": "94",
+      "valorUnitario": 45000,
+      "descuento": 0,
+      "subtotal": 45000,
+      "impuestos": [],
+      "totalLinea": 45000
+    }
+  ],
+  "totales": {
+    "lineasTotal": 45000,
+    "subtotalBruto": 45000,
+    "totalDescuentos": 0,
+    "totalCargos": 0,
+    "totalImpuestos": 0,
+    "totalPagar": 45000
+  },
+  "informacionRepresentacionGrafica": {
+    "qrData": "Numpool=FSV-00000123&Fec=2026-08-29&Hora=14:30&ValFac=45000.00&ValIva=0.00&ValOtroIm=0.00&ValTotal=45000.00&NitFac=860022105&DocAdq=12345678&CUDE=",
+    "urlValidacionDian": "https://catalogo-vp-documentosequivalenteselectronicos.dian.gov.co/document/searchqr?documentkey="
+  },
+  "datos_emisor": {
+    "token_empresa": "sk_live_777777777_a47704d40beaae58eb8f88eeab7439ebd164e2f3b3273e31",
+    "id_agencia": 1
+  },
+  "datos_viaje": {
+    "id_interno_viaje": 990012,
+    "origen": "BOGOTA",
+    "destino": "MEDELLIN",
+    "placa_vehiculo": "ABC123",
+    "numero_asiento": 12,
+    "valor_tiquete": 45000
+  }
+}

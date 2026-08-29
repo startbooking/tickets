@@ -8,7 +8,8 @@ import {
   Network,
   ChevronDown,
   Menu,
-  X
+  X,
+  Receipt
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -26,8 +27,9 @@ import { SuperMaintenanceView } from './views/SuperMaintenanceView';
 import { SuperRoutesView } from './views/SuperRoutesView';
 import { SuperFleetView } from './views/SuperFleetView';
 import { PassengersManagementView } from './views/PassengersManagementView';
+import NotasView from './views/NotasView';
 
-type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros';
+type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros' | 'notas';
 
 export default function SuperAdminDashboard() {
   const { user, logout } = useAuth();
@@ -39,12 +41,13 @@ export default function SuperAdminDashboard() {
   });
 
   // Configuración del menú dinámico con sus respectivos iconos y etiquetas
-  const mainMenuItems = [
+   const mainMenuItems = [
     { id: 'inicio', label: 'Consolidado General', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'buses', label: 'Flota de Buses', icon: <Bus className="w-5 h-5" /> },
     { id: 'mantenimiento', label: 'Mantenimiento Global', icon: <Bus className="w-5 h-5" /> },
     { id: 'rutas', label: 'Configuración de Rutas', icon: <Map className="w-5 h-5" /> },
     { id: 'pasajeros', label: 'Pasajeros', icon: <Users className="w-5 h-5" /> },
+    { id: 'notas', label: 'Notas Crédito/Débito', icon: <Receipt className="w-5 h-5" /> },
   ] as const;
 
   const configSubItems = [
@@ -69,6 +72,7 @@ export default function SuperAdminDashboard() {
       case 'mantenimiento':return <SuperMaintenanceView />;
       case 'rutas':return <SuperRoutesView />;
       case 'pasajeros': return <PassengersManagementView />;
+      case 'notas': return <NotasView />;
       case 'empresa': return <GeneralSettingsView />;
       default: return <SuperAdminHome />;
     }

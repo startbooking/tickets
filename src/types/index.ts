@@ -424,3 +424,19 @@ export interface DocumentoDian {
   fecha_anulacion?: string | null;
   fecha_creacion?: string;
 }
+
+/** Referencia al documento original ajustar (DEE Tipo 21). */
+export interface NotaDianReferencia {
+  tipoDocumentoReferencia?: string;
+  numeroDocumentoReferencia?: string;
+  cudeReferencia?: string;
+  fechaEmisionReferencia?: string;
+  motivo?: string;
+  valorAjuste?: number;
+}
+
+/** Nota Crédito (91) / Nota Débito (92) sobre un DEE. Ver docs/dian-contrato.md. */
+export interface NotaDianDTO extends Omit<TiqueteTransporteDTO, 'tipoDocumento'> {
+  tipoDocumento?: '91' | '92';
+  documentoReferencia?: NotaDianReferencia;
+}

@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { handleAxiosError, validateResponse } from './apiClient';
-import type { TiqueteTransporteDTO } from '@/types';
+import type { TiqueteTransporteDTO, NotaDianDTO } from '@/types';
 
 // Instancia aislada y configurada para el operador de la DIAN (Sactel)
 const sactelClient = axios.create({
@@ -97,6 +97,32 @@ export const dianService = {
       return validateResponse<DianResponse>(response, 'El Core no pudo anular el documento DIAN.');
     } catch (error: unknown) {
       return handleAxiosError(error, 'Fallo al anular el documento fiscal.');
+    }
+  },
+
+  /**
+   * Emite una NOTA CRÉDITO (Tipo 91) sobre un DEE ya autorizado.
+   * Ajuste a favor del adquirente (anulación parcial/total, devolución).
+   */
+  emitirNotaCredito: async (payload: NotaDianDTO, authHeaders: Record<string, string | number>): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.post<DianResponse>('/nota-credito/emitir', payload, { headers: authHeaders });
+      return validateResponse<DianResponse>(response, 'El Core no pudo emitir la Nota Crédito.');
+    } catch (error: unknown) {
+      return handleAxiosError(error, 'Fallo al emitir la Nota Crédito DIAN.');
+    }
+  },
+
+  /**
+   * Emite una NOTA DÉBITO (Tipo 92) sobre un DEE ya autorizado.
+   * Ajuste a favor del emisor (cargos adicionales, diferencia de tarifa).
+   */
+  emitirNotaDebito: async (payload: NotaDianDTO, authHeaders: Record<string, string | number>): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.post<DianResponse>('/nota-debito/emitir', payload, { headers: authHeaders });
+      return validateResponse<DianResponse>(response, 'El Core no pudo emitir la Nota Débito.');
+    } catch (error: unknown) {
+      return handleAxiosError(error, 'Fallo al emitir la Nota Débito DIAN.');
     }
   },
 };
