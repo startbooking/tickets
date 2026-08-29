@@ -29,7 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("print-service")
 
-LOOPBACK = "127.0.0.1"
+LOOPBACK = "0.0.0.0"
 DEFAULT_PORT = 8090
 
 KEYWORDS_IMPRESORA = (
@@ -117,7 +117,14 @@ def _elegir_impresora_windows(nombre_solicitado: str | None) -> str | None:
 
 
 def _elegir_impresora_linux(nombre_solicitado: str | None) -> tuple[str | None, bool]:
+    # Impresora térmica Bluetooth SPP enlazada vía rfcomm (preferencia en este equipo)
+    for rf in ("/dev/rfcomm0", "/dev/rfcomm1", "/dev/rfcomm2"):
+        if os.path.exists(rf):
+            return rf, False
+
     if nombre_solicitado:
+        if nombre_solicitado.startswith("/dev/"):
+            return nombre_solicitado, False
         return nombre_solicitado, True
 
     try:
@@ -206,12 +213,39 @@ def _imprimir_device_raw(data: bytes, copies: int, device: str) -> None:
         raise RuntimeError(f"Error escribiendo en dispositivo '{device}': {exc}") from exc
 
 
+def _imprimir_bluetooth_spp(data: bytes, copies: int, mac: str) -> None:
+    """Imprime en impresora Bluetooth SPP vía BlueZ D-Bus (sin root/rfcomm)."""
+    copies = max(1, copies)
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bixolon_spp_print.py")
+    # El helper necesita el python del sistema (con dbus); el venv no lo trae.
+    py = "/usr/bin/python3"
+    if not os.path.exists(py):
+        py = sys.executable
+    for _ in range(copies):
+        res = subprocess.run(
+            [py, helper, mac],
+            input=data, capture_output=True, timeout=60,
+        )
+        if res.returncode != 0:
+            raise RuntimeError((res.stderr or b"").decode("latin-1").strip()
+                               or "Error de impresión Bluetooth SPP")
+    logger.info("Trabajo enviado a Bixolon BT %s (%d bytes)", mac, len(data))
+
+
+_RE_MAC = __import__("re").compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+
+
 def _imprimir(data: bytes, copies: int, identificador: str | None, usar_cups: bool, mock: bool) -> None:
     if mock or identificador is None:
         _log_dir.mkdir(parents=True, exist_ok=True)
         destino = _log_dir / "ultimo_ticket.bin"
         destino.write_bytes(data * max(1, copies))
         logger.warning("[MOCK] Datos guardados en %s (%d bytes)", destino, len(data))
+        return
+
+    # Impresora Bluetooth SPP (se pasa la MAC como identificador)
+    if _RE_MAC.match(identificador or ""):
+        _imprimir_bluetooth_spp(data, copies, identificador)
         return
 
     if usar_cups:

@@ -86,10 +86,12 @@ export async function detectarImpresoraLocal(): Promise<EstadoImpresoraLocal | n
     }
   }
 
-  // 3) Bluetooth (Web Bluetooth BLE en cualquier plataforma con soporte:
-  //    Android Chrome, escritorio Chromium, tablet. Es la vía local que no
-  //    depende de la red ni de un backend con impresora conectada).
-  if (soportaBluetoothEscPos()) {
+  // 3) Bluetooth (Web Bluetooth BLE) SOLO en Android/PDA: en escritorio la
+  //    impresora Bluetooth se usa vía el servicio local WebSocket (desktop-print-service,
+  //    que habla SPP con BlueZ sin abrir el selector nativo de Chrome). Forzar BLE en
+  //    escritorio dispara el diálogo de selección de Chrome y queda la ventana del
+  //    navegador abierta, por eso se omite en escritorio.
+  if (isAndroidDevice() && soportaBluetoothEscPos()) {
     return { metodo: 'ble', etiqueta: ETIQUETAS.ble };
   }
 
@@ -138,9 +140,10 @@ export async function imprimirLocal(
     }
   }
 
-  // 3) Web Bluetooth directo (Android Chrome / escritorio Chromium / tablet).
-  //    Es la impresión local por Bluetooth: no depende de red ni de backend.
-  if (soportaBluetoothEscPos()) {
+  // 3) Web Bluetooth directo SOLO en Android/PDA. En escritorio la impresora
+  //    Bluetooth se usa vía el servicio local WebSocket (desktop-print-service → SPP),
+  //    que no abre el selector nativo de Chrome ni deja ventanas colgadas.
+  if (isAndroidDevice() && soportaBluetoothEscPos()) {
     try {
       await imprimirBleEscPos(textoFinal);
       onMetodo?.('ble');

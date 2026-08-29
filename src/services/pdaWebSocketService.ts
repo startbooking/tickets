@@ -16,8 +16,17 @@
 
 import { encodarEscPos, isAndroidDevice } from '@/utils/ticketFormatter';
 
-/** Mini-servicio del escritorio (desktop-print-service/print_service.py). */
-const URL_DESKTOP_WS = 'ws://127.0.0.1:8090';
+/**
+ * Mini-servicio del escritorio (desktop-print-service/print_service.py).
+ * Se resuelve contra el MISMO host que sirve la app (no contra 127.0.0.1),
+ * porque el navegador del cajero puede correr en otra máquina de la LAN y ahí
+ * 127.0.0.1 apuntaría a su propio PC, no al servidor con la impresora Bluetooth.
+ */
+const WS_PROTO = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss' : 'ws';
+const URL_DESKTOP_WS =
+  typeof location !== 'undefined'
+    ? `${WS_PROTO}://${location.hostname}:8090`
+    : 'ws://127.0.0.1:8090';
 /** App Android de la PDA (pda-websocket-printer/PrintService.kt). */
 const URL_PDA_WS = 'ws://127.0.0.1:8091';
 const CONNECT_TIMEOUT = 2000;

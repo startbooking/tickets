@@ -28,6 +28,22 @@ fi
 
 echo "[OK] Python detectado: $($PYBIN --version 2>&1)"
 
+# ---- Dependencias de sistema para impresión Bluetooth SPP (BlueZ/D-Bus) ----
+# El helper bixolon_spp_print.py usa dbus/gi del Python del sistema (no del .venv).
+if ! "$PYBIN" -c "import dbus, gi" >/dev/null 2>&1; then
+  echo
+  echo "[*] Instalando dependencias de sistema para Bluetooth SPP (python3-dbus, python3-gi)..."
+  if command -v apt >/dev/null 2>&1; then
+    sudo apt update >/dev/null 2>&1 || true
+    sudo apt install -y python3-dbus python3-gi >/dev/null 2>&1 || \
+      echo "[!] No se pudieron instalar python3-dbus/python3-gi. El modo Bluetooth SPP requerira 'sudo apt install python3-dbus python3-gi'."
+  else
+    echo "[!] Distro sin 'apt': instala manualmente python3-dbus y python3-gi para el modo Bluetooth SPP."
+  fi
+else
+  echo "[OK] Dependencias D-Bus/GI presentes (modo Bluetooth SPP disponible)."
+fi
+
 # ---- 2) Crear Entorno Virtual (VENV) e Instalar Dependencias ----
 echo
 echo "== Configurando entorno virtual e instalando dependencias =="
