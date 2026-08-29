@@ -9,7 +9,7 @@ import {
   ChevronDown,
   Menu,
   X,
-  Receipt
+  Scale
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -27,9 +27,9 @@ import { SuperMaintenanceView } from './views/SuperMaintenanceView';
 import { SuperRoutesView } from './views/SuperRoutesView';
 import { SuperFleetView } from './views/SuperFleetView';
 import { PassengersManagementView } from './views/PassengersManagementView';
-import NotasView from './views/NotasView';
+import NotasContablesView from './views/NotasContablesView';
 
-type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros' | 'notas';
+type AdminSection = 'empresa' | 'usuarios' | 'buses' | 'vehiculos' |'agencias' | 'resoluciones' | 'conductores' | 'inicio' | 'mantenimiento' | 'rutas' | 'pasajeros' | 'notascontables';
 
 export default function SuperAdminDashboard() {
   const { user, logout } = useAuth();
@@ -40,6 +40,8 @@ export default function SuperAdminDashboard() {
     return ['empresa', 'usuarios', 'resoluciones', 'agencias', 'vehiculos', 'conductores'].includes(activeSection);
   });
 
+  const [contabilidadOpen, setContabilidadOpen] = useState(() => activeSection === 'notascontables');
+
   // Configuración del menú dinámico con sus respectivos iconos y etiquetas
    const mainMenuItems = [
     { id: 'inicio', label: 'Consolidado General', icon: <LayoutDashboard className="w-5 h-5" /> },
@@ -47,7 +49,10 @@ export default function SuperAdminDashboard() {
     { id: 'mantenimiento', label: 'Mantenimiento Global', icon: <Bus className="w-5 h-5" /> },
     { id: 'rutas', label: 'Configuración de Rutas', icon: <Map className="w-5 h-5" /> },
     { id: 'pasajeros', label: 'Pasajeros', icon: <Users className="w-5 h-5" /> },
-    { id: 'notas', label: 'Notas Crédito/Débito', icon: <Receipt className="w-5 h-5" /> },
+  ] as const;
+
+  const contabilidadSubItems = [
+    { id: 'notascontables', label: 'Notas contables', icon: <FileText className="w-4 h-4" /> },
   ] as const;
 
   const configSubItems = [
@@ -72,7 +77,7 @@ export default function SuperAdminDashboard() {
       case 'mantenimiento':return <SuperMaintenanceView />;
       case 'rutas':return <SuperRoutesView />;
       case 'pasajeros': return <PassengersManagementView />;
-      case 'notas': return <NotasView />;
+      case 'notascontables': return <NotasContablesView />;
       case 'empresa': return <GeneralSettingsView />;
       default: return <SuperAdminHome />;
     }
@@ -117,17 +122,6 @@ export default function SuperAdminDashboard() {
             <div>
               <h1 className="font-black text-lg tracking-wider text-white">SACTel.Cloud</h1>
               <span className="text-xs font-semibold text-amber-400 tracking-widest uppercase">Super Admin</span>
-            </div>
-          </div>
-
-          {/* Información del perfil logueado */}
-          <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white uppercase">
-              {user?.name?.slice(0, 2) || 'AD'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate text-white">{user?.name || 'Administrador Global'}</p>
-              <p className="text-xs text-slate-400 truncate">{user?.email || 'root@sactel.lan'}</p>
             </div>
           </div>
 
@@ -205,6 +199,52 @@ export default function SuperAdminDashboard() {
                 </div>
               )}
             </div>
+
+            {/* ─── 📒 SUBMENÚ DESPLEGABLE: CONTABILIDAD ─── */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setContabilidadOpen(!contabilidadOpen)}
+                className={cn(
+                  "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150",
+                  activeSection === 'notascontables'
+                    ? "text-red-400 font-semibold"
+                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <Scale className="w-5 h-5 text-slate-500" />
+                  <span>Contabilidad</span>
+                </div>
+                {contabilidadOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+
+              {contabilidadOpen && (
+                <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 animate-in slide-in-from-top-2 duration-200 overflow-y-auto max-h-80">
+                  {contabilidadSubItems.map((subItem) => {
+                    const isSubActive = activeSection === subItem.id;
+                    return (
+                      <button
+                        key={subItem.id}
+                        type="button"
+                        onClick={() => SeleccionarSeccion(subItem.id)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-xs font-medium transition-all duration-150",
+                          isSubActive
+                            ? "bg-slate-800 text-white font-bold border-l-2 border-red-500"
+                            : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200"
+                        )}
+                      >
+                        <span className={isSubActive ? "text-red-500" : "text-slate-600"}>
+                          {subItem.icon}
+                        </span>
+                        {subItem.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
@@ -257,17 +297,6 @@ export default function SuperAdminDashboard() {
                 </button>
               </div>
 
-              {/* Perfil logueado */}
-              <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white uppercase">
-                  {user?.name?.slice(0, 2) || 'AD'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate text-white">{user?.name || 'Administrador Global'}</p>
-                  <p className="text-xs text-slate-400 truncate">{user?.email || 'root@sactel.lan'}</p>
-                </div>
-              </div>
-
               {/* Menú de navegación */}
               <nav className="p-4 space-y-1">
                 <p className="px-3 text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Módulos del Sistema</p>
@@ -315,6 +344,49 @@ export default function SuperAdminDashboard() {
                   {configOpen && (
                     <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 overflow-y-auto max-h-80">
                       {configSubItems.map((subItem) => {
+                        const isSubActive = activeSection === subItem.id;
+                        return (
+                          <button
+                            key={subItem.id}
+                            type="button"
+                            onClick={() => SeleccionarSeccion(subItem.id)}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-xs font-medium transition-colors touch-list min-h-[44px]",
+                              isSubActive
+                                ? "bg-slate-800 text-white font-bold border-l-2 border-red-500"
+                                : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200"
+                            )}
+                          >
+                            <span className={isSubActive ? "text-red-500" : "text-slate-600"}>{subItem.icon}</span>
+                            {subItem.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* ─── 📒 SUBMENÚ DESPLEGABLE: CONTABILIDAD (móvil) ─── */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setContabilidadOpen(!contabilidadOpen)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 touch-list min-h-[44px]",
+                      activeSection === 'notascontables'
+                        ? "text-red-400 font-semibold"
+                        : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Scale className="w-5 h-5 text-slate-500" />
+                      <span>Contabilidad</span>
+                    </div>
+                    {contabilidadOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+                  {contabilidadOpen && (
+                    <div className="mt-1 pl-4 space-y-1 border-l-2 border-slate-800 ml-6 overflow-y-auto max-h-80">
+                      {contabilidadSubItems.map((subItem) => {
                         const isSubActive = activeSection === subItem.id;
                         return (
                           <button

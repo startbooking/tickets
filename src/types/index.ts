@@ -440,3 +440,17 @@ export interface NotaDianDTO extends Omit<TiqueteTransporteDTO, 'tipoDocumento'>
   tipoDocumento?: '91' | '92';
   documentoReferencia?: NotaDianReferencia;
 }
+
+/** Fila de resumen de una nota consultada por rango de fechas (Core DIAN). */
+export interface NotaDianResumen {
+  numeroFactura?: string;
+  prefijo?: string;
+  consecutivo?: string;
+  fechaEmision?: string;
+  nitAdquirente?: string;
+  nombreAdquirente?: string;
+  valor?: number;
+  cude?: string;
+  estado?: string;
+  tipoDocumento?: string;
+}

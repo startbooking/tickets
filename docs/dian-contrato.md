@@ -18,6 +18,10 @@ Documento Equivalente Electrónico (Tipo de Documento **21**) a la DIAN, usando 
 | POST | `/tiquete-transporte/guardar` | Persiste el documento fiscal (tabla `documentos_dian`). | `DocumentoDianPersist` | `DianResponse` |
 | GET | `/tiquete-transporte/{id_planilla}` | Consulta el documento persistido. | — | `DianResponse` |
 | POST | `/tiquete-transporte/anular` | Anula el DEE (evento de anulación). | `{id_planilla, motivo}` | `DianResponse` (con `cude_anulacion`) |
+| POST | `/nota-credito/emitir` | Emite Nota Crédito (91) sobre un DEE. | `NotaDianDTO` | `DianResponse` |
+| POST | `/nota-debito/emitir` | Emite Nota Débito (92) sobre un DEE. | `NotaDianDTO` | `DianResponse` |
+| GET | `/nota-credito/listar?fecha_inicio&fecha_fin` | Lista Notas Crédito por rango de fechas. | — | `NotaDianResumen[]` |
+| GET | `/nota-debito/listar?fecha_inicio&fecha_fin` | Lista Notas Débito por rango de fechas. | — | `NotaDianResumen[]` |
 
 Cabeceras comunes (cliente frontend, `src/services/dianService.ts`):
 ```

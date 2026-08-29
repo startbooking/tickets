@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { handleAxiosError, validateResponse } from './apiClient';
-import type { TiqueteTransporteDTO, NotaDianDTO } from '@/types';
+import type { TiqueteTransporteDTO, NotaDianDTO, NotaDianResumen } from '@/types';
 
 // Instancia aislada y configurada para el operador de la DIAN (Sactel)
 const sactelClient = axios.create({
@@ -124,5 +124,31 @@ export const dianService = {
     } catch (error: unknown) {
       return handleAxiosError(error, 'Fallo al emitir la Nota Débito DIAN.');
     }
+  },
+
+  /**
+   * Lista las NOTAS CRÉDITO (Tipo 91) por rango de fechas.
+   * Endpoint a implementar en el Core: GET /nota-credito/listar?fecha_inicio&fecha_fin.
+   */
+  listarNotasCredito: async (fechaInicio: string, fechaFin: string): Promise<NotaDianResumen[]> => {
+    const response = await sactelClient.get<NotaDianResumen[] | { data: NotaDianResumen[] }>(
+      '/nota-credito/listar',
+      { params: { fecha_inicio: fechaInicio, fecha_fin: fechaFin } }
+    );
+    const body = response.data;
+    return Array.isArray(body) ? body : (body.data ?? []);
+  },
+
+  /**
+   * Lista las NOTAS DÉBITO (Tipo 92) por rango de fechas.
+   * Endpoint a implementar en el Core: GET /nota-debito/listar?fecha_inicio&fecha_fin.
+   */
+  listarNotasDebito: async (fechaInicio: string, fechaFin: string): Promise<NotaDianResumen[]> => {
+    const response = await sactelClient.get<NotaDianResumen[] | { data: NotaDianResumen[] }>(
+      '/nota-debito/listar',
+      { params: { fecha_inicio: fechaInicio, fecha_fin: fechaFin } }
+    );
+    const body = response.data;
+    return Array.isArray(body) ? body : (body.data ?? []);
   },
 };
