@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { DianResponse, dianService } from '@/services/dianService';
 import { useAuth } from '@/contexts/AuthContext';
-import type { TiqueteTransporteDTO } from '@/types';
+import { construirPayloadDian } from '@/services/ticketFiscalService';
+import type { TicketVenta } from '@/services/travelsoftService';
 
 interface DatosViaje {
   id_viaje: string | number;
@@ -35,38 +36,30 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
     setLoading(true);
     setError(null);
 
-    // 1. Estructuración del JSON bajo el formato requerido para el envío a la DIAN
-    const tiqueteJsonPayload: TiqueteTransporteDTO = {
-      operacion: "Emision_Tiquete_Transporte",
-      fecha_emision: new Date().toISOString().split('T')[0],
-      hora_emision: new Date().toLocaleTimeString('en-US', { hour12: false }),
-      datos_emisor: {
-        token_empresa: import.meta.env.VITE_EMPRESA_TOKEN
+    // 1. Estructuración del JSON bajo el formato DEE (Documento Equivalente
+    //    Electrónico, Tipo 21) usando el constructor unificado del proyecto.
+    const tiquete: TicketVenta = {
+      id_planilla: Number(datosViaje.id_viaje) || 0,
+      consecutivo_pasajero: 0,
+      consecutivo_planilla: 0,
+      cod_ruta: 0,
+      fecha_ruta: new Date().toISOString().split('T')[0],
+      hora_ruta: null,
+      placa_vehi: datosViaje.placa_bus,
+      origen: datosViaje.origen_nombre,
+      destino: datosViaje.destino_nombre,
+      puesto: asientoSeleccionado,
+      valor: parseFloat(String(datosViaje.precio_tiquete)),
+      pasajero: {
+        nombre: `${datosPasajero.nombres} ${datosPasajero.apellidos}`.trim(),
+        documento: datosPasajero.documento,
       },
-      datos_viaje: {
-        id_interno_viaje: datosViaje.id_viaje,
-        origen: datosViaje.origen_nombre,
-        destino: datosViaje.destino_nombre,
-        placa_vehiculo: datosViaje.placa_bus,
-        numero_asiento: asientoSeleccionado,
-        valor_tiquete: parseFloat(String(datosViaje.precio_tiquete))
-      },
-      datos_pasajero: {
-        tipo_documento: datosPasajero.tipo_documento,
-        numero_documento: datosPasajero.documento,
-        nombres: datosPasajero.nombres,
-        apellidos: datosPasajero.apellidos,
-        email_notificacion: datosPasajero.email || "notificaciones@empresa.com"
-      },
-      impuestos: [
-        {
-          codigo: "01", // Código DIAN para IVA
-          porcentaje: 0.00, // El transporte intermunicipal de pasajeros está excluido de IVA en Colombia
-          base_imponible: parseFloat(String(datosViaje.precio_tiquete)),
-          valor_impuesto: 0.00
-        }
-      ]
+      forma_pago: 'EFECTIVO',
     };
+
+    const tiqueteJsonPayload = construirPayloadDian(tiquete, {
+      empresaToken: import.meta.env.VITE_EMPRESA_TOKEN,
+    });
 
     const authHeaders = {
       'x-user-id': user?.id || 0,
@@ -74,8 +67,7 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
     };
 
     try {
-      // 2. Enviamos el JSON al backend receptor y esperamos la respuesta síncrona
-      // const respuesta = await ticketsService.emitirTiqueteTransporte(tiqueteJsonPayload,authHeaders );
+      // 2. Enviamos el JSON al Core DIAN y esperamos la respuesta síncrona
       const respuesta = await dianService.emitirTiqueteTransporte(tiqueteJsonPayload, authHeaders );
       
       setResultadoDian(respuesta);
@@ -110,9 +102,9 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
 
       {resultadoDian?.success && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-lg text-xs font-mono">
-          <p className="font-bold text-sm mb-1">✅ Factura Autorizada por DIAN</p>
+          <p className="font-bold text-sm mb-1">✅ Documento Equivalente Autorizado por DIAN</p>
           <p>Factura: {resultadoDian.numero_factura}</p>
-          <p className="break-all">CUFE: {resultadoDian.cufe}</p>
+          <p className="break-all">CUDE: {resultadoDian.cude || resultadoDian.cufe}</p>
         </div>
       )}
 
@@ -155,7 +147,7 @@ export default function GenerarTicket({ datosViaje, datosPasajero, asientoSelecc
           <hr className="border-dashed my-2" />
           <p className="text-right font-bold text-sm">TOTAL: ${datosViaje.precio_tiquete}</p>
           <hr className="border-dashed my-2" />
-          <p className="break-all text-[9px]">CUFE: {resultadoDian.cufe}</p>
+          <p className="break-all text-[9px]">CUDE: {resultadoDian.cude || resultadoDian.cufe}</p>
           <p className="text-center mt-4">¡Buen viaje!</p>
         </div>
       )}

@@ -43,6 +43,8 @@ export interface UseTicketFiscalResult {
   reimprimirVenta: (v: TurnoSateliteVenta) => Promise<ImpresionResultado>;
   /** Construye el payload DIAN para testing o uso externo. */
   construirPayload: (t: TicketVenta) => TiqueteTransporteDTO;
+  /** Anula el Documento Equivalente Electrónico ante la DIAN (evento de anulación). */
+  anularConDian: (idPlanilla: number, motivo: string) => Promise<{ ok: boolean; cudeAnulacion?: string; message?: string }>;
   /** ¿El móvil puede imprimir por Bluetooth directamente? */
   puedeImprimirBle: boolean;
   /** Genera el texto ESC/POS de un ticket (reutilizable por tests). */
@@ -77,13 +79,35 @@ export function useTicketFiscal(): UseTicketFiscalResult {
           'x-user-role': user?.rol || 'CAJERO',
         });
         const data = resultado?.data || resultado;
-        if (resultado && (resultado.success || data?.cufe)) {
+        const cude = data?.cude || data?.cufe;
+        if (resultado && (resultado.success || cude)) {
           ticketFinal = {
             ...t,
-            cufe: data?.cufe || t.cufe,
+            cude,
+            cufe: cude || t.cufe,
             qr_dian: data?.qr_dian || data?.qr_code_url || t.qr_dian,
             numero_factura: data?.numero_factura || t.numero_factura,
           };
+          // (b) Persistencia best-effort del documento fiscal en el Core SACTel.
+          // No bloquea la impresión: si falla, se reintenta vía cola local (F7).
+          dianService
+            .guardarDocumento({
+              id_planilla: t.id_planilla,
+              tipo_documento: '21',
+              numero_factura: ticketFinal.numero_factura ?? null,
+              cude: cude ?? null,
+              qr_data: ticketFinal.qr_dian ?? null,
+              url_validacion: (data as { url_validacion?: string } | undefined)?.url_validacion ?? null,
+              estado: 'AUTORIZADO',
+              id_resolucion: (t as { id_resolucion?: number | null })?.id_resolucion ?? null,
+              id_orides: ctx.id_orides ?? null,
+              total: ticketFinal.total ?? (ticketFinal.valor ?? 0),
+              total_impuestos: 0,
+              forma_pago: ticketFinal.forma_pago,
+              medio_pago: '48',
+              respuesta_dian: data ?? null,
+            })
+            .catch((e) => console.warn('No se pudo persistir el documento DIAN:', e));
         } else {
           onAdvertencia?.(resultado?.message || 'La DIAN no autorizó el tiquete; se imprime sin CUFE.');
         }
@@ -127,12 +151,29 @@ export function useTicketFiscal(): UseTicketFiscalResult {
     [ctx]
   );
 
+  // ── Anulación del DEE ante la DIAN ──────────────────────────────────────────
+  const anularConDian = useCallback(
+    async (idPlanilla: number, motivo: string) => {
+      const res = await dianService.anularDocumento(idPlanilla, motivo);
+      const data = res?.data || res;
+      const cudeAnulacion = (data as { cude_anulacion?: string } | undefined)?.cude_anulacion
+        || (data as { cude?: string } | undefined)?.cude;
+      return {
+        ok: Boolean(res?.success || cudeAnulacion),
+        cudeAnulacion,
+        message: res?.message,
+      };
+    },
+    []
+  );
+
   return {
     emitirConDian,
     imprimirTicket,
     imprimirTexto,
     reimprimirVenta,
     construirPayload,
+    anularConDian,
     puedeImprimirBle: soportaBluetoothEscPos(),
     ticketATexto: ticketATextoImpresion,
     ventaATexto: ventaATextoImpresion,

@@ -395,3 +395,32 @@ export interface TiqueteTransporteDTO {
   elaborado?: string;
   [key: string]: unknown;
 }
+
+/** Estado de un Documento Equivalente Electrónico (DEE) ante la DIAN. */
+export type EstadoDocumentoDian = 'BORRADOR' | 'AUTORIZADO' | 'RECHAZADO' | 'ANULADO';
+
+/** Documento fiscal persistido (tabla `documentos_dian`). Ver migrations/012. */
+export interface DocumentoDian {
+  id?: number;
+  id_planilla: number;
+  tipo_documento?: string;
+  prefijo?: string | null;
+  numero_consecutivo?: number | null;
+  numero_factura?: string | null;
+  /** CUDE asignado por la DIAN/Core firmador. */
+  cude?: string | null;
+  qr_data?: string | null;
+  url_validacion?: string | null;
+  estado?: EstadoDocumentoDian;
+  respuesta_dian?: Record<string, unknown> | null;
+  id_resolucion?: number | null;
+  id_orides?: number | null;
+  total?: number;
+  total_impuestos?: number;
+  forma_pago?: string | null;
+  medio_pago?: string | null;
+  cude_anulacion?: string | null;
+  motivo_anulacion?: string | null;
+  fecha_anulacion?: string | null;
+  fecha_creacion?: string;
+}

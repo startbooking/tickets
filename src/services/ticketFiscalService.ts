@@ -83,22 +83,24 @@ const cantidad = t.cantidad || t.puestos?.length || 1;
   const agencia = t.origen || t.municipio || '';
   const tipoVenta =
     t.fecha_venta ? (t.fecha_venta.split(' ')[0] === t.fecha_ruta ? 'PARA HOY' : 'RESERVA') : 'PARA HOY';
-  const cufe = t.cufe || CUFE_MOCK;
+  // El CUDE lo calcula y devuelve el Core SACTel (DIAN). Solo lo reenviamos si ya
+  // lo tenemos (re-emisión / consulta); NUNCA generamos un CUDE mock en cliente.
+  const cudeReal = t.cufe || t.cude || undefined;
   const horaSalida = t.hora_ruta != null ? formatHora(t.hora_ruta) : (t.hora_tiquete || '');
   const qrData =
     `Numpool=${numeroFactura}&Fec=${t.fecha_ruta}&Hora=${horaSalida}&ValFac=${(unitario * rowCount).toFixed(2)}` +
     `&ValIva=0.00&ValOtroIm=0.00&ValTotal=${(unitario * rowCount).toFixed(2)}&NitFac=${nit}` +
-    `&DocAdq=${t.pasajero.documento}&CUFE=${cufe}`;
+    `&DocAdq=${t.pasajero.documento}&CUDE=${cudeReal || ''}`;
 
   return {
     tipoDocumento: '21',
     descripcionTipoDocumento: 'Documento Equivalente Electrónico Tiquete de Transporte de Pasajeros',
     versionEstructura: '1.0',
-    ambiente: '1',
+    ambiente: (import.meta.env.VITE_DIAN_ENVIRONMENT || 'test') === 'production' ? '1' : '2',
     prefijo,
     numeroConsecutivo,
-    cude: cufe,
-    cufe,
+    cude: cudeReal,
+    cufe: cudeReal,
     fechaEmision: t.fecha_ruta,
     horaEmision: horaSalida + '-05:00',
     divisa: 'COP',
@@ -170,12 +172,14 @@ const cantidad = t.cantidad || t.puestos?.length || 1;
       totalImpuestos: 0,
       totalPagar: unitario * rowCount,
     },
-    informacionRepresentacionGrafica: {
-      qrData,
-      urlValidacionDian: cufe
-        ? `https://catalogo-vp-fe.dian.gov.co/document/searchqr?documentkey=${cufe}`
-        : undefined,
-    },
+    // Solo precargamos la representación gráfica si ya disponemos del CUDE real
+    // (re-emisión/consulta). En emisión nueva el Core la devuelve firmada.
+    informacionRepresentacionGrafica: cudeReal
+      ? {
+          qrData,
+          urlValidacionDian: `https://catalogo-vp-documentosequivalenteselectronicos.dian.gov.co/document/searchqr?documentkey=${cudeReal}`,
+        }
+      : undefined,
     // Metadata operativa (no fiscal) para el Core SACTel.
     datos_emisor: { token_empresa: token, id_agencia: Number(ctx.id_orides) || undefined },
     datos_viaje: {

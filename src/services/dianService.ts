@@ -16,11 +16,15 @@ const sactelClient = axios.create({
 export interface DianResponse {
   success: boolean;
   message?: string;
+  /** CUDE del Documento Equivalente Electrónico (Tipo 21). Lo calcula el Core. */
+  cude?: string;
+  /** Alias de compatibilidad (algunos Cores devuelven cufe). */
   cufe?: string;
   qr_code_url?: string;
   qr_dian?: string;
   numero_factura?: string;
   data?: {
+    cude?: string;
     cufe?: string;
     qr_dian?: string;
     qr_code_url?: string;
@@ -55,8 +59,44 @@ export const dianService = {
       // podrá leer el error.response.data.errors que generó el fallo 422.
       return handleAxiosError(error, 'Fallo crítico durante la emisión fiscal del tiquete.');
     }
-  }
-};
+  },
 
-// Mantener compatibilidad si se utiliza bajo el alias de ticketsService en tus componentes
-export const ticketsService = dianService;
+  /**
+   * Persiste el documento fiscal emitido (guardado/consulta en el Core SACTel).
+   * Ver migrations/012-documentos-dian.sql y docs/dian-contrato.md.
+   */
+  guardarDocumento: async (payload: Record<string, unknown>): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.post<DianResponse>('/tiquete-transporte/guardar', payload);
+      return validateResponse<DianResponse>(response, 'El Core no pudo persistir el documento DIAN.');
+    } catch (error: unknown) {
+      return handleAxiosError(error, 'Fallo al persistir el documento fiscal.');
+    }
+  },
+
+  /** Consulta el documento fiscal persistido por id_planilla. */
+  getDocumento: async (idPlanilla: number | string): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.get<DianResponse>(`/tiquete-transporte/${idPlanilla}`);
+      return validateResponse<DianResponse>(response, 'No se encontró el documento fiscal.');
+    } catch (error: unknown) {
+      return handleAxiosError(error, 'Fallo al consultar el documento fiscal.');
+    }
+  },
+
+  /**
+   * Anula el Documento Equivalente Electrónico ante la DIAN (evento de anulación).
+   * Devuelve el CUDE de anulación. Ver migrations/012-documentos-dian.sql.
+   */
+  anularDocumento: async (idPlanilla: number | string, motivo: string): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.post<DianResponse>('/tiquete-transporte/anular', {
+        id_planilla: idPlanilla,
+        motivo,
+      });
+      return validateResponse<DianResponse>(response, 'El Core no pudo anular el documento DIAN.');
+    } catch (error: unknown) {
+      return handleAxiosError(error, 'Fallo al anular el documento fiscal.');
+    }
+  },
+};

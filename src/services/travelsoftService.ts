@@ -510,6 +510,7 @@ export interface TicketVenta {
   consolidado?: boolean;
   // Campos DIAN (firma electrónica del Core SACTel)
   cufe?: string;
+  cude?: string;
   qr_dian?: string;
   qr_code_url?: string;
 }
