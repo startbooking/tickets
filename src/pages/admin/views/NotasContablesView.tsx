@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PaginationBar } from '@/components/PaginationBar';
 
 function nitYDv(nitRaw: string): { nit: string; dv: string } {
   const limpio = nitRaw.replace(/[^0-9]/g, '');
@@ -41,6 +42,14 @@ export default function NotasContablesView() {
   const [cargando, setCargando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
   const [consultado, setConsultado] = useState(false);
+  const [pageSize, setPageSize] = useState(25);
+  const [pagina, setPagina] = useState(1);
+
+  const totalItems = lista.length;
+  const totalPaginas = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginaEff = Math.min(pagina, totalPaginas);
+  const inicio = (paginaEff - 1) * pageSize;
+  const listaPagina = lista.slice(inicio, inicio + pageSize);
 
   // Emisión
   const [mostrarEmision, setMostrarEmision] = useState(false);
@@ -63,6 +72,7 @@ export default function NotasContablesView() {
           ? await dianService.listarNotasCredito(fechaInicio, fechaFin)
           : await dianService.listarNotasDebito(fechaInicio, fechaFin);
       setLista(datos);
+      setPagina(1);
     } catch (err) {
       setLista([]);
       setErrorConsulta(
@@ -168,7 +178,16 @@ export default function NotasContablesView() {
         </p>
       </div>
 
-      <Tabs value={tipo} onValueChange={(v) => { setTipo(v as '91' | '92'); setConsultado(false); setLista([]); setErrorConsulta(null); }}>
+      <Tabs
+        value={tipo}
+        onValueChange={(v) => {
+          setTipo(v as '91' | '92');
+          setConsultado(false);
+          setLista([]);
+          setErrorConsulta(null);
+          setPagina(1);
+        }}
+      >
         <TabsList>
           <TabsTrigger value="91">Notas Crédito (91)</TabsTrigger>
           <TabsTrigger value="92">Notas Débito (92)</TabsTrigger>
@@ -237,8 +256,8 @@ export default function NotasContablesView() {
                             </td>
                           </tr>
                         ) : (
-                          lista.map((n, i) => (
-                            <tr key={i} className="border-t border-slate-100">
+                          listaPagina.map((n, i) => (
+                            <tr key={inicio + i} className="border-t border-slate-100">
                               <td className="p-2 font-medium">{n.numeroFactura || n.consecutivo || '—'}</td>
                               <td className="p-2">{n.fechaEmision || '—'}</td>
                               <td className="p-2">{n.nitAdquirente || '—'}</td>
@@ -252,6 +271,21 @@ export default function NotasContablesView() {
                       </tbody>
                     </table>
                   </div>
+                )}
+
+                {consultado && !errorConsulta && lista.length > 0 && (
+                  <PaginationBar
+                    currentPage={paginaEff}
+                    totalPages={totalPaginas}
+                    totalItems={totalItems}
+                    pageSize={pageSize}
+                    onPageSizeChange={(s) => { setPageSize(s); setPagina(1); }}
+                    onGoToPage={(p) => setPagina(Math.min(Math.max(1, p), totalPaginas))}
+                    onPrevPage={() => setPagina((p) => Math.max(1, p - 1))}
+                    onNextPage={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                    onGoToFirst={() => setPagina(1)}
+                    onGoToLast={() => setPagina(totalPaginas)}
+                  />
                 )}
 
                 {/* Formulario de emisión */}

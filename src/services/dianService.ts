@@ -151,4 +151,48 @@ export const dianService = {
     const body = response.data;
     return Array.isArray(body) ? body : (body.data ?? []);
   },
+
+  /**
+   * Descarga el paquete ZIP del Documento Equivalente Electrónico (XML firmado,
+   * QR y representación gráfica) autorizado por la DIAN.
+   * GET /tiquete-transporte/{idPlanilla}/zip  ->  application/zip (blob)
+   */
+  descargarZip: async (idPlanilla: number | string): Promise<Blob> => {
+    try {
+      const response = await sactelClient.get<Blob>(`/tiquete-transporte/${idPlanilla}/zip`, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw handleAxiosError(error, 'No se pudo descargar el ZIP del documento electrónico.');
+    }
+  },
+
+  /**
+   * Valida el Documento Equivalente Electrónico ante la DIAN (evento de validación).
+   * POST /tiquete-transporte/{idPlanilla}/validar
+   */
+  validarDocumento: async (idPlanilla: number | string): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.post<DianResponse>(`/tiquete-transporte/${idPlanilla}/validar`);
+      return validateResponse<DianResponse>(response, 'El Core no pudo validar el documento ante la DIAN.');
+    } catch (error: unknown) {
+      throw handleAxiosError(error, 'Fallo al validar el documento ante la DIAN.');
+    }
+  },
+
+  /**
+   * Reenvía el Documento Equivalente Electrónico al correo indicado.
+   * POST /tiquete-transporte/{idPlanilla}/reenviar  { correo }
+   */
+  reenviarDee: async (idPlanilla: number | string, correo: string): Promise<DianResponse> => {
+    try {
+      const response = await sactelClient.post<DianResponse>(`/tiquete-transporte/${idPlanilla}/reenviar`, {
+        correo,
+      });
+      return validateResponse<DianResponse>(response, 'El Core no pudo reenviar el documento.');
+    } catch (error: unknown) {
+      throw handleAxiosError(error, 'Fallo al reenviar el documento electrónico.');
+    }
+  },
 };
